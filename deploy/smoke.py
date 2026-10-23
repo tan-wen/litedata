@@ -51,7 +51,8 @@ class PageParser(HTMLParser):
         elif tag == "input" and self._form is not None and values.get("name"):
             inputs = self._form["inputs"]
             assert isinstance(inputs, dict)
-            inputs[values["name"]] = values.get("value", "")
+            if values.get("type", "").lower() not in ("checkbox", "radio") or "checked" in values:
+                inputs[values["name"]] = values.get("value", "")
         elif tag == "tr":
             self._row = {"cells": [], "actions": []}
         elif tag in ("td", "th") and self._row is not None:

@@ -48,4 +48,7 @@ platform:
     jdbc-url: ${DORIS_JDBC_URL:jdbc:mysql://localhost:9030/warehouse?useSSL=false&serverTimezone=UTC}
     username: ${DORIS_USER:platform_reader}
     password: ${DORIS_PASSWORD}
+  modeling:
+    username: ${DORIS_WRITER_USER:}
+    password: ${DORIS_WRITER_PASSWORD:}
 

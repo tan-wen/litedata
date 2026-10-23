@@ -13,6 +13,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
+import org.springframework.web.client.ResourceAccessException;
 import tools.jackson.databind.json.JsonMapper;
 
 @Component
@@ -29,7 +31,7 @@ public class DolphinSchedulerClient {
     @Transactional(noRollbackFor=IllegalStateException.class)
     public void run(long id) {
         Pipeline pipeline=lock(id); long code=definition(pipeline);
-        post("/executors/start-workflow-instance",Map.of("workflowDefinitionCode",Long.toString(code),"scheduleTime","",
+        post("启动工作流","/executors/start-workflow-instance",Map.of("workflowDefinitionCode",Long.toString(code),"scheduleTime","",
                 "failureStrategy","END","warningType","NONE","workerGroup","default","tenantCode",config.tenantCode(),
                 "execType","START_PROCESS","taskDependType","TASK_POST","runMode","RUN_MODE_SERIAL"));
     }
@@ -41,12 +43,12 @@ public class DolphinSchedulerClient {
         else {
             String schedule=json.writeValueAsString(Map.of("startTime",LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")),
                     "endTime","2099-12-31 23:59:59","crontab",pipeline.getCronExpression(),"timezoneId","Asia/Shanghai"));
-            Object result=post("/schedules",Map.of("workflowDefinitionCode",Long.toString(code),"schedule",schedule,
+            Object result=post("创建调度", "/schedules",Map.of("workflowDefinitionCode",Long.toString(code),"schedule",schedule,
                     "failureStrategy","END","warningType","NONE","workerGroup","default","tenantCode",config.tenantCode()));
-            scheduleId=result instanceof Number number?number.intValue():((Number)((Map<?,?>)result).get("id")).intValue();
+            scheduleId=scheduleId(result);
             mapper.schedule(id,scheduleId,"SCHEDULE_PENDING");
         }
-        post("/schedules/"+scheduleId+"/online",Map.of());
+        post("上线调度","/schedules/"+scheduleId+"/online",Map.of());
         mapper.schedule(id,scheduleId,"SCHEDULED");
     }
     private Pipeline lock(long id) {
@@ -59,8 +61,8 @@ public class DolphinSchedulerClient {
     private long definition(Pipeline pipeline) {
         Long code=pipeline.getDefinitionCode();
         if(code==null) {
-            Object generated=get("/task-definition/gen-task-codes?genNum=1");
-            long taskCode=((Number)((List<?>)generated).getFirst()).longValue();
+            Object generated=get("获取任务编号","/task-definition/gen-task-codes?genNum=1");
+            long taskCode=taskCode(generated);
             Map<String,Object> task=new LinkedHashMap<>();
             task.put("code",taskCode); task.put("name","同步与加工"); task.put("version",1); task.put("description","平台固定执行链路");
             task.put("taskType","SHELL"); task.put("taskParams",Map.of("resourceList",List.of(),"localParams",List.of(),
@@ -72,31 +74,69 @@ public class DolphinSchedulerClient {
             String tasks=json.writeValueAsString(List.of(task));
             String relations=json.writeValueAsString(List.of(Map.of("preTaskCode",0,"preTaskVersion",0,"postTaskCode",taskCode,
                     "postTaskVersion",1,"conditionType","NONE","conditionParams",Map.of())));
-            Object created=post("/workflow-definition",Map.of("name","platform-pipeline-"+pipeline.getId(),"description",pipeline.getName(),
+            Object created=post("创建工作流","/workflow-definition",Map.of("name","platform-pipeline-"+pipeline.getId(),"description",pipeline.getName(),
                     "tenantCode",config.tenantCode(),"globalParams","[]","locations","[]","timeout","55",
                     "executionType","SERIAL_WAIT","taskDefinitionJson",tasks,"taskRelationJson",relations));
-            code=((Number)((Map<?,?>)created).get("code")).longValue();
+            code=workflowCode(created);
             mapper.definition(pipeline.getId(),code); pipeline.setDefinitionCode(code);
         }
-        post("/workflow-definition/"+code+"/release",Map.of("releaseState","ONLINE"));
+        post("发布工作流","/workflow-definition/"+code+"/release",Map.of("releaseState","ONLINE"));
         return code;
     }
     private String path(String suffix) { return "/projects/"+config.projectCode()+suffix; }
-    private Object get(String suffix) {
-        try { return data(client.get().uri(path(suffix)).retrieve().body(Map.class)); }
-        catch(org.springframework.web.client.RestClientException exception) { throw unavailable(); }
+    private Object get(String operation,String suffix) {
+        try { return data(operation,client.get().uri(path(suffix)).retrieve().body(Map.class)); }
+        catch(RestClientResponseException exception) { throw requestFailed(operation,exception.getStatusCode().value()); }
+        catch(ResourceAccessException exception) { throw unavailable(operation); }
+        catch(org.springframework.web.client.RestClientException exception) { throw invalidResponse(operation); }
     }
-    private Object post(String suffix,Map<String,String> values) {
+    private Object post(String operation,String suffix,Map<String,String> values) {
         var form=new LinkedMultiValueMap<String,String>(); values.forEach(form::add);
-        try { return data(client.post().uri(path(suffix)).contentType(MediaType.APPLICATION_FORM_URLENCODED).body(form).retrieve().body(Map.class)); }
-        catch(org.springframework.web.client.RestClientException exception) { throw unavailable(); }
+        try { return data(operation,client.post().uri(path(suffix)).contentType(MediaType.APPLICATION_FORM_URLENCODED).body(form).retrieve().body(Map.class)); }
+        catch(RestClientResponseException exception) { throw requestFailed(operation,exception.getStatusCode().value()); }
+        catch(ResourceAccessException exception) { throw unavailable(operation); }
+        catch(org.springframework.web.client.RestClientException exception) { throw invalidResponse(operation); }
     }
-    private Object data(Map<?,?> response) {
-        if(response==null || !(response.get("code") instanceof Number code) || code.intValue()!=0) throw unavailable();
+    private Object data(String operation,Map<?,?> response) {
+        if(response==null || !(response.get("code") instanceof Number code)) throw invalidResponse(operation);
+        if(code.longValue()!=0) throw businessFailed(operation,code.longValue());
         return response.get("data");
     }
-    private IllegalStateException unavailable() {
-        return new IllegalStateException("DolphinScheduler 请求失败，请检查引擎状态、项目编号、租户和令牌；任务未标记为成功");
+    private long taskCode(Object data) {
+        if(data instanceof List<?> list && !list.isEmpty() && list.getFirst() instanceof Number code) return code.longValue();
+        throw invalidResponse("获取任务编号");
+    }
+    private long workflowCode(Object data) {
+        if(data instanceof Map<?,?> map && map.get("code") instanceof Number code) return code.longValue();
+        throw invalidResponse("创建工作流");
+    }
+    private int scheduleId(Object data) {
+        if(data instanceof Number number) return number.intValue();
+        if(data instanceof Map<?,?> map && map.get("id") instanceof Number number) return number.intValue();
+        throw invalidResponse("创建调度");
+    }
+    private IllegalStateException requestFailed(String operation,int status) {
+        String detail=switch(status) {
+            case 401 -> "访问令牌已失效，请执行 deploy/start.ps1 或 deploy/start.sh 重新初始化并重建平台";
+            case 403 -> "访问被拒绝，请检查项目编号、租户和令牌权限";
+            default -> "引擎返回 HTTP "+status+"，请检查引擎状态、项目编号、租户和令牌";
+        };
+        return failure(operation,"HTTP "+status,detail);
+    }
+    private IllegalStateException businessFailed(String operation,long code) {
+        String detail=code==10001
+                ? "工作流参数或任务插件校验失败，请检查任务配置并查看引擎日志"
+                : "请检查项目编号、租户和工作流配置";
+        return failure(operation,"业务码 "+code,detail);
+    }
+    private IllegalStateException invalidResponse(String operation) {
+        return failure(operation,"返回格式无效","请检查引擎版本、项目编号和令牌配置");
+    }
+    private IllegalStateException unavailable(String operation) {
+        return failure(operation,"连接或读取超时","请确认引擎服务可访问后重试，并检查引擎地址配置");
+    }
+    private IllegalStateException failure(String operation,String kind,String detail) {
+        return new IllegalStateException("DolphinScheduler "+operation+"失败（"+kind+"）："+detail+"；任务未标记为成功");
     }
 }
 

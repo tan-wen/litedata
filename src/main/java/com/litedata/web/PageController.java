@@ -55,7 +55,7 @@ public class PageController {
         return "pipelines";
     }
     @PostMapping("/pipelines") String createPipeline(@RequestParam String name,@RequestParam long sourceId,@RequestParam String sourceTable,
-            @RequestParam String watermarkColumn,@RequestParam String targetTable,@RequestParam String transformSql,
+            @RequestParam String watermarkColumn,@RequestParam String targetTable,@RequestParam(defaultValue="") String transformSql,
             @RequestParam(defaultValue="0 0 * * * ?") String cronExpression,RedirectAttributes redirect,Principal principal) {
         pipelines.create(name,sourceId,sourceTable,watermarkColumn,targetTable,transformSql,cronExpression);
         audit(principal,"PIPELINE_CREATE",name); redirect.addFlashAttribute("success","任务已保存；确认目标表为 UNIQUE KEY 并完成建表后可执行");

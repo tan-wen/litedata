@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title>编辑模型 · LiteData</title></head><body><section>
+  <div class="mb-4"><div class="page-kicker">数据开发 / <a th:href="@{/models}">数据建模</a></div><h1 class="page-title" th:text="${modelId == null ? '新增逻辑模型' : '编辑逻辑模型'}"></h1><p class="page-subtitle mb-0">目标库 warehouse · UNIQUE KEY · 单机单副本。保存后可预览 DDL。</p></div>
+  <div th:replace="~{fragments/messages :: messages}"></div>
+  <form th:if="${canEdit}" id="model-form" th:action="${modelId == null ? '/models' : '/models/' + modelId}" method="post" th:object="${draft}">
+    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"><input type="hidden" th:field="*{version}">
+    <article class="platform-card card mb-3"><div class="card-header">模型信息</div><div class="card-body"><div class="row g-3">
+      <div class="col-md-4"><label class="form-label" for="tableName">物理表名</label><input class="form-control" th:field="*{tableName}" th:readonly="${modelId != null}" required maxlength="64" pattern="[A-Za-z_][A-Za-z0-9_]{0,63}" placeholder="ods_orders"><div class="form-text">保存后表名固定，建议使用分层前缀。</div></div>
+      <div class="col-md-4"><label class="form-label" for="name">中文名称</label><input class="form-control" th:field="*{name}" required maxlength="100" placeholder="订单明细"></div>
+      <div class="col-md-4"><label class="form-label" for="subjectArea">主题域</label><input class="form-control" th:field="*{subjectArea}" required maxlength="100" placeholder="交易域"></div>
+      <div class="col-md-4"><label class="form-label" for="layer">数仓分层</label><select class="form-select" th:field="*{layer}"><option th:each="item : ${layers}" th:value="${item}" th:text="${item}"></option></select></div>
+      <div class="col-md-4"><label class="form-label" for="buckets">HASH 分桶数</label><input class="form-control" type="number" th:field="*{buckets}" required min="1" max="32"><div class="form-text">按全部主键字段分桶。</div></div>
+      <div class="col-12"><label class="form-label" for="description">业务说明</label><textarea class="form-control" th:field="*{description}" maxlength="500" rows="2"></textarea><div class="form-text">表名说明及字段注释不支持反斜杠和控制字符。</div></div>
+    </div></div></article>
+    <article class="platform-card card mb-3"><div class="card-header d-flex justify-content-between align-items-center"><span>字段定义 <small class="text-secondary fw-normal">最多 100 个字段</small></span><button class="btn btn-sm btn-outline-primary" type="button" id="add-field">添加字段</button></div><div class="card-body">
+      <p class="text-secondary">主键字段须连续排在前面且不可空。类型支持整数、BOOLEAN、DATE、DATETIME(0–6)、CHAR、VARCHAR、STRING、DECIMAL、FLOAT、DOUBLE；STRING 和浮点类型仅用于非主键字段。</p>
+      <div class="table-responsive"><table class="table modeling-fields"><thead><tr><th>字段名</th><th>数据类型</th><th>主键</th><th>可空</th><th>字段注释</th><th>标准备注</th><th>顺序 / 操作</th></tr></thead><tbody id="model-fields">
+        <tr th:each="field, row : *{fields}" data-field-row>
+          <td><input class="form-control form-control-sm" th:field="*{fields[__${row.index}__].name}" data-property="name" required maxlength="64" pattern="[A-Za-z_][A-Za-z0-9_]{0,63}" aria-label="字段名"></td>
+          <td><input class="form-control form-control-sm" th:field="*{fields[__${row.index}__].dataType}" data-property="dataType" required maxlength="50" list="field-types" aria-label="数据类型"></td>
+          <td><input class="form-check-input" type="checkbox" th:name="${'fields[' + row.index + '].keyColumn'}" th:checked="${field.keyColumn}" value="true" data-property="keyColumn" aria-label="主键"></td>
+          <td><input class="form-check-input" type="checkbox" th:name="${'fields[' + row.index + '].nullable'}" th:checked="${field.nullable}" value="true" data-property="nullable" aria-label="可空"></td>
+          <td><input class="form-control form-control-sm" th:field="*{fields[__${row.index}__].comment}" data-property="comment" maxlength="500" aria-label="字段注释"></td>
+          <td><input class="form-control form-control-sm" th:field="*{fields[__${row.index}__].standard}" data-property="standard" maxlength="100" aria-label="标准备注"></td>
+          <td><div class="d-flex gap-1"><button type="button" class="btn btn-sm btn-outline-secondary" data-move="up" aria-label="上移字段">↑</button><button type="button" class="btn btn-sm btn-outline-secondary" data-move="down" aria-label="下移字段">↓</button><button type="button" class="btn btn-sm btn-outline-danger" data-remove aria-label="移除字段">移除</button></div></td>
+        </tr>
+      </tbody></table></div>
+      <div class="form-text">标准备注用于记录业务标准编号或口径，本期作为模型元数据保存。</div>
+      <datalist id="field-types"><option value="BIGINT"><option value="INT"><option value="VARCHAR(128)"><option value="DECIMAL(18,2)"><option value="DATETIME(6)"><option value="DATE"><option value="BOOLEAN"><option value="STRING"></datalist>
+    </div></article>
+    <div class="d-flex gap-2"><button class="btn btn-primary" type="submit">保存并预览 DDL</button><a class="btn btn-outline-secondary" th:href="${modelId == null ? '/models' : '/models/' + modelId}">取消</a></div>
+  </form>
+  <p th:unless="${canEdit}" class="alert alert-info">当前账号仅可查看模型。</p>
+  <template id="field-template"><tr data-field-row><td><input class="form-control form-control-sm" data-property="name" required maxlength="64" pattern="[A-Za-z_][A-Za-z0-9_]{0,63}" aria-label="字段名"></td><td><input class="form-control form-control-sm" data-property="dataType" value="VARCHAR(128)" required maxlength="50" list="field-types" aria-label="数据类型"></td><td><input class="form-check-input" type="checkbox" data-property="keyColumn" value="true" aria-label="主键"></td><td><input class="form-check-input" type="checkbox" data-property="nullable" value="true" aria-label="可空"></td><td><input class="form-control form-control-sm" data-property="comment" maxlength="500" aria-label="字段注释"></td><td><input class="form-control form-control-sm" data-property="standard" maxlength="100" aria-label="标准备注"></td><td><div class="d-flex gap-1"><button type="button" class="btn btn-sm btn-outline-secondary" data-move="up" aria-label="上移字段">↑</button><button type="button" class="btn btn-sm btn-outline-secondary" data-move="down" aria-label="下移字段">↓</button><button type="button" class="btn btn-sm btn-outline-danger" data-remove aria-label="移除字段">移除</button></div></td></tr></template>
+  <script th:src="@{/js/modeling.js}" defer></script>
+</section></body></html>

@@ -4,10 +4,11 @@
 
 ## 项目上下文
 
-LiteData 是面向单机试点的轻量数据中台。当前版本为 `0.1.0-SNAPSHOT`，处于首版开发和引擎联调阶段：平台功能与自动化测试已实现；真实 DataX、Doris、DolphinScheduler 全链路、百万行压测和连续七天运行仍待验收。范围和已知验证状态以 [README](README.md)、[实施及验收计划](docs/implementation-plan.md) 和 [引擎运行说明](docs/engine-runbook.md) 为准。
+LiteData 是面向单机试点的轻量数据中台。当前版本为 `0.1.0-SNAPSHOT`，处于首版开发和引擎联调阶段：平台功能与自动化测试已实现；真实 DataX、Doris、DolphinScheduler 演示同步及分层加工链路已实测跑通，百万行压测和连续七天运行仍待验收。范围和已知验证状态以 [README](README.md)、[实施及验收计划](docs/implementation-plan.md) 和 [引擎运行说明](docs/engine-runbook.md) 为准。
 
 - Java 根包为 `com.litedata`，Maven 坐标为 `com.litedata:litedata`；新增代码和引用保持一致。
 - `src/main/java/com/litedata/`：`config` 配置绑定，`data` 数据源连接，`pipeline` 调度和水位流程，`security` 鉴权及凭据，`service` 受控查询，`store` MyBatis 持久化，`web` 页面与 API；`model` 为领域对象。
+- `modeling` 维护逻辑模型、Doris 建表和结构核对；`transform` 维护独立 SQL 加工、同步/SQL 依赖 DAG 与 DS 调度，使用独立运行记录，不回退或推进同步管道水位。操作边界见 `docs/sql-transforms.md`。
 - `src/main/resources/db/migration/` 是 Flyway 迁移；模板、静态资源和应用配置同在 `src/main/resources/`。`deploy/` 提供 Compose 引擎初始化、worker 与冒烟脚本；`docs/` 保存实施边界和引擎操作说明。
 
 ### 运行和验证

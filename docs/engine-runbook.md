@@ -17,7 +17,16 @@ DolphinScheduler standalone。调度元数据保存在 MySQL 的独立 `dolphins
 
 Doris 使用镜像内置的集群健康检查，数据持久化至 FE/BE 的命名卷。
 DS 内存 H2 已替换成 MySQL profile，并关闭启动时的 SQL 自动初始化。
-DS 3.4.0 的官方 SQL 仅在目标库没有任何表时导入；已有库只检查版本表。
+自定义镜像还安装与引擎同版本的 shaded SHELL 任务插件，并校验固定 SHA-256；
+官方 standalone 基础镜像没有该插件时，健康接口仍可成功，但无法创建或执行平台工作流。
+Compose 的 DataX Stream Load 使用 `DORIS_LOAD_URL`（默认 `doris:8040`）直接连接单 BE，
+避免 all-in-one FE 将其他容器重定向到 `127.0.0.1:8040` 而导致连接拒绝。
+外部集群可通过该变量配置执行节点可达的 FE/BE HTTP 地址（`主机:端口`）；
+若通过 FE 导入，其返回的 BE 地址也须对执行节点可达。
+DS 3.4.0 的官方 SQL 仅在目标库没有任何表时导入；已有库先检查版本表。
+初始化脚本另按 [上游 #17988](https://github.com/apache/dolphinscheduler/pull/17988) 修复串行队列
+`t_ds_serial_command.workflow_definition_code` 的 INT/BIGINT 类型不匹配：仅在当前类型为 INT 时
+扩大为 BIGINT，保留数据；已是 BIGINT 时跳过。该处理同时覆盖新库和已有库，不重导全量 SQL。
 完整 schema 已在真实 MySQL 8.4.11 中连续执行初始化两次验证，64 张表、版本 3.4.0 保留。
 
 ## 启动和升级
@@ -69,6 +78,29 @@ mysqlreader 的 5.1 旧驱动由 Connector/J 8.4 替换以支持 MySQL 8 默认�
 DS 控制台在 <http://localhost:12345/dolphinscheduler>，运行日志由 DS 保留。
 平台实例记录是 worker 实际回调结果，不把提交请求当作成功执行。
 
+点击“立即运行”失败且没有运行记录时，先看错误中的操作阶段和状态码：
+
+- HTTP 401：令牌无效或已过期。迁移目录、改用新 MySQL 卷后，旧 `.env` 和
+  `deploy/runtime/engine.json` 仍可能保存旧项目/令牌；工作台“已配置”只表示本地字段非空。
+  在确认当前 Compose 项目及数据卷正确后，从仓库根目录执行 `./deploy/start.ps1`
+  （Linux/macOS 为 `./deploy/start.sh`），重新初始化引擎并重建平台以载入新配置。
+  只修改 `.env` 或仅重启旧容器不会更新已创建容器的环境变量。
+- HTTP 403：检查令牌所属用户的项目及操作权限。
+- 创建工作流返回业务错误码 10001：检查引擎日志。若含
+  `Cannot find TaskChannel for : SHELL`，需构建当前仓库的自定义调度镜像，
+  不能只使用没有 SHELL 插件的基础镜像。上述启动脚本会构建所需插件。
+- 启动工作流失败且引擎日志含 `Out of range value for column 'workflow_definition_code'`：
+  备份调度库后，运行当前仓库的启动脚本应用上述 BIGINT 兼容修复。
+- 已接受请求但没有平台运行记录：检查 DS 任务日志中的 claim 错误。
+  源表和水位字段必须存在，字段须为非空 DATETIME/TIMESTAMP 且有前导索引；
+  例如演示源使用 `updated_at`，误写为 `update_at` 会在领取任务前被拒绝。
+- DataX 导入报 `Connect to 127.0.0.1:8040 ... Connection refused`：确认调度容器的
+  `DORIS_LOAD_URL=doris:8040` 已生效；自定义集群请使用执行节点可达的导入地址。
+
+单独执行 `deploy/bootstrap.ps1` 会更新本地项目/令牌配置；随后须执行
+`docker compose up -d --no-deps platform` 让运行中的平台载入配置。
+不要把令牌、环境文件或未经脱敏的引擎日志粘贴到问题记录中。
+
 若执行节点被强制停止，平台会保留 RUNNING 防止并发重放。先确认 DS 实例与 DataX 子进程已停止，
 备份元数据库，再在事务中锁定对应 pipeline，将其 active_run_id 对应实例置 FAILED，
 清空 active_run_id 并保留 watermark。随后由平台重新提交。
@@ -76,12 +108,19 @@ DS 控制台在 <http://localhost:12345/dolphinscheduler>，运行日志由 DS �
 
 ## 验证状态
 
-- 平台测试包含 4 项单元测试、6 项真实 MySQL 集成测试；验证命令为 `./mvnw verify`。
+- 平台测试已扩展到建模与独立 SQL 加工；2026-10-23 使用 JDK 25 执行 `./mvnw.cmd verify`，
+  44 项 Java 测试全部通过，执行器另有 7 项 Python 测试通过。
 - 目录和包名迁移后的检查结果记录在 [CHANGELOG](../CHANGELOG.md)。
 - 迁移前曾完成平台 HTTP 登录、工作台、健康接口与 DS MySQL schema 非破坏性重复初始化验证；
   这些检查不等同于完整引擎验收。
-- 完整引擎镜像构建、源到 Doris、DS 实际调度/重试、容器重启后的完整恢复及百万行压测仍待联调。
-  以上项目需要独立运行并记录结果，不能依据平台单元/集成测试推断通过。
+- 2026-10-23 已构建并运行当前自定义引擎镜像，通过平台“立即运行”验证一条演示源订单管道：
+  DS SHELL → DataX → Doris ODS → INSERT SELECT → ADS → worker 成功回调；
+  平台运行记录为 SUCCESS，ODS/ADS 各 2 行，水位推进且运行锁释放。
+  失败尝试保留 FAILED 记录且未推进水位；修正导入地址后重新执行成功。
+- 上述两行演示任务不代表完整验收。失败修复后的自动重试、容器重启后的完整恢复、
+  连续七天运行及百万行压测仍待独立验证。
+- 后续独立 SQL 加工已实测纯 ODS 同步 → DWD → DWS → ADS → 只读 API，包含一次真实定时触发、
+  调度停用及上游失败阻断下游。操作、边界及证据见 [SQL 加工](sql-transforms.md)。
 
 ## 官方依据
 

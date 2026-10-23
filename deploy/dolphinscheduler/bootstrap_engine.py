@@ -20,7 +20,7 @@ def main():
                     cursor.execute(statement)
             accounts = [
                 (os.environ["DORIS_USER"], os.environ["DORIS_PASSWORD"], "SELECT_PRIV"),
-                (os.environ["DORIS_WRITER_USER"], os.environ["DORIS_WRITER_PASSWORD"], "SELECT_PRIV,LOAD_PRIV"),
+                (os.environ["DORIS_WRITER_USER"], os.environ["DORIS_WRITER_PASSWORD"], "SELECT_PRIV,LOAD_PRIV,CREATE_PRIV"),
             ]
             for user, password, grants in accounts:
                 if user not in ("platform_reader", "platform_writer"):

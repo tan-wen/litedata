@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title>数据建模 · LiteData</title></head><body><section>
+  <div class="d-flex justify-content-between align-items-center mb-4 gap-3"><div><div class="page-kicker">数据开发 / 数据建模</div><h1 class="page-title">数据建模</h1><p class="page-subtitle mb-0">维护分层逻辑表，预览 Doris DDL，建表并核对物理结构。</p></div><a th:if="${canEdit}" class="btn btn-primary" th:href="@{/models/new}">新增模型</a></div>
+  <div th:replace="~{fragments/messages :: messages}"></div>
+  <article class="platform-card card"><div class="card-header">模型目录</div><div class="card-body">
+    <form class="row g-2 mb-3" th:action="@{/models}" method="get"><div class="col-sm-6"><input class="form-control" name="keyword" th:value="${keyword}" maxlength="100" aria-label="搜索模型" placeholder="表名、中文名称或主题域"></div><div class="col-sm-3"><select class="form-select" name="layer" aria-label="分层筛选"><option value="">全部分层</option><option th:each="item : ${layers}" th:value="${item}" th:text="${item}" th:selected="${layer == item}"></option></select></div><div class="col-sm-3"><button class="btn btn-outline-primary" type="submit">查询</button><a class="btn btn-link" th:href="@{/models}">重置</a></div></form>
+    <div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>表名</th><th>中文名称</th><th>主题域</th><th>分层</th><th>模型版本</th><th>物理结构</th><th>操作</th></tr></thead><tbody>
+      <tr th:each="item : ${models}"><td><a th:href="@{/models/{id}(id=${item.id})}" th:text="${item.tableName}"></a></td><td th:text="${item.name}"></td><td th:text="${item.subjectArea}"></td><td><span class="badge status status-info" th:text="${item.layer}"></span></td><td th:text="${'v' + item.version}"></td><td><span class="badge status" th:classappend="${item.physicalVersion != null and item.physicalVersion == item.version} ? 'status-success' : 'status-warning'" th:text="${item.physicalStatus}"></span></td><td><a class="btn btn-sm btn-outline-primary" th:href="@{/models/{id}(id=${item.id})}">DDL / 比对</a> <a th:if="${canEdit}" class="btn btn-sm btn-link" th:href="@{/models/{id}/edit(id=${item.id})}">编辑</a></td></tr>
+      <tr th:if="${#lists.isEmpty(models)}"><td colspan="7" class="text-center text-secondary py-5">暂无符合条件的模型。新增模型后可生成建表语句。</td></tr>
+    </tbody></table></div>
+  </div></article>
+</section></body></html>

@@ -30,19 +30,22 @@ public class PipelineService {
         if(name==null || name.isBlank() || name.length()>100) throw new IllegalArgumentException("任务名称不能为空，最长100字符");
         // The first release deliberately has a single hourly policy, in Quartz syntax.
         if(!"0 0 * * * ?".equals(cron)) throw new IllegalArgumentException("首版固定每小时整点运行：0 0 * * * ?");
-        if(transform==null || transform.isBlank() || transform.length()>20000 ||
-           !transform.stripLeading().toUpperCase(Locale.ROOT).startsWith("INSERT INTO ") || transform.contains(";"))
-            throw new IllegalArgumentException("加工 SQL 必须为单条 INSERT INTO ... SELECT，写入幂等目标表");
-        try {
-            var parsed=net.sf.jsqlparser.parser.CCJSqlParserUtil.parse(transform);
-            if(!(parsed instanceof net.sf.jsqlparser.statement.insert.Insert insert) || insert.getSelect()==null)
-                throw new IllegalArgumentException("加工 SQL 必须为 INSERT INTO ... SELECT");
-            for(String referenced:new net.sf.jsqlparser.util.TablesNamesFinder<Void>().getTables(parsed)) {
-                if(!referenced.replace("`", "").matches("(?i)(warehouse\\.)?[A-Za-z_][A-Za-z0-9_]{0,63}"))
-                    throw new IllegalArgumentException("加工 SQL 仅允许访问 warehouse 库");
-            }
-        } catch(IllegalArgumentException exception) { throw exception; }
-        catch(Exception exception) { throw new IllegalArgumentException("加工 SQL 解析失败"); }
+        transform=transform==null?"":transform.trim();
+        if(!transform.isEmpty()) {
+            if(transform.length()>20000 ||
+               !transform.stripLeading().toUpperCase(Locale.ROOT).startsWith("INSERT INTO ") || transform.contains(";"))
+                throw new IllegalArgumentException("加工 SQL 必须为单条 INSERT INTO ... SELECT，写入幂等目标表");
+            try {
+                var parsed=net.sf.jsqlparser.parser.CCJSqlParserUtil.parse(transform);
+                if(!(parsed instanceof net.sf.jsqlparser.statement.insert.Insert insert) || insert.getSelect()==null)
+                    throw new IllegalArgumentException("加工 SQL 必须为 INSERT INTO ... SELECT");
+                for(String referenced:new net.sf.jsqlparser.util.TablesNamesFinder<Void>().getTables(parsed)) {
+                    if(!referenced.replace("`", "").matches("(?i)(warehouse\\.)?[A-Za-z_][A-Za-z0-9_]{0,63}"))
+                        throw new IllegalArgumentException("加工 SQL 仅允许访问 warehouse 库");
+                }
+            } catch(IllegalArgumentException exception) { throw exception; }
+            catch(Exception exception) { throw new IllegalArgumentException("加工 SQL 解析失败"); }
+        }
         Pipeline pipeline=new Pipeline(); pipeline.setName(name.trim()); pipeline.setSourceId(sourceId);
         pipeline.setSourceTable(JdbcConnections.identifier(table)); pipeline.setWatermarkColumn(JdbcConnections.identifier(column));
         pipeline.setTargetTable(JdbcConnections.identifier(target)); pipeline.setTransformSql(transform); pipeline.setCronExpression(cron);

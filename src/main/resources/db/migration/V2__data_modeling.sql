@@ -1,0 +1,27 @@
+CREATE TABLE data_model (
+ id BIGINT PRIMARY KEY AUTO_INCREMENT,
+ table_name VARCHAR(64) NOT NULL UNIQUE,
+ name VARCHAR(100) NOT NULL, subject_area VARCHAR(100) NOT NULL,
+ layer VARCHAR(10) NOT NULL, description VARCHAR(500) NOT NULL DEFAULT '',
+ buckets INT NOT NULL DEFAULT 1, version INT NOT NULL DEFAULT 1,
+ physical_version INT, archived BOOLEAN NOT NULL DEFAULT FALSE,
+ created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+ updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)
+);
+CREATE TABLE model_field (
+ model_id BIGINT NOT NULL, ordinal_position INT NOT NULL,
+ name VARCHAR(64) NOT NULL, data_type VARCHAR(50) NOT NULL,
+ key_column BOOLEAN NOT NULL, nullable BOOLEAN NOT NULL,
+ comment VARCHAR(500) NOT NULL DEFAULT '', standard VARCHAR(100) NOT NULL DEFAULT '',
+ PRIMARY KEY(model_id, ordinal_position), UNIQUE(model_id, name),
+ CONSTRAINT fk_field_model FOREIGN KEY(model_id) REFERENCES data_model(id)
+);
+CREATE TABLE model_execution (
+ id BIGINT PRIMARY KEY AUTO_INCREMENT, model_id BIGINT NOT NULL,
+ model_version INT NOT NULL, operation VARCHAR(20) NOT NULL,
+ target_table VARCHAR(100) NOT NULL, ddl TEXT NOT NULL,
+ actor VARCHAR(100) NOT NULL, status VARCHAR(30) NOT NULL, message VARCHAR(1000) NOT NULL,
+ created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+ CONSTRAINT fk_execution_model FOREIGN KEY(model_id) REFERENCES data_model(id),
+ INDEX ix_execution_model(model_id, id)
+);

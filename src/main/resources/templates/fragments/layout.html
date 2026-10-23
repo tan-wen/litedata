@@ -25,7 +25,9 @@
     <div class="nav-section">数据开发</div>
     <nav class="nav flex-md-column" aria-label="数据开发">
       <a class="nav-link" th:classappend="${activeNav == 'sources'} ? ' active'" th:href="@{/sources}">◈ 数据源</a>
+      <a class="nav-link" th:classappend="${activeNav == 'models'} ? ' active'" th:href="@{/models}">▤ 数据建模</a>
       <a class="nav-link" th:classappend="${activeNav == 'pipelines'} ? ' active'" th:href="@{/pipelines}">☷ 同步管道</a>
+      <a class="nav-link" th:classappend="${activeNav == 'transforms'} ? ' active'" th:href="@{/transforms}">⇢ SQL 加工任务</a>
       <a class="nav-link" th:classappend="${activeNav == 'services'} ? ' active'" th:href="@{/services}">◇ 数据服务</a>
       <a class="nav-link" th:if="${canManageUsers}" th:classappend="${activeNav == 'users'} ? ' active'" th:href="@{/users}">⚙ 账号权限</a>
     </nav>

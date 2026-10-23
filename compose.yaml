@@ -43,6 +43,12 @@ services:
       - "127.0.0.1:${DORIS_FE_HTTP_PORT}:8030"
       - "127.0.0.1:${DORIS_FE_MYSQL_PORT}:9030"
       - "127.0.0.1:8040:8040"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8030/api/health >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 40
+      start_period: 30s
     volumes:
       - doris-fe-data:/opt/apache-doris/fe/doris-meta
       - doris-be-data:/opt/apache-doris/be/storage
@@ -65,6 +71,7 @@ services:
       PLATFORM_URL: http://platform:8080
       PLATFORM_INTERNAL_TOKEN: ${PLATFORM_INTERNAL_TOKEN}
       DORIS_WRITER_JDBC_URL: ${DORIS_JDBC_URL}
+      DORIS_LOAD_URL: ${DORIS_LOAD_URL:-doris:8040}
       DORIS_WRITER_USER: ${DORIS_WRITER_USER}
       DORIS_WRITER_PASSWORD: ${DORIS_WRITER_PASSWORD}
       DORIS_USER: ${DORIS_USER}
@@ -99,6 +106,8 @@ services:
       DORIS_JDBC_URL: ${DORIS_JDBC_URL}
       DORIS_USER: ${DORIS_USER}
       DORIS_PASSWORD: ${DORIS_PASSWORD}
+      DORIS_WRITER_USER: ${DORIS_WRITER_USER}
+      DORIS_WRITER_PASSWORD: ${DORIS_WRITER_PASSWORD}
     ports: ["127.0.0.1:${PLATFORM_PORT}:8080"]
     depends_on:
       mysql: { condition: service_healthy }

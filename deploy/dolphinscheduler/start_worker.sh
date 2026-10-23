@@ -5,7 +5,7 @@ umask 077
 # private configuration in a root-only file instead of embedding it in DS tasks.
 python3 - <<'PY'
 import json, os
-keys = ("PLATFORM_URL", "PLATFORM_INTERNAL_TOKEN", "DORIS_WRITER_JDBC_URL",
+keys = ("PLATFORM_URL", "PLATFORM_INTERNAL_TOKEN", "DORIS_WRITER_JDBC_URL", "DORIS_LOAD_URL",
         "DORIS_WRITER_USER", "DORIS_WRITER_PASSWORD", "DATAX_JAVA_HOME", "DATAX_CHANNELS")
 values = {key: os.environ[key] for key in keys if key in os.environ}
 for required in ("PLATFORM_INTERNAL_TOKEN", "DORIS_WRITER_USER", "DORIS_WRITER_PASSWORD"):

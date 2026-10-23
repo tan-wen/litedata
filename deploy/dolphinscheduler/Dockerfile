@@ -28,17 +28,25 @@ RUN curl -fsSLo /tmp/mysql-connector-j.jar "https://repo.maven.apache.org/maven2
     && cp /tmp/mysql-connector-j.jar mysqlreader/target/datax/plugin/reader/mysqlreader/libs/mysql-connector-j-${MYSQL_CONNECTOR_VERSION}.jar
 
 FROM apache/dolphinscheduler-standalone-server:${DOLPHINSCHEDULER_VERSION}
+ARG DOLPHINSCHEDULER_VERSION=3.4.0
 USER root
 RUN apt-get update \
     && apt-get install -y --no-install-recommends python3 python3-pymysql python3-cryptography curl ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /opt/platform/bin /opt/platform/jobs /opt/datax
+# The standalone image does not ship the SHELL TaskChannel. Both workflow
+# validation and worker execution need the matching shaded task plugin.
+RUN mkdir -p /opt/dolphinscheduler/plugins/task-plugins \
+    && curl -fsSLo /opt/dolphinscheduler/plugins/task-plugins/dolphinscheduler-task-shell.jar \
+       "https://repo.maven.apache.org/maven2/org/apache/dolphinscheduler/dolphinscheduler-task-shell/${DOLPHINSCHEDULER_VERSION}/dolphinscheduler-task-shell-${DOLPHINSCHEDULER_VERSION}-shade.jar" \
+    && echo '792c1633c18d5d63456aa3d370321fa98cbfb501840d1e5f5e0805ed099ae8dc  /opt/dolphinscheduler/plugins/task-plugins/dolphinscheduler-task-shell.jar' | sha256sum -c -
 COPY --from=datax-builder /src/core/target/datax/ /opt/datax/
 COPY --from=datax-builder /src/transformer/target/datax/ /opt/datax/
 COPY --from=datax-builder /src/mysqlreader/target/datax/ /opt/datax/
 COPY --from=datax-builder /src/doriswriter/target/datax/ /opt/datax/
 COPY --from=datax-builder /tmp/mysql-connector-j.jar /opt/dolphinscheduler/standalone-server/libs/mysql-connector-j-8.4.0.jar
 COPY deploy/dolphinscheduler/run_pipeline.py /opt/platform/bin/run_pipeline.py
+COPY deploy/dolphinscheduler/run_sql_task.py /opt/platform/bin/run_sql_task.py
 COPY deploy/dolphinscheduler/bootstrap_engine.py /opt/platform/bin/bootstrap_engine.py
 COPY deploy/dolphinscheduler/start_worker.sh /opt/platform/bin/start_worker.sh
 COPY deploy/dolphinscheduler/bootstrap-doris.sql /opt/platform/bootstrap-doris.sql

@@ -97,6 +97,9 @@ def build_datax_job(claim):
     writer_password = os.environ["DORIS_WRITER_PASSWORD"]
     writer_jdbc = os.environ.get("DORIS_WRITER_JDBC_URL", "jdbc:mysql://doris:9030/warehouse")
     doris_host, _, _ = parse_mysql_jdbc(writer_jdbc)
+    # All-in-one FE redirects to its internal loopback BE; Compose supplies the
+    # worker-reachable BE endpoint. External clusters may keep the FE default.
+    load_url = os.environ.get("DORIS_LOAD_URL", f"{doris_host}:8030")
     quoted_columns = [f"`{column}`" for column in columns]
     query = (
         f"SELECT {', '.join(quoted_columns)} FROM `{table}` "
@@ -107,7 +110,7 @@ def build_datax_job(claim):
             "setting": {"speed": {"channel": int(os.environ.get("DATAX_CHANNELS", "4"))}, "errorLimit": {"record": 0, "percentage": 0.0}},
             "content": [{
                 "reader": {"name": "mysqlreader", "parameter": {"username": source["username"], "password": source["password"], "column": quoted_columns, "connection": [{"jdbcUrl": [source["jdbcUrl"]], "querySql": [query]}]}},
-                "writer": {"name": "doriswriter", "parameter": {"username": writer_user, "password": writer_password, "column": columns, "loadUrl": [f"{doris_host}:8030"], "connection": [{"jdbcUrl": writer_jdbc, "selectedDatabase": "warehouse", "table": [target]}], "loadProps": {"format": "json", "strip_outer_array": "true", "strict_mode": "true"}, "maxRetries": 3}},
+                "writer": {"name": "doriswriter", "parameter": {"username": writer_user, "password": writer_password, "column": columns, "loadUrl": [load_url], "connection": [{"jdbcUrl": writer_jdbc, "selectedDatabase": "warehouse", "table": [target]}], "loadProps": {"format": "json", "strip_outer_array": "true", "strict_mode": "true"}, "maxRetries": 3}},
             }],
         }
     }

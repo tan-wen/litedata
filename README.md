@@ -4,7 +4,7 @@ LiteData（仓库名 `litedata`）是面向单机试点的轻量数据中台，�
 围绕 MySQL 每小时增量同步、Doris 幂等加工、DolphinScheduler 调度和受控数据 API 构建数据链路。
 
 仓库：[tan-wen/litedata](https://github.com/tan-wen/litedata)。当前版本为 `0.1.0-SNAPSHOT`，
-处于首版开发与引擎联调阶段。平台功能已有实现及自动化测试，完整引擎链路、百万行压测和连续七天运行仍待验收。
+处于首版开发与引擎联调阶段。平台功能已有实现及自动化测试，演示同步及多层 SQL 加工链路已实测跑通，百万行压测和连续七天运行仍待验收。
 详细范围见 [实施及验收计划](docs/implementation-plan.md)，操作与验证边界见 [引擎运行说明](docs/engine-runbook.md)。
 
 ## 项目能力
@@ -13,8 +13,10 @@ LiteData（仓库名 `litedata`）是面向单机试点的轻量数据中台，�
 | --- | --- |
 | 工作台 | 数据源、同步管道、数据服务统计及最近运行实例 |
 | 数据源 | MySQL JDBC 登记、凭据加密存储和连接测试 |
+| 数据建模 | 分层/主题域、逻辑表与字段维护、标准备注、Doris DDL 预览、确认建表、结构比对、版本和执行记录 |
 | 同步管道 | 时间水位增量、运行互斥、执行实例及成功后推进水位 |
-| 加工与调度 | DataX runner、Doris INSERT SELECT、DS 工作流提交及定时调度代码；完整引擎仍待联调 |
+| SQL 加工任务 | 独立 INSERT SELECT、同步/SQL 上游依赖、DAG 预览、整链运行、定时启停及节点执行记录 |
+| 加工与调度 | DataX runner、Doris INSERT SELECT、DS 依赖工作流和定时启停；演示链路已实测 |
 | 数据服务 | 受控 SELECT、命名参数、发布/下线、凭证轮换、限流与调用审计 |
 | 账号权限 | ADMIN / DEVELOPER / VIEWER，管理页面 Session 登录与 CSRF 防护 |
 
@@ -101,6 +103,26 @@ sh deploy/start.sh
 服务固定使用只读仓库账号，命名参数由 MyBatis 绑定。每服务凭证每分钟最多 60 次调用，
 总查询并发上限 8，查询超时 15 秒，最大结果行数可配置为 1–10000。
 返回 `data`、`count` 和 `truncated`。
+
+## 数据建模
+
+打开“数据建模”，新增模型并定义主题域、ODS/DWD/DWS/ADS 分层、物理表名、字段类型、主键、
+可空及标准备注。主键字段排在前面且不可空；保存后进入 DDL 预览，勾选确认后执行 Doris 建表。
+目标固定为 `warehouse`、UNIQUE KEY、单副本，适用于当前单机部署；HASH 按全部主键分桶。
+已有表可直接“结构比对”，核对字段类型、顺序、可空、注释、UNIQUE KEY 和 HASH 分桶；
+表/模型说明、字段标准备注、分区和其他引擎属性不属于当前比对范围。
+已保存表名固定；编辑模型会增加版本，提交过期页面会被拒绝。归档保留物理表、字段和执行记录。
+
+**建表与数据写入是两个步骤。** ODS 数据由同步管道通过 DataX 从业务库接入；DWD/DWS/ADS 数据
+通过独立“SQL 加工任务”的 `INSERT INTO ... SELECT` 清洗、关联或汇总写入。声明直接上游 SQL 任务
+或同步管道后，系统展开完整依赖链，交由 DolphinScheduler 按上游成功后执行下游；可手动整链运行，
+或在末端启用每 5 分钟、每小时、每日的定时调度。保存逻辑模型不会自动产生数据。
+同步管道保留同步后加工 SQL 作为可选项，仅同步 ODS 时留空。使用及实际验收见 [SQL 加工](docs/sql-transforms.md)。
+汇总重算涉及删除/失效的结果时需另行设计覆盖或分区替换策略，单靠主键 UPSERT 不能清理旧结果。
+
+建表使用 `DORIS_WRITER_USER` / `DORIS_WRITER_PASSWORD`，初始化脚本在 `warehouse.*` 授予
+`CREATE_PRIV`；API 查询及结构读取继续使用独立只读账号。已有环境的升级步骤与验证脚本见
+[数据建模说明](docs/modeling.md)。
 
 ## 本地开发和验证
 

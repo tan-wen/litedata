@@ -14,5 +14,16 @@ if [ "$tables" = "0" ]; then
 else
   mysql --user=root dolphinscheduler --execute="SELECT 1 FROM t_ds_version LIMIT 1" >/dev/null
 fi
+# DS 3.4.0 ships an INT column for a Long workflow code (upstream #17988).
+# Widen only this known column; preserve existing metadata and upstream schema.
+serial_code_type="$(mysql --user=root --batch --skip-column-names --execute="SELECT DATA_TYPE FROM information_schema.columns WHERE table_schema='dolphinscheduler' AND table_name='t_ds_serial_command' AND column_name='workflow_definition_code'")"
+case "$serial_code_type" in
+  int)
+    mysql --user=root dolphinscheduler --execute="ALTER TABLE t_ds_serial_command MODIFY COLUMN workflow_definition_code BIGINT NOT NULL COMMENT 'workflow definition code'"
+    echo 'Applied DolphinScheduler serial workflow code BIGINT compatibility fix.'
+    ;;
+  bigint) ;;
+  *) echo 'Unexpected scheduler serial workflow code schema; inspect before continuing.' >&2; exit 1 ;;
+esac
 unset MYSQL_PWD
 

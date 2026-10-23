@@ -3,7 +3,7 @@ package com.litedata.web;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 
-@RestControllerAdvice(assignableTypes=ApiController.class)
+@RestControllerAdvice(assignableTypes={ApiController.class,TransformInternalController.class})
 public class ApiExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     ResponseEntity<ProblemDetail> invalid(IllegalArgumentException exception) {

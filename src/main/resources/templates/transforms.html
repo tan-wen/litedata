@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title>SQL 加工任务 · LiteData</title></head><body><section>
+  <div class="d-flex justify-content-between align-items-center mb-4 gap-3"><div><div class="page-kicker">数据开发 / SQL 加工任务</div><h1 class="page-title">SQL 加工任务</h1><p class="page-subtitle mb-0">通过 Doris SQL 连接 ODS、DWD、DWS、ADS，按上游依赖执行并定时调度。</p></div><a th:if="${canEdit}" class="btn btn-primary" th:href="@{/transforms/new}">新增加工任务</a></div>
+  <div th:replace="~{fragments/messages :: messages}"></div>
+  <div class="alert alert-info">在链路末端启用调度，每次执行都会重新运行全部上游。共享上游在同一条链内执行一次；建议只为末端任务启用定时，避免不同链路重复调度同一上游。</div>
+  <article class="platform-card card"><div class="card-header">加工任务目录</div><div class="card-body p-0"><div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>任务名称</th><th>目标模型</th><th>分层</th><th>版本</th><th>调度周期</th><th>调度状态</th><th>操作</th></tr></thead><tbody>
+    <tr th:each="task : ${tasks}"><td><a th:href="@{/transforms/{id}(id=${task.id})}" th:text="${task.name}"></a></td><td th:text="${task.targetTable}"></td><td th:text="${task.layer}"></td><td th:text="${'v' + task.version}"></td><td><code th:text="${task.cronExpression}"></code></td><td><span class="badge status" th:classappend="${task.status == 'SCHEDULED'} ? 'status-success' : 'status-info'" th:text="${task.status == 'SCHEDULED' ? '已启用' : task.status == 'PAUSED' ? '已停用' : task.status == 'SCHEDULE_PENDING' ? '待上线' : '未启用'}"></span><span th:if="${task.activeRunId != null}" class="badge status status-warning ms-1">运行中</span></td><td><a class="btn btn-sm btn-outline-primary" th:href="@{/transforms/{id}(id=${task.id})}">依赖 / 运行</a> <a th:if="${canEdit}" class="btn btn-sm btn-link" th:href="@{/transforms/{id}/edit(id=${task.id})}">编辑</a></td></tr>
+    <tr th:if="${#lists.isEmpty(tasks)}"><td colspan="7" class="text-center text-secondary py-5">暂无加工任务。请先建立 DWD / DWS / ADS 模型，再配置 SQL 和上游依赖。</td></tr>
+  </tbody></table></div></div></article>
+</section></body></html>

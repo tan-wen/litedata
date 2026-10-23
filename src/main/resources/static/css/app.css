@@ -27,6 +27,10 @@ body { background:var(--platform-page); color:var(--platform-text); font-family:
 .status-danger { background:#fdf0ec; color:#bd3d22; }
 .status-info { background:#ecf3fd; color:#2a6bd0; }
 .code-preview { font-family:var(--bs-font-monospace); white-space:pre-wrap; word-break:break-word; }
+.modeling-fields { min-width:1100px; }
+.modeling-fields td:first-child,.modeling-fields td:nth-child(2) { min-width:160px; }
+.modeling-fields td:nth-child(5),.modeling-fields td:nth-child(6) { min-width:180px; }
+.table td.modeling-diff { white-space:normal; overflow-wrap:anywhere; min-width:180px; max-width:600px; }
 .login-page { min-height:100vh; background:linear-gradient(140deg,#e9f0ff,#f8fafc 55%,#eef4ff); }
 .login-card { width:min(100%,420px); border:0; box-shadow:0 14px 42px rgba(30,50,90,.14); }
 @media (max-width:767.98px) { .sidebar { width:100%; flex-basis:auto; border-right:0; border-bottom:1px solid var(--platform-line); } .sidebar nav { display:flex; overflow-x:auto; padding:.35rem; } .nav-section { display:none; } .sidebar .nav-link { white-space:nowrap; } .main-content { padding:1rem; } .topbar .environment { display:none; } }
