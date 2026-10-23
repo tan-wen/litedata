@@ -48,6 +48,7 @@ class QualityIntegrationTest {
         r.add("platform.internal-token", () -> "quality-test-internal-token-0123456789");
         r.add("platform.admin-password", () -> "QualityAdminPassword2026");
         r.add("platform.quality.scheduling-enabled", () -> "false");
+        r.add("spring.flyway.clean-disabled", () -> "false");
     }
 
     @Autowired MockMvc mvc;
