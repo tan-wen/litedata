@@ -89,7 +89,7 @@ class QualityIntegrationTest {
             mvc.perform(get(path).with(user("dev").roles("DEVELOPER"))).andExpect(status().isOk()).andExpect(content().contentTypeCompatibleWith("text/html"));
         mvc.perform(get("/quality").param("pageSize", "1").with(user("dev").roles("DEVELOPER"))).andExpect(model().attribute("totalCount", 2L)).andExpect(model().attribute("hasMore", true));
         mvc.perform(get("/quality").param("pageNum", "0").with(user("dev").roles("DEVELOPER"))).andExpect(status().isBadRequest());
-        mvc.perform(get("/quality").with(user("viewer").roles("VIEWER"))).andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("新[...")));
+        mvc.perform(get("/quality").with(user("viewer").roles("VIEWER"))).andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("新增质量任务"))));
         mvc.perform(get("/quality/new").with(user("viewer").roles("VIEWER"))).andExpect(status().isForbidden());
         mvc.perform(get("/quality/" + id + "/edit").with(user("viewer").roles("VIEWER"))).andExpect(status().isForbidden());
         mvc.perform(post("/quality").with(user("viewer").roles("VIEWER")).with(csrf())).andExpect(status().isForbidden());
