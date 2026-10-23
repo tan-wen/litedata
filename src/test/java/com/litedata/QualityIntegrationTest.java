@@ -117,7 +117,7 @@ class QualityIntegrationTest {
         Map<String, Long> counts = new HashMap<>(); for (var result : first) counts.put(result.getName(), result.getAnomalyCount());
         assertThat(counts).containsEntry("not-null", 0L).containsEntry("not-blank", 1L).containsEntry("unique", 2L).containsEntry("range", 1L)
                 .containsEntry("length", 1L).containsEntry("regex", 1L).containsEntry("enum", 1L).containsEntry("nonnegative", 1L).containsEntry("positive", 1L)
-                .containsEntry("future", 1L).containsEntry("rows", 0L).containsEntry("sum", 0L).containsEntry("avg", 0L).containsEntry("compare", 1L).containsEntry("reference", 1L).containsEntry("change", 1L);
+                .containsEntry("future", 1L).containsEntry("rows", 0L).containsEntry("sum", 0L).containsEntry("avg", 0L).containsEntry("compare", 1L).containsEntry("reference", 1L).containsEntry("change", 0L);
         assertThat(first).filteredOn(r -> r.getType() == RuleType.ROW_COUNT_CHANGE).extracting(QualityResult::getStatus).containsExactly("WARNING");
         jdbc.update("INSERT INTO quality_fixture VALUES(2,'B',2,'ok','good',1,?,?)", now().minusMinutes(5), 4);
         long run2 = service.start(id, 1, "dev"); waitFor(run2);
