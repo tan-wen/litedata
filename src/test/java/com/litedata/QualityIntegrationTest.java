@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.*;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +30,8 @@ import org.testcontainers.mysql.MySQLContainer;
 @AutoConfigureMockMvc
 @Testcontainers
 class QualityIntegrationTest {
+    private static final ZoneId TZ = QualityValidation.ZONE;
+
     @Container static final MySQLContainer MYSQL = new MySQLContainer("mysql:8.4")
             .withDatabaseName("platform").withUsername("platform").withPassword("quality-test-password");
     @DynamicPropertySource static void properties(DynamicPropertyRegistry r) {
@@ -45,17 +48,19 @@ class QualityIntegrationTest {
     @Autowired QualityMapper mapper;
 
     @BeforeEach void clean() {
-        for (String table : List.of("quality_result","quality_run","quality_rule","quality_task","metadata_column","metadata_table","metadata_scope","sql_task_run","sql_task_dependency","sql_pipeline_dependency","sql_task","model_execution","model_field","data_model","pipeline_run","pipeline","data_source","audit_event")) jdbc.update("DELETE FROM " + table);
+        for (String table : List.of("quality_result","quality_run","quality_rule","quality_task","metadata_column","metadata_table","metadata_scope","sql_task_run","sql_task_dependency","sql_pipeline","sql_task","data_service","service_call")) {
+            jdbc.execute("DROP TABLE IF EXISTS " + table);
+        }
         jdbc.execute("DROP TABLE IF EXISTS quality_fixture"); jdbc.execute("DROP TABLE IF EXISTS quality_reference"); jdbc.execute("DROP TABLE IF EXISTS quality_empty"); jdbc.execute("DROP TABLE IF EXISTS quality_window");
         jdbc.execute("CREATE TABLE quality_reference(id BIGINT PRIMARY KEY)"); jdbc.update("INSERT INTO quality_reference VALUES(1)");
         jdbc.execute("CREATE TABLE quality_fixture(id BIGINT, code VARCHAR(20), amount DECIMAL(12,2), note VARCHAR(30), category VARCHAR(20), ref_id BIGINT, occurred_at DATETIME, ends_at INT)");
-        jdbc.update("INSERT INTO quality_fixture VALUES(1,'A',10,'ok','good',1,?,?)", LocalDateTime.now().minusHours(1), 10);
-        jdbc.update("INSERT INTO quality_fixture VALUES(1,'',-2,'too-long-note','bad',99,?,?)", LocalDateTime.now().plusHours(2), 1);
+        jdbc.update("INSERT INTO quality_fixture VALUES(1,'A',10,'ok','good',1,?,?)", now().minusHours(1), 10);
+        jdbc.update("INSERT INTO quality_fixture VALUES(1,'',-2,'too-long-note','bad',99,?,?)", now().plusHours(2), 1);
         jdbc.execute("CREATE TABLE quality_empty(occurred_at DATETIME)");
         jdbc.execute("CREATE TABLE quality_window(occurred_at DATETIME)");
-        jdbc.update("INSERT INTO quality_window VALUES(?)", LocalDateTime.now().minusHours(2));
-        jdbc.update("INSERT INTO quality_window VALUES(?)", LocalDateTime.now().minusMinutes(30));
-        jdbc.update("INSERT INTO quality_window VALUES(?)", LocalDateTime.now().plusHours(2));
+        jdbc.update("INSERT INTO quality_window VALUES(?)", now().minusHours(2));
+        jdbc.update("INSERT INTO quality_window VALUES(?)", now().minusMinutes(30));
+        jdbc.update("INSERT INTO quality_window VALUES(?)", now().plusHours(2));
     }
 
     @Test void persistsV6CrudVersionsPagesAndTemplates() throws Exception {
@@ -73,7 +78,7 @@ class QualityIntegrationTest {
             mvc.perform(get(path).with(user("dev").roles("DEVELOPER"))).andExpect(status().isOk()).andExpect(content().contentTypeCompatibleWith("text/html"));
         mvc.perform(get("/quality").param("pageSize", "1").with(user("dev").roles("DEVELOPER"))).andExpect(model().attribute("totalCount", 2L)).andExpect(model().attribute("hasMore", true));
         mvc.perform(get("/quality").param("pageNum", "0").with(user("dev").roles("DEVELOPER"))).andExpect(status().isBadRequest());
-        mvc.perform(get("/quality").with(user("viewer").roles("VIEWER"))).andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("新增质量任务"))));
+        mvc.perform(get("/quality").with(user("viewer").roles("VIEWER"))).andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("新��"))));
         mvc.perform(get("/quality/new").with(user("viewer").roles("VIEWER"))).andExpect(status().isForbidden());
         mvc.perform(get("/quality/" + id + "/edit").with(user("viewer").roles("VIEWER"))).andExpect(status().isForbidden());
         mvc.perform(post("/quality").with(user("viewer").roles("VIEWER")).with(csrf())).andExpect(status().isForbidden());
@@ -101,7 +106,7 @@ class QualityIntegrationTest {
                 .containsEntry("length", 1L).containsEntry("regex", 1L).containsEntry("enum", 1L).containsEntry("nonnegative", 1L).containsEntry("positive", 1L)
                 .containsEntry("future", 1L).containsEntry("rows", 0L).containsEntry("sum", 0L).containsEntry("avg", 0L).containsEntry("compare", 1L).containsEntry("reference", 1L).containsEntry("change", 0L);
         assertThat(first).filteredOn(r -> r.getType() == RuleType.ROW_COUNT_CHANGE).extracting(QualityResult::getStatus).containsExactly("WARNING");
-        jdbc.update("INSERT INTO quality_fixture VALUES(2,'B',2,'ok','good',1,?,?)", LocalDateTime.now().minusMinutes(5), 4);
+        jdbc.update("INSERT INTO quality_fixture VALUES(2,'B',2,'ok','good',1,?,?)", now().minusMinutes(5), 4);
         long run2 = service.start(id, 1, "dev"); waitFor(run2);
         assertThat(mapper.results(run2)).filteredOn(r -> r.getType() == RuleType.ROW_COUNT_CHANGE).extracting(QualityResult::getStatus).containsExactly("FAILED");
         long invalid = service.save(null, task("bad-column", List.of(rule("missing", RuleType.RANGE, "missing_column", "0", "1"))), "dev");
@@ -130,13 +135,14 @@ class QualityIntegrationTest {
 
     private void waitFor(long runId) {
         long deadline = System.nanoTime() + 10_000_000_000L;
-        while (System.nanoTime() < deadline) { if (!"RUNNING".equals(mapper.run(runId).getStatus())) return; try { Thread.sleep(50); } catch (InterruptedException e) { Thread.currentThread().interrupt(); fail("interrupted"); } }
+        while (System.nanoTime() < deadline) { if (!"RUNNING".equals(mapper.run(runId).getStatus())) return; try { Thread.sleep(50); } catch (InterruptedException e) { Thread.currentThread().interrupt(); fail("quality scan interrupted"); } }
         fail("quality scan did not finish within 10 seconds");
     }
     private static void writePreview(String name, String html) throws Exception {
         Path preview = Path.of("target", "quality-preview"); Files.createDirectories(preview);
         Files.writeString(preview.resolve(name), html, StandardCharsets.UTF_8);
     }
+    private static LocalDateTime now() { return LocalDateTime.now(TZ); }
     private static QualityTask task(String name, List<QualityRule> rules) {
         var t = new QualityTask(); t.setName(name); t.setTableName(name.equals("empty-fresh") ? "quality_empty" : name.equals("window") ? "quality_window" : "quality_fixture"); t.setOwner("dev"); t.setDescription(""); t.setCronExpression(""); t.setTimeColumn(""); t.setRules(new ArrayList<>(rules)); return t;
     }
