@@ -1,0 +1,32 @@
+:root { --platform-primary:#2a6bd0; --platform-page:#eef1f6; --platform-text:#26344a; --platform-muted:#6c7a8d; --platform-line:#e7edf5; }
+body { background:var(--platform-page); color:var(--platform-text); font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif; font-size:.875rem; }
+.topbar { min-height:56px; background:linear-gradient(110deg,#2f5fd0,#2a6bd0); box-shadow:0 2px 8px rgba(30,50,90,.16); }
+.brand { font-size:1.08rem; font-weight:800; letter-spacing:.02em; }
+.app-shell { min-height:calc(100vh - 56px); }
+.sidebar { width:210px; flex:0 0 210px; background:#fff; border-right:1px solid var(--platform-line); }
+.sidebar .nav-link { color:#5a6b80; border-radius:.35rem; margin:.12rem .55rem; padding:.58rem .7rem; }
+.sidebar .nav-link:hover { background:#f2f6fd; color:var(--platform-primary); }
+.sidebar .nav-link.active { background:#eaf1fd; color:var(--platform-primary); font-weight:600; border-left:3px solid var(--platform-primary); padding-left:.52rem; }
+.nav-section { color:#8a97a8; font-size:.72rem; letter-spacing:.06em; padding:.95rem 1.25rem .3rem; }
+.main-content { min-width:0; padding:1.5rem; max-width:1600px; }
+.page-kicker { color:#8a97a8; font-size:.75rem; margin-bottom:.3rem; }
+.page-title { font-size:1.4rem; font-weight:700; margin:0; }
+.page-subtitle { color:var(--platform-muted); margin-top:.4rem; }
+.metric-card,.platform-card { border:0; box-shadow:0 2px 10px rgba(30,50,90,.06); }
+.metric-card { min-height:140px; }
+.metric-label { color:#5a6b80; font-size:.82rem; }
+.metric-value { font-size:2rem; font-weight:700; margin:.55rem 0 .25rem; }
+.metric-note { color:#8a97a8; font-size:.75rem; }
+.platform-card .card-header { background:#fff; border-bottom:1px solid var(--platform-line); font-weight:700; padding:.9rem 1rem; }
+.table > :not(caption) > * > * { padding:.8rem .75rem; vertical-align:middle; }
+.table thead th { background:#f8fafd; color:#5a6b80; font-size:.78rem; white-space:nowrap; }
+.table td { white-space:nowrap; }
+.status { font-size:.75rem; font-weight:600; }
+.status-success { background:#e8f7ee; color:#198754; }
+.status-warning { background:#fff3e8; color:#a54b15; }
+.status-danger { background:#fdf0ec; color:#bd3d22; }
+.status-info { background:#ecf3fd; color:#2a6bd0; }
+.code-preview { font-family:var(--bs-font-monospace); white-space:pre-wrap; word-break:break-word; }
+.login-page { min-height:100vh; background:linear-gradient(140deg,#e9f0ff,#f8fafc 55%,#eef4ff); }
+.login-card { width:min(100%,420px); border:0; box-shadow:0 14px 42px rgba(30,50,90,.14); }
+@media (max-width:767.98px) { .sidebar { width:100%; flex-basis:auto; border-right:0; border-bottom:1px solid var(--platform-line); } .sidebar nav { display:flex; overflow-x:auto; padding:.35rem; } .nav-section { display:none; } .sidebar .nav-link { white-space:nowrap; } .main-content { padding:1rem; } .topbar .environment { display:none; } }

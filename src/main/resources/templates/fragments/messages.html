@@ -1,0 +1,12 @@
+<div xmlns:th="http://www.thymeleaf.org" th:fragment="messages">
+  <div class="alert alert-warning" role="alert" th:if="${apiKey}">
+    <p class="mb-1">请立即保存 API 凭证，本次显示后无法再次查看：</p>
+    <code class="user-select-all text-break" th:text="${apiKey}"></code>
+  </div>
+  <div class="alert alert-success alert-dismissible fade show" role="alert" th:if="${success}">
+    <span th:text="${success}">操作成功</span><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="关闭"></button>
+  </div>
+  <div class="alert alert-danger alert-dismissible fade show" role="alert" th:if="${error}">
+    <span th:text="${error}">操作失败</span><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="关闭"></button>
+  </div>
+</div>

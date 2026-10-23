@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:fragment="layout(title, content)">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title th:replace="${title}">数据中台</title>
+  <link rel="stylesheet" th:href="@{/vendor/bootstrap/bootstrap.min.css}">
+  <link rel="stylesheet" th:href="@{/css/app.css}">
+</head>
+<body>
+<header class="topbar navbar navbar-dark px-3 px-md-4">
+  <a class="navbar-brand brand" th:href="@{/}">LiteData 数据中台</a>
+  <span class="environment badge rounded-pill text-bg-light text-primary ms-2">单机开发环境</span>
+  <form class="ms-auto" th:action="@{/logout}" method="post">
+    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+    <button class="btn btn-sm btn-outline-light" type="submit">退出登录</button>
+  </form>
+</header>
+<div class="app-shell d-md-flex">
+  <aside class="sidebar py-2">
+    <div class="nav-section">工作台</div>
+    <nav class="nav flex-md-column" aria-label="主导航">
+      <a class="nav-link" th:classappend="${activeNav == 'dashboard'} ? ' active'" th:href="@{/}">▣ 工作台</a>
+    </nav>
+    <div class="nav-section">数据开发</div>
+    <nav class="nav flex-md-column" aria-label="数据开发">
+      <a class="nav-link" th:classappend="${activeNav == 'sources'} ? ' active'" th:href="@{/sources}">◈ 数据源</a>
+      <a class="nav-link" th:classappend="${activeNav == 'pipelines'} ? ' active'" th:href="@{/pipelines}">☷ 同步管道</a>
+      <a class="nav-link" th:classappend="${activeNav == 'services'} ? ' active'" th:href="@{/services}">◇ 数据服务</a>
+      <a class="nav-link" th:if="${canManageUsers}" th:classappend="${activeNav == 'users'} ? ' active'" th:href="@{/users}">⚙ 账号权限</a>
+    </nav>
+  </aside>
+  <main class="main-content flex-grow-1">
+    <th:block th:replace="${content}"></th:block>
+  </main>
+</div>
+<script th:src="@{/vendor/bootstrap/bootstrap.bundle.min.js}"></script>
+</body>
+</html>

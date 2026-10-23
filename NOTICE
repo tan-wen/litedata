@@ -1,0 +1,24 @@
+LiteData
+
+This repository includes the DolphinScheduler 3.4.0 MySQL initialization schema:
+deploy/mysql-platform/dolphinscheduler_mysql.sql
+
+Apache DolphinScheduler
+Copyright 2019-2026 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/).
+
+Upstream schema:
+https://github.com/apache/dolphinscheduler/blob/3.4.0/dolphinscheduler-dao/src/main/resources/sql/dolphinscheduler_mysql.sql
+Upstream notice:
+https://github.com/apache/dolphinscheduler/blob/3.4.0/NOTICE
+The schema retains its original Apache License 2.0 header. See LICENSE.
+
+Bootstrap 5.3.8 is bundled under src/main/resources/static/vendor/bootstrap/.
+Its original MIT license is retained in that directory's LICENSE file and
+its distribution headers.
+
+Maven Wrapper scripts retain their upstream Apache License 2.0 headers.
+Dependencies resolved by Maven and external engine/container distributions
+retain their respective licenses and notices.

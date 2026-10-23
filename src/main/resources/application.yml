@@ -1,0 +1,51 @@
+spring:
+  application:
+    name: litedata
+  datasource:
+    url: ${PLATFORM_DB_URL:jdbc:mysql://localhost:3306/platform?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    username: ${PLATFORM_DB_USER:platform}
+    password: ${PLATFORM_DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 10
+      connection-timeout: 10000
+  flyway:
+    enabled: true
+  thymeleaf:
+    cache: ${TEMPLATE_CACHE:true}
+  mvc:
+    problemdetails:
+      enabled: true
+server:
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  port: ${PORT:8080}
+  servlet:
+    session:
+      timeout: 30m
+      cookie:
+        http-only: true
+        same-site: lax
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
+platform:
+  encryption-key: ${PLATFORM_ENCRYPTION_KEY}
+  admin-password: ${PLATFORM_ADMIN_PASSWORD:}
+  internal-token: ${PLATFORM_INTERNAL_TOKEN}
+  dolphinscheduler:
+    url: ${DOLPHINSCHEDULER_URL:http://localhost:12345/dolphinscheduler}
+    token: ${DOLPHINSCHEDULER_TOKEN:}
+    project-code: ${DOLPHINSCHEDULER_PROJECT_CODE:0}
+    tenant-code: ${DOLPHINSCHEDULER_TENANT:default}
+  doris:
+    jdbc-url: ${DORIS_JDBC_URL:jdbc:mysql://localhost:9030/warehouse?useSSL=false&serverTimezone=UTC}
+    username: ${DORIS_USER:platform_reader}
+    password: ${DORIS_PASSWORD}
+

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>登录 · 数据中台</title>
+  <link rel="stylesheet" th:href="@{/vendor/bootstrap/bootstrap.min.css}">
+  <link rel="stylesheet" th:href="@{/css/app.css}">
+</head>
+<body class="login-page d-flex align-items-center justify-content-center p-3">
+  <section class="login-card card p-4 p-md-5">
+    <div class="mb-4"><div class="text-primary fw-bold mb-2">数据中台</div><h1 class="h4 mb-2">欢迎登录</h1><p class="text-secondary mb-0">管理同步、加工调度和受控数据服务。</p></div>
+    <div class="alert alert-danger" th:if="${param.error}">用户名或密码错误，请重试。</div>
+    <div class="alert alert-success" th:if="${param.logout}">你已安全退出。</div>
+    <form th:action="@{/login}" method="post">
+      <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+      <div class="mb-3"><label class="form-label" for="username">用户名</label><input class="form-control" id="username" name="username" required autofocus autocomplete="username"></div>
+      <div class="mb-4"><label class="form-label" for="password">密码</label><input class="form-control" id="password" name="password" type="password" required autocomplete="current-password"></div>
+      <button class="btn btn-primary w-100" type="submit">登录工作台</button>
+    </form>
+  </section>
+</body>
+</html>

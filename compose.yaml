@@ -1,0 +1,114 @@
+name: litedata
+
+services:
+  mysql:
+    image: mysql:8.4.11
+    environment:
+      MYSQL_DATABASE: platform
+      MYSQL_USER: ${PLATFORM_DB_USER}
+      MYSQL_PASSWORD: ${PLATFORM_DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      DOLPHINSCHEDULER_DB_PASSWORD: ${DOLPHINSCHEDULER_DB_PASSWORD}
+    ports: ["127.0.0.1:${MYSQL_PORT}:3306"]
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./deploy/mysql-platform/01-scheduler.sh:/docker-entrypoint-initdb.d/01-scheduler.sh:ro
+      - ./deploy/mysql-platform/dolphinscheduler_mysql.sql:/opt/platform/dolphinscheduler_mysql.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_ROOT_PASSWORD mysql -h 127.0.0.1 -uroot -e 'SELECT 1' >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  demo-mysql:
+    image: mysql:8.4.11
+    environment:
+      MYSQL_DATABASE: demo_source
+      MYSQL_USER: demo_reader
+      MYSQL_PASSWORD: demo_reader_password
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    ports: ["127.0.0.1:${DEMO_MYSQL_PORT}:3306"]
+    volumes:
+      - demo-mysql-data:/var/lib/mysql
+      - ./deploy/mysql-demo/init.sql:/docker-entrypoint-initdb.d/01-demo.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  doris:
+    image: apache/doris:all-in-one-4.1.3
+    ports:
+      - "127.0.0.1:${DORIS_FE_HTTP_PORT}:8030"
+      - "127.0.0.1:${DORIS_FE_MYSQL_PORT}:9030"
+      - "127.0.0.1:8040:8040"
+    volumes:
+      - doris-fe-data:/opt/apache-doris/fe/doris-meta
+      - doris-be-data:/opt/apache-doris/be/storage
+
+  dolphinscheduler:
+    build:
+      context: .
+      dockerfile: deploy/dolphinscheduler/Dockerfile
+      args:
+        DOLPHINSCHEDULER_VERSION: 3.4.0
+        DATAX_REF: 9a1f88751e24314b083a74f1b83ef56d69ce98bd
+    environment:
+      TZ: Asia/Shanghai
+      DATABASE: mysql
+      SPRING_PROFILES_ACTIVE: mysql
+      SPRING_SQL_INIT_MODE: never
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/dolphinscheduler?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: scheduler
+      SPRING_DATASOURCE_PASSWORD: ${DOLPHINSCHEDULER_DB_PASSWORD}
+      PLATFORM_URL: http://platform:8080
+      PLATFORM_INTERNAL_TOKEN: ${PLATFORM_INTERNAL_TOKEN}
+      DORIS_WRITER_JDBC_URL: ${DORIS_JDBC_URL}
+      DORIS_WRITER_USER: ${DORIS_WRITER_USER}
+      DORIS_WRITER_PASSWORD: ${DORIS_WRITER_PASSWORD}
+      DORIS_USER: ${DORIS_USER}
+      DORIS_PASSWORD: ${DORIS_PASSWORD}
+      DOLPHINSCHEDULER_ADMIN_PASSWORD: ${DOLPHINSCHEDULER_ADMIN_PASSWORD}
+    ports: ["127.0.0.1:${DOLPHINSCHEDULER_PORT}:12345"]
+    volumes:
+      - ds-data:/tmp/dolphinscheduler
+      - ./deploy/runtime:/opt/platform/runtime
+    depends_on:
+      mysql: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:12345/dolphinscheduler/actuator/health >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 40
+
+  platform:
+    build: .
+    environment:
+      SERVER_ADDRESS: 0.0.0.0
+      PLATFORM_DB_URL: ${PLATFORM_DB_URL:-jdbc:mysql://mysql:3306/platform?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+      PLATFORM_DB_USER: ${PLATFORM_DB_USER}
+      PLATFORM_DB_PASSWORD: ${PLATFORM_DB_PASSWORD}
+      PLATFORM_ENCRYPTION_KEY: ${PLATFORM_ENCRYPTION_KEY}
+      PLATFORM_ADMIN_PASSWORD: ${PLATFORM_ADMIN_PASSWORD}
+      PLATFORM_INTERNAL_TOKEN: ${PLATFORM_INTERNAL_TOKEN}
+      DOLPHINSCHEDULER_URL: ${DOLPHINSCHEDULER_URL}
+      DOLPHINSCHEDULER_TOKEN: ${DOLPHINSCHEDULER_TOKEN}
+      DOLPHINSCHEDULER_PROJECT_CODE: ${DOLPHINSCHEDULER_PROJECT_CODE}
+      DOLPHINSCHEDULER_TENANT: default
+      DORIS_JDBC_URL: ${DORIS_JDBC_URL}
+      DORIS_USER: ${DORIS_USER}
+      DORIS_PASSWORD: ${DORIS_PASSWORD}
+    ports: ["127.0.0.1:${PLATFORM_PORT}:8080"]
+    depends_on:
+      mysql: { condition: service_healthy }
+      doris: { condition: service_healthy }
+      dolphinscheduler: { condition: service_healthy }
+
+volumes:
+  mysql-data:
+  demo-mysql-data:
+  doris-fe-data:
+  doris-be-data:
+  ds-data:
+

@@ -1,0 +1,15 @@
+/target/
+/.env
+/.env.*
+!/.env.example
+/.idea/
+/.vscode/
+*.log
+*.iml
+/deploy/generated/
+/deploy/runtime/
+/output/
+~$*
+*.inspect.ndjson
+__pycache__/
+

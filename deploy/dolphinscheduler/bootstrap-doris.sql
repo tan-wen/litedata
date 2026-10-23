@@ -1,0 +1,20 @@
+CREATE DATABASE IF NOT EXISTS warehouse;
+CREATE TABLE IF NOT EXISTS warehouse.ods_orders (
+  id BIGINT NOT NULL,
+  customer_name VARCHAR(128) NOT NULL,
+  amount DECIMAL(18, 2) NOT NULL,
+  updated_at DATETIME(6) NOT NULL
+) ENGINE=OLAP
+UNIQUE KEY(id)
+DISTRIBUTED BY HASH(id) BUCKETS 1
+PROPERTIES ("replication_num" = "1");
+
+CREATE TABLE IF NOT EXISTS warehouse.ads_orders (
+  id BIGINT NOT NULL,
+  customer_name VARCHAR(128) NOT NULL,
+  amount DECIMAL(18, 2) NOT NULL,
+  updated_at DATETIME(6) NOT NULL
+) ENGINE=OLAP
+UNIQUE KEY(id)
+DISTRIBUTED BY HASH(id) BUCKETS 1
+PROPERTIES ("replication_num" = "1");

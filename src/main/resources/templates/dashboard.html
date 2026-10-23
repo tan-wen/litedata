@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title>工作台 · 数据中台</title></head>
+<body>
+<section>
+  <div class="d-flex flex-wrap justify-content-between gap-3 mb-4">
+    <div><div class="page-kicker">工作台 / 总览</div><h1 class="page-title">工作台</h1><p class="page-subtitle mb-0">查看数据同步、加工调度和受控服务的当前状态。</p></div>
+    <span class="badge text-bg-primary align-self-center">每小时增量同步</span>
+  </div>
+  <div th:replace="~{fragments/messages :: messages}"></div>
+  <div class="row g-3 mb-3">
+    <div class="col-sm-6 col-xl-3"><article class="metric-card card"><div class="card-body"><div class="metric-label">已登记数据源</div><div class="metric-value" th:text="${stats.get('sources')}">0</div><div class="metric-note">连接配置与健康状态</div></div></article></div>
+    <div class="col-sm-6 col-xl-3"><article class="metric-card card"><div class="card-body"><div class="metric-label">同步管道</div><div class="metric-value" th:text="${stats.get('pipelines')}">0</div><div class="metric-note">全量与增量任务</div></div></article></div>
+    <div class="col-sm-6 col-xl-3"><article class="metric-card card"><div class="card-body"><div class="metric-label">已发布服务</div><div class="metric-value" th:text="${stats.get('services')}">0</div><div class="metric-note">受 API Key 保护</div></div></article></div>
+    <div class="col-sm-6 col-xl-3"><article class="metric-card card"><div class="card-body"><div class="metric-label">失败运行</div><div class="metric-value text-danger" th:text="${stats.get('failedRuns')}">0</div><div class="metric-note">请优先查看错误信息</div></div></article></div>
+  </div>
+  <div class="row g-3">
+    <div class="col-xl-8"><article class="platform-card card h-100"><div class="card-header d-flex justify-content-between"><span>近期运行</span><a th:href="@{/pipelines}" class="small text-decoration-none">查看管道</a></div><div class="card-body p-0"><div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>管道</th><th>状态</th><th>开始时间</th><th>结束时间</th><th>消息</th></tr></thead><tbody><tr th:each="run : ${recentRuns}"><td th:text="${run.pipelineName}">订单同步</td><td><span class="badge status status-info" th:text="${run.status}">SUCCESS</span></td><td th:text="${run.startedAt}">-</td><td th:text="${run.finishedAt}">-</td><td class="text-truncate" style="max-width:210px" th:text="${run.message}">完成</td></tr><tr th:if="${#lists.isEmpty(recentRuns)}"><td colspan="5" class="text-center text-secondary py-4">尚无运行记录，创建管道后即可手动运行。</td></tr></tbody></table></div></div></article></div>
+    <div class="col-xl-4"><article class="platform-card card h-100"><div class="card-header">引擎状态</div><ul class="list-group list-group-flush"><li class="list-group-item d-flex justify-content-between align-items-center" th:each="engine : ${engineStatus}"><span th:text="${engine.key}">MySQL</span><span class="badge status status-info" th:text="${engine.value}">UNKNOWN</span></li><li class="list-group-item text-secondary" th:if="${#maps.isEmpty(engineStatus)}">引擎状态等待采集。</li></ul></article></div>
+  </div>
+</section>
+</body>
+</html>
