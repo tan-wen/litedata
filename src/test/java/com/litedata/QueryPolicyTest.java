@@ -23,6 +23,11 @@ class QueryPolicyTest {
             assertThatThrownBy(()->policy.validate(sql)).as(sql).isInstanceOf(IllegalArgumentException.class);
         }
     }
+    @Test void fixedPaginationNamesCannotBeSqlBusinessParameters() {
+        for(String name:new String[]{"pageNum","pageSize"})
+            assertThatThrownBy(()->policy.validate("SELECT id FROM orders WHERE id=:"+name))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("固定分页参数");
+    }
     @Test void connectionHooksAndNonMysqlSourcesAreRejected() {
         var connections=new JdbcConnections();
         connections.validateUrl("jdbc:mysql://mysql:3306/demo?useSSL=false&serverTimezone=UTC");

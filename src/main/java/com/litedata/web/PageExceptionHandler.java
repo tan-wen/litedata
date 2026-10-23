@@ -6,7 +6,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
-@ControllerAdvice(assignableTypes={PageController.class,ModelingController.class,TransformController.class})
+@ControllerAdvice(assignableTypes={PageController.class,UserController.class,ModelingController.class,TransformController.class})
 public class PageExceptionHandler {
     private final com.litedata.store.PlatformMapper mapper;
     public PageExceptionHandler(com.litedata.store.PlatformMapper mapper) { this.mapper=mapper; }

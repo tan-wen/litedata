@@ -101,14 +101,24 @@ def main():
     dws_model = model(client, dws, "DWS", summary)
     ads_model = model(client, ads, "ADS", summary)
     print(json.dumps({"stage": "models-created", "tables": [dwd, dws, ads]}), flush=True)
-    _, page = client.request("GET", "/sources")
+    status, page = client.request("GET", "/sources")
+    if status != 200 or 'href="/sources/new"' not in page:
+        raise SmokeFailure("source list does not provide the create page")
+    status, page = client.request("GET", "/sources/new")
+    if status != 200:
+        raise SmokeFailure("source create page is unavailable")
     source_name = "flow-source-" + suffix
     status, page = post_form(client, page, "/sources", {"name": source_name,
         "jdbcUrl": "jdbc:mysql://demo-mysql:3306/demo_source?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC",
         "username": "demo_reader", "password": "demo_reader_password"})
     checked(status, page, "数据源已保存")
     source_id = id_from_row(page, source_name, "/test")
-    _, page = client.request("GET", "/pipelines")
+    status, page = client.request("GET", "/pipelines")
+    if status != 200 or 'href="/pipelines/new"' not in page:
+        raise SmokeFailure("pipeline list does not provide the create page")
+    status, page = client.request("GET", "/pipelines/new")
+    if status != 200:
+        raise SmokeFailure("pipeline create page is unavailable")
     pipeline_name = "flow-sync-" + suffix
     status, page = post_form(client, page, "/pipelines", {"name": pipeline_name, "sourceId": source_id,
         "sourceTable": "orders", "watermarkColumn": "updated_at", "targetTable": "ods_orders", "transformSql": "", "cronExpression": "0 0 * * * ?"})
@@ -124,19 +134,25 @@ def main():
     names = [dwd, dws, ads]
     wait_runs(client, root, names, 1, 300)
     print(json.dumps({"stage": "manual-dag-success", "rootTaskId": int(root)}), flush=True)
-    _, page = client.request("GET", "/services")
+    status, page = client.request("GET", "/services")
+    if status != 200 or 'href="/services/new"' not in page:
+        raise SmokeFailure("service list does not provide the create page")
+    status, page = client.request("GET", "/services/new")
+    if status != 200:
+        raise SmokeFailure("service create page is unavailable")
     slug = "flow-result-" + suffix
     status, page = post_form(client, page, "/services", {"name": slug, "slug": slug,
-        "querySql": f"SELECT customer_name,total_amount,order_count FROM {ads} ORDER BY customer_name", "maxRows": "10"})
+        "querySql": f"SELECT customer_name,total_amount,order_count FROM {ads} ORDER BY customer_name"})
     checked(status, page, "服务草稿已保存")
     service_id = id_from_row(page, slug, "/publish")
     status, page = post_form(client, page, f"/services/{service_id}/publish", {})
     status, page = post_form(client, page, f"/services/{service_id}/credentials", {})
     key = generated_key(page)
-    status, data = client.request("GET", f"/api/data/{slug}", headers={"X-API-Key": key})
-    rows = json.loads(data).get("data", [])
+    status, data = client.request("GET", f"/api/data/{slug}?pageNum=1&pageSize=100", headers={"X-API-Key": key})
+    response = json.loads(data)
+    rows = response.get("data", [])
     expected = {"Ada": (120.5, 1), "Linus": (88.0, 1)}
-    if status != 200 or {row["customer_name"]: (float(row["total_amount"]), int(row["order_count"])) for row in rows} != expected:
+    if status != 200 or {row["customer_name"]: (float(row["total_amount"]), int(row["order_count"])) for row in rows} != expected or {key: response.get(key) for key in ("count", "pageNum", "pageSize", "hasMore")} != {"count": 2, "pageNum": 1, "pageSize": 100, "hasMore": False}:
         raise SmokeFailure("ADS aggregation did not match demo source")
     _, page = client.request("GET", f"/transforms/{root}")
     status, page = post_form(client, page, f"/transforms/{root}/schedule", {})

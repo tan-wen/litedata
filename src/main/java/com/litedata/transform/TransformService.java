@@ -3,6 +3,7 @@ package com.litedata.transform;
 import com.litedata.model.*;
 import com.litedata.modeling.*;
 import com.litedata.store.*;
+import com.litedata.service.QueryPage;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.*;
@@ -28,6 +29,8 @@ public class TransformService {
         this.mapper=mapper; this.platform=platform; this.models=models; this.policy=policy; this.gateway=gateway;
     }
     public List<SqlTask> list() { return mapper.tasks(); }
+    public long count() { return mapper.countTasks(); }
+    public List<SqlTask> list(QueryPage page) { return mapper.taskPage(page.pageSize(), page.offset()); }
     public SqlTask require(long id) {
         var task=required(mapper.task(id));
         task.setUpstreamTaskIds(mapper.upstreamTasks(id)); task.setUpstreamPipelineIds(mapper.upstreamPipelines(id));

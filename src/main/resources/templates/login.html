@@ -2,21 +2,33 @@
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <title>登录 · 数据中台</title>
+  <script th:src="@{/js/theme.js}"></script>
   <link rel="stylesheet" th:href="@{/vendor/bootstrap/bootstrap.min.css}">
   <link rel="stylesheet" th:href="@{/css/app.css}">
 </head>
-<body class="login-page d-flex align-items-center justify-content-center p-3">
-  <section class="login-card card p-4 p-md-5">
-    <div class="mb-4"><div class="text-primary fw-bold mb-2">数据中台</div><h1 class="h4 mb-2">欢迎登录</h1><p class="text-secondary mb-0">管理同步、加工调度和受控数据服务。</p></div>
-    <div class="alert alert-danger" th:if="${param.error}">用户名或密码错误，请重试。</div>
-    <div class="alert alert-success" th:if="${param.logout}">你已安全退出。</div>
-    <form th:action="@{/login}" method="post">
-      <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
-      <div class="mb-3"><label class="form-label" for="username">用户名</label><input class="form-control" id="username" name="username" required autofocus autocomplete="username"></div>
-      <div class="mb-4"><label class="form-label" for="password">密码</label><input class="form-control" id="password" name="password" type="password" required autocomplete="current-password"></div>
-      <button class="btn btn-primary w-100" type="submit">登录工作台</button>
-    </form>
-  </section>
+<body class="login-page">
+  <div class="login-appearance"><div th:replace="~{fragments/appearance :: controls}"></div></div>
+  <div class="login-stage">
+    <section class="login-intro" aria-label="LiteData 数据中台">
+      <div class="side-brand"><span class="brand-mark" aria-hidden="true">L</span><span><span class="brand-name">LiteData</span><span class="brand-caption">轻量数据中台</span></span></div>
+      <h1>数据开发，<br>从这里开始。</h1>
+      <p>连接业务数据，管理同步任务、SQL 加工和数据服务。</p>
+      <div class="login-tags"><span>数据接入</span><span>分层建模</span><span>任务编排</span><span>受控 API</span></div>
+    </section>
+    <section class="login-card" aria-labelledby="login-title">
+      <div class="mb-7"><h2 id="login-title" class="mb-3">欢迎登录</h2><p class="fg-2 mb-0">登录 LiteData 数据中台，继续管理数据工作。</p></div>
+      <div class="alert theme-danger" role="alert" th:if="${param.error}">用户名或密码错误，请重试。</div>
+      <div class="alert theme-success" role="status" th:if="${param.logout}">你已安全退出。</div>
+      <form th:action="@{/login}" method="post">
+        <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+        <div class="mb-5"><label class="form-label" for="username">用户名</label><input class="form-control" id="username" name="username" required autofocus autocomplete="username"></div>
+        <div class="mb-7"><label class="form-label" for="password">密码</label><input class="form-control" id="password" name="password" type="password" required autocomplete="current-password"></div>
+        <button class="btn-solid theme-primary w-100" type="submit">登录工作台</button>
+      </form>
+      <p class="login-note">LiteData · 单机试点</p>
+    </section>
+  </div>
 </body>
 </html>

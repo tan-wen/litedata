@@ -24,10 +24,10 @@ public class MyBatisRuntimeQueries {
         configuration.addMapper(RuntimeQueryMapper.class);
         factory=new SqlSessionFactoryBuilder().build(configuration);
     }
-    public List<Map<String,Object>> execute(QueryPolicy.BoundQuery query,List<String> values,int limit) {
+    public List<Map<String,Object>> execute(QueryPolicy.BoundQuery query,List<String> values,int limit,long offset) {
         try(var session=factory.openSession()) {
             session.getConnection().setReadOnly(true);
-            return session.getMapper(RuntimeQueryMapper.class).query(query.mappedSql(),values,limit);
+            return session.getMapper(RuntimeQueryMapper.class).query(query.mappedSql(),values,limit,offset);
         } catch(java.sql.SQLException exception) { throw new IllegalStateException("无法连接只读查询库"); }
     }
 }

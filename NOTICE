@@ -15,9 +15,16 @@ Upstream notice:
 https://github.com/apache/dolphinscheduler/blob/3.4.0/NOTICE
 The schema retains its original Apache License 2.0 header. See LICENSE.
 
-Bootstrap 5.3.8 is bundled under src/main/resources/static/vendor/bootstrap/.
+Bootstrap 6.0.0-alpha.1 (pre-release) is bundled under src/main/resources/static/vendor/bootstrap/.
 Its original MIT license is retained in that directory's LICENSE file and
-its distribution headers.
+its distribution headers. Version, upstream URLs and integrity hashes are
+recorded in that directory's SOURCES.md file.
+
+The application shell layout is adapted from the Helm admin layout pattern:
+https://uicookies.com/downloads/helm/
+uiCookies permits use and modification in personal and commercial applications.
+License: https://uicookies.com/license/
+The original template is not distributed here as a standalone template or theme.
 
 Maven Wrapper scripts retain their upstream Apache License 2.0 headers.
 Dependencies resolved by Maven and external engine/container distributions

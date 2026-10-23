@@ -6,6 +6,7 @@ import com.litedata.modeling.ModelingService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.security.Principal;
 import java.util.List;
+import java.util.Map;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
@@ -32,8 +33,10 @@ public class ModelingController {
     @ModelAttribute("canManageUsers") boolean canManageUsers(HttpServletRequest request) { return request.isUserInRole("ADMIN"); }
     @ModelAttribute("layers") List<String> layers() { return List.of("ODS", "DWD", "DWS", "ADS"); }
 
-    @GetMapping String list(@RequestParam(defaultValue="") String keyword, @RequestParam(defaultValue="") String layer, Model model) {
-        model.addAttribute("models", modeling.list(keyword, layer));
+    @GetMapping String list(@RequestParam(defaultValue="") String keyword, @RequestParam(defaultValue="") String layer,
+            @RequestParam Map<String,String> params, Model model) {
+        var page = ListPagination.prepare(model, "/models", params, modeling.count(keyword, layer));
+        model.addAttribute("models", modeling.list(keyword, layer, page));
         model.addAttribute("keyword", keyword); model.addAttribute("layer", layer);
         return "models";
     }

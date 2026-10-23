@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title th:text="${resourceId == null ? '新增账号 · LiteData' : '编辑账号 · LiteData'}">账号权限 · LiteData</title></head><body><section>
+  <div class="mb-7"><div class="page-kicker">系统管理 / <a th:href="@{/users}">账号权限</a></div><h1 class="page-title" th:text="${resourceId == null ? '新增账号' : '编辑账号'}"></h1><p class="page-subtitle mb-0">维护账号角色与登录密码。</p></div>
+  <div th:replace="~{fragments/messages :: messages}"></div>
+  <form th:object="${draft}" th:action="${formAction}" method="post">
+    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+    <article class="platform-card card mb-5"><div class="card-header">账号信息</div><div class="card-body"><div class="row g-5">
+      <div class="md:col-6"><label class="form-label" for="username">用户名</label><input class="form-control" th:field="*{username}" th:readonly="${resourceId != null}" required minlength="3" maxlength="60" pattern="[a-zA-Z][a-zA-Z0-9_-]{2,59}" autocomplete="off"><div class="form-text">以字母开头，允许字母、数字、下划线和连字符；创建后不可修改。</div></div>
+      <div class="md:col-6"><label class="form-label" for="role">角色</label><select class="form-control" th:field="*{role}"><option value="VIEWER">只读用户</option><option value="DEVELOPER">开发者</option><option value="ADMIN">管理员</option></select></div>
+      <div class="col-12"><label class="form-label" for="password" th:text="${resourceId == null ? '初始密码' : '新密码'}"></label><input class="form-control" type="password" id="password" name="password" th:required="${resourceId == null}" minlength="12" maxlength="72" autocomplete="new-password"><div class="form-text">密码至少12字符且不超过72字节；编辑时留空保留原密码。权限和密码在下次登录时生效。</div></div>
+    </div></div></article>
+    <div class="d-flex gap-3"><button class="btn-solid theme-primary" type="submit">保存账号</button><a class="btn-outline theme-secondary" th:href="@{/users}">取消</a></div>
+  </form>
+</section></body></html>

@@ -31,7 +31,11 @@ public class TransformController {
         binder.setAutoGrowCollectionLimit(100);
         binder.setAllowedFields("name","modelId","sqlText","cronExpression","version","upstreamTaskIds","upstreamPipelineIds");
     }
-    @GetMapping String list(Model model) { model.addAttribute("tasks",tasks.list()); return "transforms"; }
+    @GetMapping String list(@RequestParam Map<String,String> params, Model model) {
+        var page = ListPagination.prepare(model, "/transforms", params, tasks.count());
+        model.addAttribute("tasks", tasks.list(page));
+        return "transforms";
+    }
     @GetMapping("/new") String create(Model model) { return form(model,new SqlTask(),null); }
     @GetMapping("/{id}/edit") String edit(@PathVariable long id,Model model) { return form(model,tasks.require(id),id); }
     @GetMapping("/{id}") String detail(@PathVariable long id,Model model) {

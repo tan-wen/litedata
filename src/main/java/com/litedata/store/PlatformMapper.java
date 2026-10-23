@@ -11,17 +11,33 @@ public interface PlatformMapper {
     @Insert("INSERT INTO app_user(username,password_hash,role) VALUES(#{username},#{password},#{role})")
     void insertUser(@Param("username") String username, @Param("password") String password, @Param("role") String role);
     @Select("SELECT id,username,role,enabled FROM app_user ORDER BY id") List<AppUser> users();
+    @Select("SELECT COUNT(*) FROM app_user") long userCount();
+    @Select("SELECT id,username,role,enabled FROM app_user ORDER BY id DESC LIMIT #{limit} OFFSET #{offset}")
+    List<AppUser> userPage(@Param("limit") int limit,@Param("offset") long offset);
+    @Select("SELECT * FROM app_user WHERE id=#{id}") AppUser user(long id);
+    @Update("UPDATE app_user SET password_hash=#{passwordHash},role=#{role} WHERE id=#{id}")
+    void updateUser(AppUser user);
     @Select("SELECT * FROM data_source ORDER BY id DESC") List<DataSource> sources();
+    @Select("SELECT COUNT(*) FROM data_source") long sourceCount();
+    @Select("SELECT * FROM data_source ORDER BY id DESC LIMIT #{limit} OFFSET #{offset}")
+    List<DataSource> sourcePage(@Param("limit") int limit,@Param("offset") long offset);
     @Select("SELECT * FROM data_source WHERE id=#{id}") DataSource source(long id);
     @Insert("INSERT INTO data_source(name,jdbc_url,username,encrypted_password) VALUES(#{name},#{jdbcUrl},#{username},#{encryptedPassword})")
     @Options(useGeneratedKeys=true,keyProperty="id") void insertSource(DataSource source);
+    @Update("UPDATE data_source SET name=#{name},jdbc_url=#{jdbcUrl},username=#{username},encrypted_password=#{encryptedPassword},status='UNTESTED',last_error=NULL WHERE id=#{id}")
+    void updateSource(DataSource source);
     @Update("UPDATE data_source SET status=#{status},last_error=#{error} WHERE id=#{id}")
     void sourceStatus(@Param("id") long id,@Param("status") String status,@Param("error") String error);
     @Select("SELECT * FROM pipeline ORDER BY id DESC") List<Pipeline> pipelines();
+    @Select("SELECT COUNT(*) FROM pipeline") long pipelineCount();
+    @Select("SELECT * FROM pipeline ORDER BY id DESC LIMIT #{limit} OFFSET #{offset}")
+    List<Pipeline> pipelinePage(@Param("limit") int limit,@Param("offset") long offset);
     @Select("SELECT * FROM pipeline WHERE id=#{id}") Pipeline pipeline(long id);
     @Select("SELECT * FROM pipeline WHERE id=#{id} FOR UPDATE") Pipeline lockPipeline(long id);
     @Insert("INSERT INTO pipeline(name,source_id,source_table,watermark_column,target_table,transform_sql,cron_expression) VALUES(#{name},#{sourceId},#{sourceTable},#{watermarkColumn},#{targetTable},#{transformSql},#{cronExpression})")
     @Options(useGeneratedKeys=true,keyProperty="id") void insertPipeline(Pipeline pipeline);
+    @Update("UPDATE pipeline SET name=#{name},transform_sql=#{transformSql} WHERE id=#{id}")
+    void updatePipeline(Pipeline pipeline);
     @Update("UPDATE pipeline SET definition_code=#{code} WHERE id=#{id}")
     void definition(@Param("id") long id,@Param("code") long code);
     @Update("UPDATE pipeline SET schedule_id=#{scheduleId},status=#{status},last_error=NULL WHERE id=#{id}")
@@ -41,10 +57,18 @@ public interface PlatformMapper {
     @Select("SELECT r.*,p.name pipeline_name FROM pipeline_run r JOIN pipeline p ON p.id=r.pipeline_id ORDER BY r.id DESC LIMIT 50")
     List<PipelineRun> recentRuns();
     @Select("SELECT * FROM data_service ORDER BY id DESC") List<DataService> services();
+    @Select("SELECT COUNT(*) FROM data_service") long serviceCount();
+    @Select("SELECT s.*,(SELECT COUNT(*) FROM service_call c WHERE c.service_id=s.id AND c.started_at>=#{start} AND c.started_at<#{end}) daily_calls FROM data_service s ORDER BY s.id DESC LIMIT #{limit} OFFSET #{offset}")
+    List<DataService> servicePage(@Param("start") LocalDateTime start,@Param("end") LocalDateTime end,
+            @Param("limit") int limit,@Param("offset") long offset);
+    @Select("SELECT s.*,(SELECT COUNT(*) FROM service_call c WHERE c.service_id=s.id AND c.started_at>=#{start} AND c.started_at<#{end}) daily_calls FROM data_service s ORDER BY s.id DESC")
+    List<DataService> servicesWithDailyCalls(@Param("start") LocalDateTime start,@Param("end") LocalDateTime end);
     @Select("SELECT * FROM data_service WHERE id=#{id}") DataService dataService(long id);
-    @Select("SELECT * FROM data_service WHERE slug=#{slug} AND published=TRUE") DataService publishedService(String slug);
-    @Insert("INSERT INTO data_service(name,slug,query_sql,max_rows) VALUES(#{name},#{slug},#{querySql},#{maxRows})")
+    @Select("SELECT * FROM data_service WHERE slug=#{slug}") DataService serviceBySlug(String slug);
+    @Insert("INSERT INTO data_service(name,slug,query_sql) VALUES(#{name},#{slug},#{querySql})")
     @Options(useGeneratedKeys=true,keyProperty="id") void insertService(DataService service);
+    @Update("UPDATE data_service SET name=#{name},query_sql=#{querySql},published=FALSE WHERE id=#{id}")
+    void updateService(DataService service);
     @Update("UPDATE data_service SET published=#{published} WHERE id=#{id}")
     void publish(@Param("id") long id,@Param("published") boolean published);
     @Update("UPDATE api_credential SET enabled=FALSE WHERE service_id=#{id}") void revokeCredentials(long id);

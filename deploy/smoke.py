@@ -150,7 +150,7 @@ def generated_key(html: str) -> str:
 
 
 def api_query(client: Client, slug: str, token: str) -> tuple[int, str]:
-    return client.request("GET", f"/api/data/{slug}?customerId=1", headers={"X-API-Key": token})
+    return client.request("GET", f"/api/data/{slug}?customerId=1&pageNum=1&pageSize=100", headers={"X-API-Key": token})
 
 
 def main() -> dict[str, object]:
@@ -172,9 +172,12 @@ def main() -> dict[str, object]:
         raise SmokeFailure("login was not accepted")
 
     status, sources = client.request("GET", "/sources")
+    if status != 200 or 'href="/sources/new"' not in sources:
+        raise SmokeFailure("source list does not provide the create page")
+    status, source_form = client.request("GET", "/sources/new")
     if status != 200:
-        raise SmokeFailure("source page is unavailable after login")
-    status, sources = post_form(client, sources, "/sources", {
+        raise SmokeFailure("source create page is unavailable after login")
+    status, sources = post_form(client, source_form, "/sources", {
         "name": source_name,
         "jdbcUrl": "jdbc:mysql://demo-mysql:3306/demo_source?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC",
         "username": "demo_reader",
@@ -186,9 +189,12 @@ def main() -> dict[str, object]:
     require_success(status, sources, "连接测试成功")
 
     status, pipelines = client.request("GET", "/pipelines")
+    if status != 200 or 'href="/pipelines/new"' not in pipelines:
+        raise SmokeFailure("pipeline list does not provide the create page")
+    status, pipeline_form = client.request("GET", "/pipelines/new")
     if status != 200:
-        raise SmokeFailure("pipeline page is unavailable")
-    status, pipelines = post_form(client, pipelines, "/pipelines", {
+        raise SmokeFailure("pipeline create page is unavailable")
+    status, pipelines = post_form(client, pipeline_form, "/pipelines", {
         "name": pipeline_name, "sourceId": source_id, "sourceTable": "orders", "watermarkColumn": "updated_at",
         "targetTable": "ods_orders", "transformSql": "INSERT INTO ads_orders SELECT id,customer_name,amount,updated_at FROM ods_orders",
         "cronExpression": "0 0 * * * ?",
@@ -218,11 +224,14 @@ def main() -> dict[str, object]:
         raise SmokeFailure("pipeline did not report successful completion before timeout")
 
     status, services = client.request("GET", "/services")
+    if status != 200 or 'href="/services/new"' not in services:
+        raise SmokeFailure("service list does not provide the create page")
+    status, service_form = client.request("GET", "/services/new")
     if status != 200:
-        raise SmokeFailure("service page is unavailable")
-    status, services = post_form(client, services, "/services", {
+        raise SmokeFailure("service create page is unavailable")
+    status, services = post_form(client, service_form, "/services", {
         "name": f"Smoke orders {unique}", "slug": slug,
-        "querySql": "SELECT id, customer_name, amount, updated_at FROM ads_orders WHERE id = :customerId", "maxRows": "10",
+        "querySql": "SELECT id, customer_name, amount, updated_at FROM ads_orders WHERE id = :customerId ORDER BY id",
     })
     require_success(status, services, "服务草稿已保存")
     service_id = id_from_row(services, slug, "/publish")
@@ -232,7 +241,8 @@ def main() -> dict[str, object]:
     require_success(status, services, "新凭证仅显示本次")
     first_key = generated_key(services)
     status, result = api_query(client, slug, first_key)
-    if status != 200 or json.loads(result).get("data", [{}])[0].get("customer_name") != "Ada":
+    response = json.loads(result)
+    if status != 200 or response.get("data", [{}])[0].get("customer_name") != "Ada" or {key: response.get(key) for key in ("count", "pageNum", "pageSize", "hasMore")} != {"count": 1, "pageNum": 1, "pageSize": 100, "hasMore": False}:
         raise SmokeFailure("published API did not return Ada for id=1")
 
     status, services = client.request("GET", "/services")

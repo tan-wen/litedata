@@ -9,6 +9,9 @@ public interface SqlTaskMapper {
     String TASK_COLUMNS = "SELECT t.*,m.table_name target_table,m.name model_name,m.layer FROM sql_task t JOIN data_model m ON m.id=t.model_id ";
     @Select("SELECT id FROM sql_graph_guard WHERE id=1 FOR UPDATE") int lockGraph();
     @Select(TASK_COLUMNS + "WHERE t.archived=FALSE ORDER BY t.id DESC") List<SqlTask> tasks();
+    @Select("SELECT COUNT(*) FROM sql_task t JOIN data_model m ON m.id=t.model_id WHERE t.archived=FALSE") long countTasks();
+    @Select(TASK_COLUMNS + "WHERE t.archived=FALSE ORDER BY t.id DESC LIMIT #{limit} OFFSET #{offset}")
+    List<SqlTask> taskPage(@Param("limit") int limit, @Param("offset") long offset);
     @Select(TASK_COLUMNS + "WHERE t.id=#{id} AND t.archived=FALSE") SqlTask task(long id);
     @Select(TASK_COLUMNS + "WHERE t.id=#{id} AND t.archived=FALSE FOR UPDATE") SqlTask lockTask(long id);
     @Select("SELECT upstream_id FROM sql_task_dependency WHERE task_id=#{id} ORDER BY upstream_id") List<Long> upstreamTasks(long id);

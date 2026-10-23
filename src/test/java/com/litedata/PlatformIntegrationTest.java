@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 
 import com.litedata.data.SourceService;
 import com.litedata.model.DataService;
@@ -18,7 +19,7 @@ import com.litedata.model.PipelineRun;
 import com.litedata.pipeline.PipelineService;
 import com.litedata.service.DataApiService;
 import com.litedata.store.PlatformMapper;
-import java.time.LocalDateTime;
+import java.time.*;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -82,6 +83,7 @@ class PlatformIntegrationTest {
         jdbc.execute("CREATE TABLE IF NOT EXISTS warehouse.api_fixture (id BIGINT PRIMARY KEY, name VARCHAR(100) NOT NULL)");
         jdbc.execute("CREATE TABLE IF NOT EXISTS source_orders (id BIGINT PRIMARY KEY, updated_at TIMESTAMP(6) NOT NULL, INDEX ix_source_orders_updated_at (updated_at))");
         jdbc.update("DELETE FROM api_credential");
+        jdbc.update("DELETE FROM service_call");
         jdbc.update("DELETE FROM audit_event");
         jdbc.update("DELETE FROM pipeline_run");
         jdbc.update("DELETE FROM pipeline");
@@ -96,6 +98,7 @@ class PlatformIntegrationTest {
     @AfterEach
     void cleanUp() {
         jdbc.update("DELETE FROM api_credential");
+        jdbc.update("DELETE FROM service_call");
         jdbc.update("DELETE FROM audit_event");
         jdbc.update("DELETE FROM pipeline_run");
         jdbc.update("DELETE FROM pipeline");
@@ -105,8 +108,9 @@ class PlatformIntegrationTest {
 
     @Test
     void flywayCreatesPlatformTablesAndProtectedPagesRender() throws Exception {
-        Integer tables = jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ('data_source','pipeline','pipeline_run','data_service','api_credential')", Integer.class);
-        assertThat(tables).isEqualTo(5);
+        Integer tables = jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ('data_source','pipeline','pipeline_run','data_service','api_credential','service_call')", Integer.class);
+        assertThat(tables).isEqualTo(6);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='data_service' AND column_name='max_rows'",Integer.class)).isZero();
 
         mvc.perform(get("/sources")).andExpect(status().is3xxRedirection())
                 .andExpect(header().string("Location", org.hamcrest.Matchers.containsString("/login")));
@@ -156,7 +160,7 @@ class PlatformIntegrationTest {
 
     @Test
     void apiRequiresPublicationAndCurrentCredential() throws Exception {
-        apiService.create("客户查询", "customers", "SELECT id, name FROM warehouse.api_fixture WHERE id = :customerId", 100);
+        apiService.create("客户查询", "customers", "SELECT id, name FROM warehouse.api_fixture WHERE id = :customerId");
         DataService service = mapper.services().getFirst();
 
         mvc.perform(get("/api/data/customers").param("customerId", "1"))
@@ -176,6 +180,98 @@ class PlatformIntegrationTest {
                 .andExpect(status().isUnauthorized());
         mvc.perform(get("/api/data/customers").header("X-API-Key", rotated).param("customerId", "1"))
                 .andExpect(status().isOk());
+        assertThat(jdbc.queryForList("SELECT status_code FROM service_call ORDER BY id",Integer.class))
+                .containsExactly(404,401,200,401,200);
+        assertThat(apiService.list().getFirst().getDailyCalls()).isEqualTo(5);
+    }
+
+    @Test
+    void servicesAreCreatedWithoutRowLimitsAndQueriesUseFixedPagination() throws Exception {
+        mvc.perform(post("/services").with(user("dev").roles("DEVELOPER")).with(csrf())
+                .param("name","分页查询").param("slug","pages")
+                .param("querySql","SELECT id, name FROM warehouse.api_fixture WHERE id>=:minId ORDER BY id"))
+                .andExpect(status().is3xxRedirection());
+        var service=mapper.services().getFirst(); apiService.publish(service.getId());
+        String key=apiService.credential(service.getId());
+        jdbc.update("INSERT INTO warehouse.api_fixture VALUES (2,'Grace'),(3,'Linus')");
+        mvc.perform(get("/api/data/pages").header("X-API-Key",key).param("minId","1").param("pageNum","1").param("pageSize","2"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.count").value(2))
+                .andExpect(jsonPath("$.pageNum").value(1)).andExpect(jsonPath("$.pageSize").value(2))
+                .andExpect(jsonPath("$.hasMore").value(true)).andExpect(jsonPath("$.data[0].id").value(1))
+                .andExpect(jsonPath("$.data[1].id").value(2)).andExpect(jsonPath("$.truncated").doesNotExist());
+        mvc.perform(get("/api/data/pages").header("X-API-Key",key).param("minId","1").param("pageNum","2").param("pageSize","2"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.count").value(1))
+                .andExpect(jsonPath("$.hasMore").value(false)).andExpect(jsonPath("$.data[0].id").value(3));
+        mvc.perform(get("/api/data/pages").header("X-API-Key",key).param("minId","1").param("pageNum","3").param("pageSize","2"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.count").value(0)).andExpect(jsonPath("$.hasMore").value(false));
+        mvc.perform(get("/api/data/pages").header("X-API-Key",key).param("minId","1"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.pageNum").value(1))
+                .andExpect(jsonPath("$.pageSize").value(100)).andExpect(jsonPath("$.count").value(3));
+        mvc.perform(get("/api/data/pages").header("X-API-Key",key).param("minId","1").param("pageNum","2147483647").param("pageSize","1000"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.count").value(0));
+        mvc.perform(get("/services").with(user("reader").roles("VIEWER")))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("日调用量")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("最大返回行数"))));
+        assertThat(jdbc.queryForList("SELECT row_count FROM service_call ORDER BY id",Integer.class)).containsExactly(2,1,0,3,0);
+        assertThat(jdbc.queryForObject("SELECT MIN(duration_ms) FROM service_call",Long.class)).isNotNegative();
+    }
+
+    @Test
+    void invalidParametersAndQueryFailuresAreRecordedWithoutRequestSecrets() throws Exception {
+        apiService.create("验证查询","validation","SELECT id FROM warehouse.api_fixture WHERE name=:name OR name=:name ORDER BY id");
+        var service=mapper.services().getFirst(); apiService.publish(service.getId());
+        String key=apiService.credential(service.getId());
+        for(var invalid:java.util.List.of(Map.of("pageNum","0"),Map.of("pageNum","-1"),Map.of("pageNum","1.5"),
+                Map.of("pageNum","2147483648"),Map.of("pageSize",""),Map.of("pageSize","0"),Map.of("pageSize","1001"),Map.of("pageSize","1;DROP TABLE data_service"))) {
+            var request=get("/api/data/validation").header("X-API-Key",key).param("name","Ada");
+            invalid.forEach(request::param);
+            mvc.perform(request).andExpect(status().isBadRequest());
+        }
+        mvc.perform(get("/api/data/validation").header("X-API-Key",key)).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/data/validation").header("X-API-Key",key).param("name","Ada").param("extra","unexpected"))
+                .andExpect(status().isBadRequest());
+        String sensitiveValue="private-input' OR '1'='1";
+        mvc.perform(get("/api/data/validation").header("X-API-Key",key).param("name",sensitiveValue))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.count").value(0));
+        jdbc.update("UPDATE data_service SET query_sql='SELECT id FROM warehouse.missing_api_fixture' WHERE id=?",service.getId());
+        mvc.perform(get("/api/data/validation").header("X-API-Key",key))
+                .andExpect(status().isBadGateway());
+        assertThat(jdbc.queryForList("SELECT status_code FROM service_call ORDER BY id",Integer.class))
+                .containsExactly(400,400,400,400,400,400,400,400,400,400,200,502);
+        var records=jdbc.queryForList("SELECT * FROM service_call").toString();
+        assertThat(records).doesNotContain(key,sensitiveValue);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM warehouse.api_fixture",Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void dailyCountsUseShanghaiDayBoundariesAndCallPagesAreProtectedAndPaged() throws Exception {
+        apiService.create("日志查询","logs","SELECT id FROM warehouse.api_fixture ORDER BY id");
+        var service=mapper.services().getFirst();
+        apiService.create("未调用服务","unused","SELECT id FROM warehouse.api_fixture");
+        LocalDateTime start=LocalDate.now(ZoneId.of("Asia/Shanghai")).atStartOfDay(ZoneId.of("Asia/Shanghai"))
+                .withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime();
+        for(var time:java.util.List.of(start.minusNanos(1000),start,start.plusHours(23),start.plusDays(1))) {
+            jdbc.update("INSERT INTO service_call(service_id,started_at,duration_ms,status_code,row_count,page_num,page_size) VALUES(?,?,5,200,1,1,100)",service.getId(),time);
+        }
+        var counts=apiService.list().stream().collect(java.util.stream.Collectors.toMap(DataService::getSlug,DataService::getDailyCalls));
+        assertThat(counts).containsEntry("logs",2L).containsEntry("unused",0L);
+        String path="/services/"+service.getId()+"/calls";
+        mvc.perform(get(path)).andExpect(status().is3xxRedirection());
+        mvc.perform(get(path).with(user("reader").roles("VIEWER")).param("pageSize","2"))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("调用记录")))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("hasMore",true));
+        mvc.perform(get(path).with(user("reader").roles("VIEWER")).param("pageSize","2").param("pageNum","2"))
+                .andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("hasMore",false));
+        mvc.perform(get(path).with(user("reader").roles("VIEWER")).param("pageNum","0"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(get("/services/999999/calls").with(user("reader").roles("VIEWER")))
+                .andExpect(status().isNotFound());
+        var calls=apiService.calls(service.getId(),new com.litedata.service.QueryPage(1,20));
+        assertThat(calls).hasSize(4);
+        assertThat(calls.get(1).getStartedAt()).isEqualTo(start.plusHours(31));
+        var empty=apiService.list().stream().filter(s->s.getSlug().equals("unused")).findFirst().orElseThrow();
+        mvc.perform(get("/services/"+empty.getId()+"/calls").with(user("reader").roles("VIEWER")))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("暂无调用记录")));
     }
 
     @Test
@@ -206,6 +302,213 @@ class PlatformIntegrationTest {
         pipelineService.finish(secondRunId, false, "replayed acknowledgement");
         assertThat(mapper.pipeline(pipeline.getId()).getWatermark()).isEqualTo(successfulRun.getUpperBound());
         assertThat(mapper.run(secondRunId).getStatus()).isEqualTo("SUCCESS");
+    }
+
+    @Test
+    void resourceListsAndFormsHaveSeparateRoutesAndEnforceRoles() throws Exception {
+        var pipeline=createPipeline();
+        apiService.create("独立表单服务","forms","SELECT id FROM warehouse.api_fixture");
+        var ids=Map.of("sources",pipeline.getSourceId(),"pipelines",pipeline.getId(),
+                "services",mapper.services().getFirst().getId(),"users",mapper.findUser("admin").getId());
+        for(var resource:ids.keySet()) {
+            String base="/"+resource;
+            mvc.perform(get(base).with(user("admin").roles("ADMIN")))
+                    .andExpect(status().isOk())
+                    .andExpect(content().string(org.hamcrest.Matchers.containsString("href=\""+base+"/new\"")))
+                    .andExpect(content().string(org.hamcrest.Matchers.containsString(base+"/"+ids.get(resource)+"/edit")))
+                    .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("name=\""+(resource.equals("users")?"username":"name")+"\""))));
+            for(String path:java.util.List.of(base+"/new",base+"/"+ids.get(resource)+"/edit")) {
+                mvc.perform(get(path).with(user("admin").roles("ADMIN")))
+                        .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("取消")))
+                        .andExpect(content().string(org.hamcrest.Matchers.containsString("name=\""+(resource.equals("users")?"username":"name")+"\"")));
+                mvc.perform(get(path).with(user("viewer").roles("VIEWER"))).andExpect(status().isForbidden());
+                mvc.perform(get(path)).andExpect(status().is3xxRedirection());
+                mvc.perform(get(path).with(user("developer").roles("DEVELOPER")))
+                        .andExpect(resource.equals("users")?status().isForbidden():status().isOk());
+            }
+            mvc.perform(get(base+"/999999/edit").with(user("admin").roles("ADMIN"))).andExpect(status().isNotFound());
+            mvc.perform(post(base+"/"+ids.get(resource)).with(csrf()).with(user("viewer").roles("VIEWER")))
+                    .andExpect(status().isForbidden());
+            mvc.perform(post(base+"/"+ids.get(resource)).with(user("admin").roles("ADMIN")))
+                    .andExpect(status().isForbidden());
+        }
+    }
+
+    @Test
+    void sourceFormsSaveAndRetainSafeInputOnValidationFailure() throws Exception {
+        mvc.perform(post("/sources").with(csrf()).with(user("developer").roles("DEVELOPER"))
+                .param("name","form-source").param("jdbcUrl",MYSQL.getJdbcUrl())
+                .param("username",MYSQL.getUsername()).param("password","source-form-secret"))
+                .andExpect(status().is3xxRedirection()).andExpect(header().string("Location","/sources"));
+        var source=mapper.sources().getFirst();
+        String encrypted=source.getEncryptedPassword();
+        mvc.perform(get("/sources/"+source.getId()+"/edit").with(user("developer").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("source-form-secret"))))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(encrypted))));
+        mvc.perform(post("/sources/"+source.getId()).with(csrf()).with(user("developer").roles("DEVELOPER"))
+                .param("name","source-renamed").param("jdbcUrl",MYSQL.getJdbcUrl()).param("username",MYSQL.getUsername())
+                .param("password","").param("encryptedPassword","forged").param("status","CONNECTED"))
+                .andExpect(status().is3xxRedirection()).andExpect(header().string("Location","/sources"));
+        assertThat(mapper.source(source.getId()).getName()).isEqualTo("source-renamed");
+        assertThat(mapper.source(source.getId()).getEncryptedPassword()).isEqualTo(encrypted);
+        assertThat(mapper.source(source.getId()).getStatus()).isEqualTo("UNTESTED");
+        mvc.perform(post("/sources").with(csrf()).with(user("developer").roles("DEVELOPER"))
+                .param("name","source-renamed").param("jdbcUrl",MYSQL.getJdbcUrl())
+                .param("username","retained-user").param("password","never-render-this-secret"))
+                .andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.view().name("source-form"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("retained-user")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("never-render-this-secret"))));
+        assertThat(mapper.sources()).hasSize(1);
+    }
+
+    @Test
+    void pipelineEditsKeepWatermarkAndCannotChangeRunningOrSourceBoundaries() throws Exception {
+        var pipeline=createPipeline();
+        long runId=(Long)pipelineService.claim(pipeline.getId()).get("runId");
+        mvc.perform(pipelineEdit(pipeline).param("name","running-edit"))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("已有执行中的实例")));
+        assertThat(mapper.pipeline(pipeline.getId()).getName()).isEqualTo(pipeline.getName());
+        pipelineService.finish(runId,true,"done");
+        var watermark=mapper.pipeline(pipeline.getId()).getWatermark();
+        mapper.definition(pipeline.getId(),12345L); mapper.schedule(pipeline.getId(),42,"SCHEDULED");
+        mvc.perform(pipelineEdit(pipeline).param("name","edited-pipeline").param("watermark","2099-01-01T00:00:00")
+                .param("activeRunId","1").param("definitionCode","1"))
+                .andExpect(status().is3xxRedirection()).andExpect(header().string("Location","/pipelines"));
+        var edited=mapper.pipeline(pipeline.getId());
+        assertThat(edited.getName()).isEqualTo("edited-pipeline");
+        assertThat(edited.getWatermark()).isEqualTo(watermark);
+        assertThat(edited.getDefinitionCode()).isEqualTo(12345L);
+        assertThat(edited.getScheduleId()).isEqualTo(42);
+        assertThat(edited.getActiveRunId()).isNull();
+        var changed=new Pipeline(); org.springframework.beans.BeanUtils.copyProperties(pipeline,changed);
+        changed.setTargetTable("other_target");
+        mvc.perform(pipelineEdit(changed).param("name","bad-boundary")).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("同步边界及调度配置创建后固定")));
+        assertThat(mapper.pipeline(pipeline.getId()).getTargetTable()).isEqualTo(pipeline.getTargetTable());
+        mvc.perform(post("/pipelines").with(csrf()).with(user("developer").roles("DEVELOPER"))
+                .param("name","invalid-source").param("sourceId","not-a-number"))
+                .andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.view().name("pipeline-form"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("invalid-source")));
+    }
+
+    @Test
+    void serviceEditReturnsToListAsDraftAndRetainsApiIdentityAndCredentials() throws Exception {
+        apiService.create("待编辑服务","edit-service","SELECT id FROM warehouse.api_fixture");
+        var service=mapper.services().getFirst();
+        apiService.publish(service.getId()); String token=apiService.credential(service.getId());
+        mvc.perform(post("/services/"+service.getId()).with(csrf()).with(user("developer").roles("DEVELOPER"))
+                .param("name","编辑后服务").param("slug",service.getSlug()).param("querySql","SELECT name FROM warehouse.api_fixture")
+                .param("published","true"))
+                .andExpect(status().is3xxRedirection()).andExpect(header().string("Location","/services"));
+        var edited=mapper.dataService(service.getId());
+        assertThat(edited.getName()).isEqualTo("编辑后服务"); assertThat(edited.isPublished()).isFalse();
+        assertThat(edited.getQuerySql()).isEqualTo("SELECT name FROM warehouse.api_fixture");
+        assertThat(mapper.credentialValid(service.getId(),DataApiService.hash(token))).isEqualTo(1);
+        mvc.perform(post("/services/"+service.getId()).with(csrf()).with(user("developer").roles("DEVELOPER"))
+                .param("name","retained-service").param("slug","changed-path").param("querySql","SELECT id FROM warehouse.api_fixture"))
+                .andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.view().name("service-form"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("retained-service")));
+        assertThat(mapper.dataService(service.getId()).getSlug()).isEqualTo(service.getSlug());
+        mvc.perform(post("/services").with(csrf()).with(user("developer").roles("DEVELOPER"))
+                .param("name","invalid-sql").param("slug","invalid-sql").param("querySql","DELETE FROM warehouse.api_fixture"))
+                .andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.view().name("service-form"));
+        assertThat(mapper.services()).hasSize(1);
+    }
+
+    @Test
+    void userFormEditsPreservePasswordsAndPreventRemovingOwnAdminRole() throws Exception {
+        mvc.perform(post("/users").with(csrf()).with(user("admin").roles("ADMIN"))
+                .param("username","form-account").param("password","FormAccountPassword2026").param("role","VIEWER"))
+                .andExpect(status().is3xxRedirection()).andExpect(header().string("Location","/users"));
+        try {
+            var account=mapper.findUser("form-account");
+            mvc.perform(get("/users/"+account.getId()+"/edit").with(user("admin").roles("ADMIN")))
+                    .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(account.getPasswordHash()))));
+            mvc.perform(post("/users/"+account.getId()).with(csrf()).with(user("admin").roles("ADMIN"))
+                    .param("username",account.getUsername()).param("password","").param("role","DEVELOPER").param("enabled","false"))
+                    .andExpect(status().is3xxRedirection()).andExpect(header().string("Location","/users"));
+            assertThat(mapper.user(account.getId()).getRole()).isEqualTo("DEVELOPER");
+            assertThat(mapper.user(account.getId()).getPasswordHash()).isEqualTo(account.getPasswordHash());
+            assertThat(mapper.user(account.getId()).isEnabled()).isTrue();
+            mvc.perform(post("/users").with(csrf()).with(user("admin").roles("ADMIN"))
+                    .param("username","form-account").param("password","DuplicateSecret2026").param("role","ADMIN"))
+                    .andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.view().name("user-form"))
+                    .andExpect(content().string(org.hamcrest.Matchers.containsString("用户名已存在")))
+                    .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("DuplicateSecret2026"))));
+            var admin=mapper.findUser("admin");
+            mvc.perform(post("/users/"+admin.getId()).with(csrf()).with(user("admin").roles("ADMIN"))
+                    .param("username","admin").param("password","").param("role","VIEWER"))
+                    .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("不能移除当前登录账号的管理员角色")));
+            assertThat(mapper.findUser("admin").getRole()).isEqualTo("ADMIN");
+        } finally { jdbc.update("DELETE FROM app_user WHERE username='form-account'"); }
+    }
+
+    @Test
+    void allResourceListsPageInTheDatabaseAndPreserveModelFilters() throws Exception {
+        try {
+            for(String path:java.util.List.of("/sources","/pipelines","/services","/models","/transforms")) {
+                mvc.perform(get(path).with(user("admin").roles("ADMIN")))
+                        .andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("totalCount",0L));
+            }
+            for(int i=1;i<=3;i++) {
+                sourceService.create("paged-source-"+i,MYSQL.getJdbcUrl(),MYSQL.getUsername(),MYSQL.getPassword());
+                pipelineService.create("paged-pipeline-"+i,mapper.sources().getFirst().getId(),"source_orders","updated_at","ods_orders","","0 0 * * * ?");
+                apiService.create("paged-service-"+i,"paged-service-"+i,"SELECT id FROM warehouse.api_fixture");
+                mapper.insertUser("paged-user-"+i,"unused-test-hash","VIEWER");
+                jdbc.update("INSERT INTO data_model(table_name,name,subject_area,layer) VALUES(?,?,?,?)",
+                        "page_model_"+i,i==1?"Literal_%":"Paged Model "+i,"分页域",i==3?"ADS":"DWD");
+                long modelId=jdbc.queryForObject("SELECT id FROM data_model WHERE table_name=?",Long.class,"page_model_"+i);
+                jdbc.update("INSERT INTO sql_task(name,model_id,sql_text) VALUES(?,?,?)","paged-task-"+i,modelId,"INSERT INTO warehouse.page_model_"+i+" SELECT id FROM warehouse.api_fixture");
+            }
+            var tables=Map.of("sources","data_source","pipelines","pipeline","services","data_service",
+                    "users","app_user","models","data_model","transforms","sql_task");
+            var attributes=Map.of("sources","sources","pipelines","pipelines","services","services",
+                    "users","users","models","models","transforms","tasks");
+            for(var resource:tables.keySet()) {
+                var ids=jdbc.queryForList("SELECT id FROM "+tables.get(resource)+" ORDER BY id DESC",Long.class);
+                for(int number:java.util.List.of(1,2,Integer.MAX_VALUE)) {
+                    int actual=Math.min(number,(ids.size()+1)/2);
+                    var result=mvc.perform(get("/"+resource).with(user("admin").roles("ADMIN"))
+                            .param("pageNum",Integer.toString(number)).param("pageSize","2"))
+                            .andExpect(status().isOk())
+                            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("pageNum",actual))
+                            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("totalCount",(long)ids.size()))
+                            .andReturn();
+                    var rows=(java.util.List<?>)result.getModelAndView().getModel().get(attributes.get(resource));
+                    var actualIds=rows.stream().map(row->(Long)new org.springframework.beans.BeanWrapperImpl(row).getPropertyValue("id")).toList();
+                    assertThat(actualIds).containsExactlyElementsOf(ids.subList((actual-1)*2,Math.min(actual*2,ids.size())));
+                }
+                for(var params:java.util.List.of(Map.of("pageNum","0"),Map.of("pageNum","-1"),Map.of("pageNum","x"),
+                        Map.of("pageSize","0"),Map.of("pageSize","1001"),Map.of("pageNum","2147483648"))) {
+                    var request=get("/"+resource).with(user("admin").roles("ADMIN")); params.forEach(request::param);
+                    mvc.perform(request).andExpect(status().isBadRequest());
+                }
+            }
+            mvc.perform(get("/models").with(user("admin").roles("ADMIN")).param("keyword","PAGE_MODEL").param("layer","DWD").param("pageSize","1"))
+                    .andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("totalCount",2L))
+                    .andExpect(content().string(org.hamcrest.Matchers.containsString("keyword=PAGE_MODEL")))
+                    .andExpect(content().string(org.hamcrest.Matchers.containsString("layer=DWD")));
+            mvc.perform(get("/models").with(user("admin").roles("ADMIN")).param("keyword","literal_%"))
+                    .andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("totalCount",1L));
+            jdbc.update("UPDATE sql_task SET archived=TRUE WHERE name='paged-task-3'");
+            jdbc.update("UPDATE data_model SET archived=TRUE WHERE table_name='page_model_3'");
+            for(String path:java.util.List.of("/models","/transforms"))
+                mvc.perform(get(path).with(user("admin").roles("ADMIN")))
+                        .andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("totalCount",2L));
+            mvc.perform(get("/pipelines/new").with(user("developer").roles("DEVELOPER")))
+                    .andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("sources",org.hamcrest.Matchers.hasSize(3)));
+        } finally {
+            jdbc.update("DELETE FROM sql_task WHERE name LIKE 'paged-task-%'");
+            jdbc.update("DELETE FROM data_model WHERE table_name LIKE 'page_model_%'");
+            jdbc.update("DELETE FROM app_user WHERE username LIKE 'paged-user-%'");
+        }
+    }
+
+    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder pipelineEdit(Pipeline pipeline) {
+        return post("/pipelines/"+pipeline.getId()).with(csrf()).with(user("developer").roles("DEVELOPER"))
+                .param("sourceId",Long.toString(pipeline.getSourceId())).param("sourceTable",pipeline.getSourceTable())
+                .param("watermarkColumn",pipeline.getWatermarkColumn()).param("targetTable",pipeline.getTargetTable())
+                .param("transformSql",pipeline.getTransformSql()).param("cronExpression",pipeline.getCronExpression());
     }
 
     private Pipeline createPipeline() {

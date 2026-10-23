@@ -5,7 +5,7 @@ public class DataService {
     private String name;
     private String slug;
     private String querySql;
-    private int maxRows;
+    private long dailyCalls;
     private boolean published;
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -15,8 +15,8 @@ public class DataService {
     public void setSlug(String slug) { this.slug = slug; }
     public String getQuerySql() { return querySql; }
     public void setQuerySql(String querySql) { this.querySql = querySql; }
-    public int getMaxRows() { return maxRows; }
-    public void setMaxRows(int maxRows) { this.maxRows = maxRows; }
+    public long getDailyCalls() { return dailyCalls; }
+    public void setDailyCalls(long dailyCalls) { this.dailyCalls = dailyCalls; }
     public boolean isPublished() { return published; }
     public void setPublished(boolean published) { this.published = published; }
 }

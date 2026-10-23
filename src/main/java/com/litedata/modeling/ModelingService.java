@@ -4,6 +4,7 @@ import com.litedata.model.*;
 import com.litedata.store.ModelMapper;
 import com.litedata.store.PlatformMapper;
 import com.litedata.store.SqlTaskMapper;
+import com.litedata.service.QueryPage;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.sql.SQLException;
@@ -32,6 +33,14 @@ public class ModelingService {
         String query = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
         return mapper.models().stream().filter(m -> layer == null || layer.isBlank() || layer.equals(m.getLayer()))
                 .filter(m -> (m.getTableName() + " " + m.getName() + " " + m.getSubjectArea()).toLowerCase(Locale.ROOT).contains(query)).toList();
+    }
+
+    public long count(String keyword, String layer) {
+        return mapper.countModels(query(keyword), normalizedLayer(layer));
+    }
+
+    public List<DataModel> list(String keyword, String layer, QueryPage page) {
+        return mapper.modelPage(query(keyword), normalizedLayer(layer), page.pageSize(), page.offset());
     }
 
     public DataModel require(long id) {
@@ -133,6 +142,8 @@ public class ModelingService {
         } catch (java.security.NoSuchAlgorithmException e) { throw new IllegalStateException("SHA-256 unavailable", e); }
     }
     private DataModel withFields(DataModel model) { model.setFields(mapper.fields(model.getId())); return model; }
+    private static String query(String keyword) { return keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT); }
+    private static String normalizedLayer(String layer) { return layer == null || layer.isBlank() ? "" : layer; }
     private static DataModel requireModel(DataModel model) {
         if (model == null) throw new IllegalArgumentException("模型不存在或已归档");
         return model;

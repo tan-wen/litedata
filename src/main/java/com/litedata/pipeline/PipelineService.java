@@ -26,6 +26,22 @@ public class PipelineService {
         return pipeline;
     }
     public void create(String name,long sourceId,String table,String column,String target,String transform,String cron) {
+        mapper.insertPipeline(definition(name,sourceId,table,column,target,transform,cron));
+    }
+    @Transactional
+    public void update(long id,String name,long sourceId,String table,String column,String target,String transform,String cron) {
+        var existing=mapper.lockPipeline(id);
+        if(existing==null) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"同步任务不存在");
+        if(existing.getActiveRunId()!=null) throw new IllegalArgumentException("任务已有执行中的实例，请等待完成后编辑");
+        if(existing.getSourceId()!=sourceId || !Objects.equals(existing.getSourceTable(),table) ||
+                !Objects.equals(existing.getWatermarkColumn(),column) || !Objects.equals(existing.getTargetTable(),target) ||
+                !Objects.equals(existing.getCronExpression(),cron))
+            throw new IllegalArgumentException("同步边界及调度配置创建后固定，调整时请新建管道以避免复用旧水位");
+        var pipeline=definition(name,sourceId,table,column,target,transform,cron);
+        pipeline.setId(id);
+        mapper.updatePipeline(pipeline);
+    }
+    private Pipeline definition(String name,long sourceId,String table,String column,String target,String transform,String cron) {
         sources.require(sourceId);
         if(name==null || name.isBlank() || name.length()>100) throw new IllegalArgumentException("任务名称不能为空，最长100字符");
         // The first release deliberately has a single hourly policy, in Quartz syntax.
@@ -49,7 +65,7 @@ public class PipelineService {
         Pipeline pipeline=new Pipeline(); pipeline.setName(name.trim()); pipeline.setSourceId(sourceId);
         pipeline.setSourceTable(JdbcConnections.identifier(table)); pipeline.setWatermarkColumn(JdbcConnections.identifier(column));
         pipeline.setTargetTable(JdbcConnections.identifier(target)); pipeline.setTransformSql(transform); pipeline.setCronExpression(cron);
-        mapper.insertPipeline(pipeline);
+        return pipeline;
     }
     @Transactional
     public Map<String,Object> claim(long id) {

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org"><body>
+<div th:fragment="pagination" class="d-flex flex-wrap justify-content-between align-items-center gap-5 mt-5">
+  <div class="fg-2" th:text="${'共 ' + totalCount + ' 条，第 ' + pageNum + ' / ' + totalPages + ' 页'}"></div>
+  <div class="d-flex flex-wrap align-items-center gap-5">
+    <form class="d-flex align-items-center gap-3" th:action="@{${pagePath}}" method="get">
+      <input th:if="${keyword != null}" type="hidden" name="keyword" th:value="${keyword}">
+      <input th:if="${layer != null}" type="hidden" name="layer" th:value="${layer}">
+      <label class="text-nowrap" for="list-page-size">每页</label>
+      <select class="form-control form-control-sm w-auto" id="list-page-size" name="pageSize">
+        <option th:if="${!#lists.contains(pageSizes,pageSize)}" th:value="${pageSize}" th:text="${pageSize}" selected></option>
+        <option th:each="size : ${pageSizes}" th:value="${size}" th:text="${size}" th:selected="${size == pageSize}"></option>
+      </select>
+      <button class="btn-outline theme-secondary btn-sm" type="submit">应用</button>
+    </form>
+    <nav aria-label="资源列表分页"><ul class="pagination theme-primary pagination-sm mb-0">
+      <li class="page-item" th:classappend="${!hasPrevious} ? 'disabled'">
+        <a th:if="${hasPrevious}" class="page-link" th:href="@{${pagePath}(pageNum=${pageNum - 1},pageSize=${pageSize},keyword=${keyword},layer=${layer})}">上一页</a>
+        <span th:unless="${hasPrevious}" class="page-link" aria-disabled="true">上一页</span>
+      </li>
+      <li class="page-item active" aria-current="page"><span class="page-link" th:text="${pageNum}"></span></li>
+      <li class="page-item" th:classappend="${!hasMore} ? 'disabled'">
+        <a th:if="${hasMore}" class="page-link" th:href="@{${pagePath}(pageNum=${pageNum + 1},pageSize=${pageSize},keyword=${keyword},layer=${layer})}">下一页</a>
+        <span th:unless="${hasMore}" class="page-link" aria-disabled="true">下一页</span>
+      </li>
+    </ul></nav>
+  </div>
+</div>
+</body></html>

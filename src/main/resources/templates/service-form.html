@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title>数据服务 · 数据中台</title></head>
+<body><section>
+  <div class="mb-7"><div class="page-kicker">数据开发 / <a th:href="@{/services}">数据服务</a></div><h1 class="page-title" th:text="${resourceId == null ? '创建数据服务' : '编辑数据服务'}">创建数据服务</h1><p class="page-subtitle mb-0">将 Doris 只读 SQL 发布为受控 API；命名参数如 <code>:customerId</code> 自动成为请求参数。</p></div>
+  <div th:replace="~{fragments/messages :: messages}"></div>
+  <form th:if="${canEdit}" th:object="${draft}" th:action="${formAction}" method="post">
+    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+    <article class="platform-card card mb-5"><div class="card-header">服务定义</div><div class="card-body"><p th:if="${resourceId != null}" class="alert theme-info">保存后服务恢复为草稿，确认查询定义后需重新发布；已有访问凭证保留。</p><div class="row g-5">
+      <div class="md:col-6"><label class="form-label" for="name">服务名称</label><input class="form-control" th:field="*{name}" required maxlength="100"></div>
+      <div class="md:col-6"><label class="form-label" for="slug">服务标识</label><input class="form-control" th:field="*{slug}" th:readonly="${resourceId != null}" required pattern="[a-z][a-z0-9-]*" maxlength="80" placeholder="customer-summary"><div class="form-text" th:text="${resourceId == null ? '使用小写字母、数字和连字符。' : '服务标识创建后固定，以保证现有 API 路径不变。'}"></div></div>
+      <div class="col-12"><label class="form-label" for="querySql">Doris 只读查询</label><textarea class="form-control code-preview" th:field="*{querySql}" data-sql-editor spellcheck="false" rows="8" required maxlength="20000" placeholder="SELECT customer_id, name FROM ads_customers WHERE customer_id = :customerId ORDER BY customer_id"></textarea><div class="form-text">仅支持只读查询。<code>pageNum</code> 和 <code>pageSize</code> 是固定分页参数，不能用作 SQL 业务参数；分页查询请用 <code>ORDER BY</code> 固定顺序。</div></div>
+    </div></div></article>
+    <div class="d-flex gap-3"><button class="btn-solid theme-primary" type="submit" th:text="${resourceId == null ? '创建服务' : '保存修改'}">创建服务</button><a class="btn-outline theme-secondary" th:href="@{/services}">取消</a></div>
+  </form>
+  <p th:unless="${canEdit}" class="alert theme-info">当前账号仅可查看数据服务。</p>
+  <script th:src="@{/js/sql-editor.js}" defer></script>
+</section></body>
+</html>

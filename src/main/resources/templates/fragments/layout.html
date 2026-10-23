@@ -3,39 +3,52 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <title th:replace="${title}">数据中台</title>
+  <script th:src="@{/js/theme.js}"></script>
   <link rel="stylesheet" th:href="@{/vendor/bootstrap/bootstrap.min.css}">
   <link rel="stylesheet" th:href="@{/css/app.css}">
 </head>
 <body>
-<header class="topbar navbar navbar-dark px-3 px-md-4">
-  <a class="navbar-brand brand" th:href="@{/}">LiteData 数据中台</a>
-  <span class="environment badge rounded-pill text-bg-light text-primary ms-2">单机开发环境</span>
-  <form class="ms-auto" th:action="@{/logout}" method="post">
-    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
-    <button class="btn btn-sm btn-outline-light" type="submit">退出登录</button>
-  </form>
-</header>
-<div class="app-shell d-md-flex">
-  <aside class="sidebar py-2">
-    <div class="nav-section">工作台</div>
-    <nav class="nav flex-md-column" aria-label="主导航">
-      <a class="nav-link" th:classappend="${activeNav == 'dashboard'} ? ' active'" th:href="@{/}">▣ 工作台</a>
+<a class="visually-hidden-focusable btn-solid theme-primary" href="#main-content">跳转到主要内容</a>
+<div class="admin-shell">
+  <aside class="sidebar" id="desktop-navigation">
+    <a class="side-brand" th:href="@{/}" aria-label="LiteData 数据中台"><span class="brand-mark" aria-hidden="true">L</span><span class="brand-copy"><span class="brand-name">LiteData</span><span class="brand-caption">轻量数据中台</span></span></a>
+    <nav th:fragment="navigation" aria-label="主导航">
+      <div class="nav-section">工作台</div>
+      <a class="side-link" th:classappend="${activeNav == 'dashboard'} ? ' active'" th:attr="aria-current=${activeNav == 'dashboard' ? 'page' : null}" th:href="@{/}" title="工作台" aria-label="工作台"><svg class="nav-icon" viewBox="0 0 18 18" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="11" y="2" width="5" height="5" rx="1"/><rect x="2" y="11" width="5" height="5" rx="1"/><rect x="11" y="11" width="5" height="5" rx="1"/></svg><span class="nav-text">工作台</span></a>
+      <div class="nav-section">数据开发</div>
+      <a class="side-link" th:classappend="${activeNav == 'sources'} ? ' active'" th:attr="aria-current=${activeNav == 'sources' ? 'page' : null}" th:href="@{/sources}" title="数据源" aria-label="数据源"><svg class="nav-icon" viewBox="0 0 18 18" aria-hidden="true"><ellipse cx="9" cy="4" rx="6" ry="2.5"/><path d="M3 4v10c0 3 12 3 12 0V4M3 9c0 3 12 3 12 0"/></svg><span class="nav-text">数据源</span></a>
+      <a class="side-link" th:classappend="${activeNav == 'models'} ? ' active'" th:attr="aria-current=${activeNav == 'models' ? 'page' : null}" th:href="@{/models}" title="数据建模" aria-label="数据建模"><svg class="nav-icon" viewBox="0 0 18 18" aria-hidden="true"><path d="m9 2 7 4-7 4-7-4 7-4ZM2 10l7 4 7-4M2 14l7 4 7-4"/></svg><span class="nav-text">数据建模</span></a>
+      <a class="side-link" th:classappend="${activeNav == 'pipelines'} ? ' active'" th:attr="aria-current=${activeNav == 'pipelines' ? 'page' : null}" th:href="@{/pipelines}" title="同步管道" aria-label="同步管道"><svg class="nav-icon" viewBox="0 0 18 18" aria-hidden="true"><path d="M2 6h13l-3-3M16 12H3l3 3"/></svg><span class="nav-text">同步管道</span></a>
+      <a class="side-link" th:classappend="${activeNav == 'transforms'} ? ' active'" th:attr="aria-current=${activeNav == 'transforms' ? 'page' : null}" th:href="@{/transforms}" title="SQL 加工任务" aria-label="SQL 加工任务"><svg class="nav-icon" viewBox="0 0 18 18" aria-hidden="true"><path d="M6 4 2 9l4 5M12 4l4 5-4 5M10 2 8 16"/></svg><span class="nav-text">SQL 加工任务</span></a>
+      <a class="side-link" th:classappend="${activeNav == 'services'} ? ' active'" th:attr="aria-current=${activeNav == 'services' ? 'page' : null}" th:href="@{/services}" title="数据服务" aria-label="数据服务"><svg class="nav-icon" viewBox="0 0 18 18" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="11" y="11" width="5" height="5" rx="1"/><path d="M12 3h4v4M16 3l-5 5M3 12v4h4M3 16l5-5"/></svg><span class="nav-text">数据服务</span></a>
+      <div class="nav-section" th:if="${canManageUsers}">系统管理</div>
+      <a class="side-link" th:if="${canManageUsers}" th:classappend="${activeNav == 'users'} ? ' active'" th:attr="aria-current=${activeNav == 'users' ? 'page' : null}" th:href="@{/users}" title="账号权限" aria-label="账号权限"><svg class="nav-icon" viewBox="0 0 18 18" aria-hidden="true"><circle cx="7" cy="6" r="3"/><path d="M1 16v-1a6 6 0 0 1 12 0v1M13 3a3 3 0 0 1 0 6M14 11a5 5 0 0 1 3 5"/></svg><span class="nav-text">账号权限</span></a>
     </nav>
-    <div class="nav-section">数据开发</div>
-    <nav class="nav flex-md-column" aria-label="数据开发">
-      <a class="nav-link" th:classappend="${activeNav == 'sources'} ? ' active'" th:href="@{/sources}">◈ 数据源</a>
-      <a class="nav-link" th:classappend="${activeNav == 'models'} ? ' active'" th:href="@{/models}">▤ 数据建模</a>
-      <a class="nav-link" th:classappend="${activeNav == 'pipelines'} ? ' active'" th:href="@{/pipelines}">☷ 同步管道</a>
-      <a class="nav-link" th:classappend="${activeNav == 'transforms'} ? ' active'" th:href="@{/transforms}">⇢ SQL 加工任务</a>
-      <a class="nav-link" th:classappend="${activeNav == 'services'} ? ' active'" th:href="@{/services}">◇ 数据服务</a>
-      <a class="nav-link" th:if="${canManageUsers}" th:classappend="${activeNav == 'users'} ? ' active'" th:href="@{/users}">⚙ 账号权限</a>
-    </nav>
+    <div class="sidebar-foot">LiteData · 单机试点</div>
   </aside>
-  <main class="main-content flex-grow-1">
-    <th:block th:replace="${content}"></th:block>
-  </main>
+  <div class="workspace">
+    <header class="topbar">
+      <button class="shell-toggle desktop-toggle" type="button" data-sidebar-toggle aria-controls="desktop-navigation" aria-expanded="true" aria-label="收起侧栏"><svg class="nav-icon" viewBox="0 0 18 18" aria-hidden="true"><rect x="2" y="3" width="14" height="12" rx="2"/><path d="M7 3v12"/></svg></button>
+      <button class="shell-toggle mobile-toggle" type="button" data-mobile-nav-open aria-controls="mobile-navigation" aria-haspopup="dialog" aria-label="打开导航"><svg class="nav-icon" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 4h12M3 9h12M3 14h12"/></svg></button>
+      <span class="workspace-name">数据中台 / 工作空间</span>
+      <span class="environment">单机开发环境</span>
+      <div class="topbar-actions">
+        <div th:replace="~{fragments/appearance :: controls}"></div>
+        <form th:action="@{/logout}" method="post">
+          <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+          <button class="btn-outline theme-secondary btn-sm" type="submit" aria-label="退出登录"><svg class="nav-icon" viewBox="0 0 18 18" aria-hidden="true"><path d="M7 3H3v12h4M8 9h9l-3-3M17 9l-3 3"/></svg><span class="logout-label">退出登录</span></button>
+        </form>
+      </div>
+    </header>
+    <main class="main-content" id="main-content" tabindex="-1"><th:block th:replace="${content}"></th:block></main>
+  </div>
 </div>
-<script th:src="@{/vendor/bootstrap/bootstrap.bundle.min.js}"></script>
+<dialog class="navigation-dialog" id="mobile-navigation" aria-label="导航菜单">
+  <div class="mobile-nav-header"><a class="side-brand" th:href="@{/}"><span class="brand-mark" aria-hidden="true">L</span><span class="brand-name">LiteData</span></a><button class="btn-close" type="button" data-mobile-nav-close aria-label="关闭导航"></button></div>
+  <nav th:replace="~{fragments/layout :: navigation}"></nav>
+</dialog>
+<script type="module" th:src="@{/vendor/bootstrap/bootstrap.bundle.min.js}"></script>
 </body>
 </html>

@@ -20,12 +20,24 @@ public class SourceService {
         return source;
     }
     public void create(String name, String url, String user, String password) {
+        mapper.insertSource(definition(name, url, user, password));
+    }
+    public void update(long id, String name, String url, String user, String password) {
+        var existing = require(id);
+        if (!existing.getJdbcUrl().equals(url) && mapper.pipelines().stream().anyMatch(p -> p.getSourceId() == id))
+            throw new IllegalArgumentException("数据源已被同步管道引用，修改连接地址请新建数据源和管道");
+        var source = definition(name, url, user, password);
+        source.setId(id);
+        if (password == null || password.isEmpty()) source.setEncryptedPassword(existing.getEncryptedPassword());
+        mapper.updateSource(source);
+    }
+    private DataSource definition(String name, String url, String user, String password) {
         if (name == null || name.isBlank() || name.length() > 100 || user == null || user.isBlank() || user.length() > 100)
             throw new IllegalArgumentException("请输入有效的数据源名称与用户名");
         connections.validateUrl(url);
         DataSource source = new DataSource(); source.setName(name.trim()); source.setJdbcUrl(url);
         source.setUsername(user); source.setEncryptedPassword(cipher.encrypt(password == null ? "" : password));
-        mapper.insertSource(source);
+        return source;
     }
     public void test(long id) {
         var source = require(id);

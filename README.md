@@ -9,6 +9,8 @@ LiteData（仓库名 `litedata`）是面向单机试点的轻量数据中台，�
 
 ## 项目能力
 
+后台采用 Helm 风格布局与本地固定版本的 Bootstrap 6（`6.0.0-alpha.1`），支持浅色、深色、跟随系统，以及海蓝、鸢紫、青绿、石墨四套配色，浏览器记住选择。组件迁移与浏览器要求见 [界面与主题说明](docs/ui-guide.md)。
+
 | 模块 | 当前实现 |
 | --- | --- |
 | 工作台 | 数据源、同步管道、数据服务统计及最近运行实例 |
@@ -19,6 +21,8 @@ LiteData（仓库名 `litedata`）是面向单机试点的轻量数据中台，�
 | 加工与调度 | DataX runner、Doris INSERT SELECT、DS 依赖工作流和定时启停；演示链路已实测 |
 | 数据服务 | 受控 SELECT、命名参数、发布/下线、凭证轮换、限流与调用审计 |
 | 账号权限 | ADMIN / DEVELOPER / VIEWER，管理页面 Session 登录与 CSRF 防护 |
+
+所有资源的列表、新增、编辑使用独立页面。列表默认每页20条，可切换每页条数及前后翻页，显示记录总数；模型筛选条件在翻页时保留。数据源和账号编辑时密码留空保留原密码；同步管道编辑仅调整名称与加工 SQL，保留同步边界、水位和调度配置，运行中不能编辑。数据服务编辑后恢复为草稿，确认后重新发布，原有 API 路径和访问凭证保留。
 
 ```text
 MySQL 源表 → DataX 时间水位增量 → Doris ODS → INSERT SELECT → Doris ADS → 数据 API
@@ -89,7 +93,7 @@ sh deploy/start.sh
 
    ```sql
    SELECT id, customer_name, amount, updated_at
-   FROM ads_orders WHERE id = :id
+   FROM ads_orders WHERE id = :id ORDER BY id
    ```
 
    发布服务并生成一次性显示的凭证；每次重新生成会吊销旧凭证。
@@ -97,12 +101,14 @@ sh deploy/start.sh
 5. 调用：
 
    ```sh
-   curl -H 'X-API-Key: <生成的凭证>' 'http://localhost:8080/api/data/orders?id=1'
+   curl -H 'X-API-Key: <生成的凭证>' 'http://localhost:8080/api/data/orders?id=1&pageNum=1&pageSize=100'
    ```
 
 服务固定使用只读仓库账号，命名参数由 MyBatis 绑定。每服务凭证每分钟最多 60 次调用，
-总查询并发上限 8，查询超时 15 秒，最大结果行数可配置为 1–10000。
-返回 `data`、`count` 和 `truncated`。
+总查询并发上限 8，查询超时 15 秒。分页固定使用 `pageNum`（默认 1）和 `pageSize`（默认 100，范围 1–1000），
+这两个名称不能用作 SQL 业务参数。查询 SQL 必须使用稳定的 `ORDER BY` 保证跨页顺序一致。
+返回 `data`、`count`、`pageNum`、`pageSize` 和 `hasMore`，不返回 `total` 或 `truncated`。服务列表的日调用量按
+Asia/Shanghai 当天统计，包含成功和失败请求；每个服务可进入调用记录查看时间、状态、耗时和分页元数据。
 
 ## 数据建模
 

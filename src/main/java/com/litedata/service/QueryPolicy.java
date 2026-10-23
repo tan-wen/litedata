@@ -33,6 +33,7 @@ public class QueryPolicy {
                     while(end<sql.length() && (Character.isLetterOrDigit(sql.charAt(end)) || sql.charAt(end)=='_')) end++;
                     String name=sql.substring(i+1,end);
                     if(!name.matches("[A-Za-z][A-Za-z0-9_]*")) throw new IllegalArgumentException("命名参数仅支持英文字母、数字和下划线");
+                    if(name.equals("pageNum") || name.equals("pageSize")) throw new IllegalArgumentException("pageNum 和 pageSize 为固定分页参数，不能用作 SQL 业务参数");
                     mapped.append("#{values[").append(params.size()).append("]}"); jdbc.append('?'); params.add(name); i=end-1;
                 } else { jdbc.append(c); mapped.append(c); }
             }
