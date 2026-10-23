@@ -26,6 +26,8 @@ public class SourceService {
         var existing = require(id);
         if (!existing.getJdbcUrl().equals(url) && mapper.pipelines().stream().anyMatch(p -> p.getSourceId() == id))
             throw new IllegalArgumentException("数据源已被同步管道引用，修改连接地址请新建数据源和管道");
+        if (!existing.getJdbcUrl().equals(url) && mapper.qualitySourceReferences(id)>0)
+            throw new IllegalArgumentException("数据源已被质量任务引用，修改连接地址请新建数据源及质量任务，以保留历史对账口径");
         var source = definition(name, url, user, password);
         source.setId(id);
         if (password == null || password.isEmpty()) source.setEncryptedPassword(existing.getEncryptedPassword());

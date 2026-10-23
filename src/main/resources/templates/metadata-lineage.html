@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title>表级血缘 · LiteData</title></head><body><section>
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-7 gap-5"><div><div class="page-kicker">数据治理 / 表级血缘</div><h1 class="page-title" th:text="${table.catalogName + '.' + table.tableName}"></h1><p class="page-subtitle mb-0">箭头由读取表指向写入表，追溯数据来源与下游影响。</p></div><a class="btn-outline theme-secondary" th:href="@{/metadata/{id}(id=${table.id})}">返回表详情</a></div>
+  <div th:replace="~{fragments/messages :: messages}"></div>
+  <article class="platform-card card mb-5"><div class="card-body">
+    <form class="d-flex flex-wrap align-items-center gap-3 mb-5" method="get" th:action="@{/metadata/{id}/lineage(id=${table.id})}"><label for="lineage-direction">查看方向</label><select class="form-control w-auto" name="direction" id="lineage-direction"><option value="both" th:selected="${direction == 'both'}">上下游</option><option value="upstream" th:selected="${direction == 'upstream'}">上游来源</option><option value="downstream" th:selected="${direction == 'downstream'}">下游影响</option></select><label for="lineage-depth">展开层数</label><select class="form-control w-auto" name="depth" id="lineage-depth"><option th:each="n : ${#numbers.sequence(1,6)}" th:value="${n}" th:text="${n}" th:selected="${depth == n}"></option></select><button class="btn-outline theme-primary" type="submit">应用</button></form>
+    <p class="form-text">依据当前任务配置展示，包含未发布任务，不代表运行成功或实际数据流量。仅支持表级血缘；未采集或最近未发现的表使用虚线边框。点击已采集节点可查看结构。</p>
+    <div class="alert theme-warning" th:if="${graph.truncated}">当前图已达到120个节点或300条关系的展示上限，部分关系未展示。请减少展开层数或从相邻表继续查看。</div>
+    <div class="alert theme-warning" th:each="warning : ${graph.warnings}" th:text="${warning}"></div>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3"><span class="fg-2" th:text="${graph.nodes.size() + ' 张表 · ' + graph.edges.size() + ' 条关系 · 当前展开 ' + depth + ' 层'}"></span><div class="d-flex gap-3" aria-label="血缘图缩放"><button class="btn-outline theme-secondary btn-sm" type="button" data-lineage-zoom="in" aria-label="放大血缘图">放大</button><button class="btn-outline theme-secondary btn-sm" type="button" data-lineage-zoom="out" aria-label="缩小血缘图">缩小</button><button class="btn-outline theme-secondary btn-sm" type="button" data-lineage-zoom="fit">适应画布</button></div></div>
+    <div class="lineage-canvas"><svg id="lineage-graph" role="group" aria-label="表级血缘关系图，可拖动画布并使用按钮缩放"></svg></div>
+    <p th:if="${#lists.isEmpty(graph.edges)}" class="fg-2 mt-3">当前范围内未发现可解析的表级读写关系。</p>
+  </div></article>
+  <article class="platform-card card"><div class="card-header">关系明细</div><div class="card-body"><div class="table-responsive"><table class="table mb-0"><thead><tr><th>上游表</th><th>下游表</th><th>关系类型</th><th>产生关系的任务</th></tr></thead><tbody><tr th:each="edge : ${graph.edges}"><td th:text="${edge.fromLabel}"></td><td th:text="${edge.toLabel}"></td><td th:text="${edge.kind}"></td><td><a th:href="@{${edge.href}}" th:text="${edge.task}"></a></td></tr><tr th:if="${#lists.isEmpty(graph.edges)}"><td colspan="4" class="fg-2 text-center">暂无关系</td></tr></tbody></table></div></div></article>
+  <script th:inline="javascript">window.metadataLineage = /*[[${graph}]]*/ {};</script>
+  <script th:src="@{/js/lineage.js}"></script>
+</section></body></html>

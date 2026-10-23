@@ -22,6 +22,7 @@ public interface PlatformMapper {
     @Select("SELECT * FROM data_source ORDER BY id DESC LIMIT #{limit} OFFSET #{offset}")
     List<DataSource> sourcePage(@Param("limit") int limit,@Param("offset") long offset);
     @Select("SELECT * FROM data_source WHERE id=#{id}") DataSource source(long id);
+    @Select("SELECT COUNT(*) FROM quality_task WHERE source_id=#{id}") long qualitySourceReferences(long id);
     @Insert("INSERT INTO data_source(name,jdbc_url,username,encrypted_password) VALUES(#{name},#{jdbcUrl},#{username},#{encryptedPassword})")
     @Options(useGeneratedKeys=true,keyProperty="id") void insertSource(DataSource source);
     @Update("UPDATE data_source SET name=#{name},jdbc_url=#{jdbcUrl},username=#{username},encrypted_password=#{encryptedPassword},status='UNTESTED',last_error=NULL WHERE id=#{id}")

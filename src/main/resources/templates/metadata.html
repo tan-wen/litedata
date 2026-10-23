@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title>元数据 · LiteData</title></head><body><section>
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-7 gap-5"><div><div class="page-kicker">数据治理 / 元数据</div><h1 class="page-title">元数据目录</h1><p class="page-subtitle mb-0">检索源库与数仓的表结构，追溯同步和 SQL 加工形成的表级血缘。</p></div><a th:if="${canEdit}" class="btn-solid theme-primary" th:href="@{/metadata/collect}">采集元数据</a></div>
+  <div th:replace="~{fragments/messages :: messages}"></div>
+  <article class="platform-card card"><div class="card-header">表目录</div><div class="card-body">
+    <form class="row g-3 mb-5" th:action="@{/metadata}" method="get"><div class="sm:col-6"><input class="form-control" name="keyword" th:value="${keyword}" maxlength="100" aria-label="搜索元数据" placeholder="库表名、注释、数据源或模型名称"></div><div class="sm:col-3"><select class="form-control" name="layer" aria-label="分层筛选"><option value="">全部分层</option><option th:each="item : ${ {'ODS','DWD','DWS','ADS'} }" th:value="${item}" th:text="${item}" th:selected="${layer == item}"></option></select></div><div class="sm:col-3"><button class="btn-outline theme-primary" type="submit">查询</button><a class="btn-link theme-primary" th:href="@{/metadata}">重置</a></div></form>
+    <div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>库 / 表名</th><th>来源</th><th>分层 / 模型</th><th>结构版本</th><th>采集状态</th><th>最近采集（北京时间）</th><th>操作</th></tr></thead><tbody>
+      <tr th:each="item : ${tables}"><td><span class="fg-2" th:text="${item.catalogName + '.'}"></span><a th:href="@{/metadata/{id}(id=${item.id})}" th:text="${item.tableName}"></a></td><td th:text="${item.sourceName}"></td><td><span class="badge theme-info" th:if="${item.layer != null}" th:text="${item.layer}"></span> <span th:text="${item.modelName ?: '—'}"></span></td><td th:text="${'v' + item.version}"></td><td><span class="badge" th:classappend="${item.present} ? 'theme-success' : 'theme-warning'" th:text="${item.present ? '已采集' : '最近采集未发现'}"></span></td><td th:text="${#temporals.format(item.collectedAt,'yyyy-MM-dd HH:mm:ss')}"></td><td><a class="btn-outline theme-primary btn-sm" th:href="@{/metadata/{id}/lineage(id=${item.id})}">查看血缘</a></td></tr>
+      <tr th:if="${#lists.isEmpty(tables)}"><td colspan="7" class="text-center fg-2 py-10">暂无符合条件的元数据。请先采集 Doris 数仓或已登记的数据源。</td></tr>
+    </tbody></table></div>
+  </div></article>
+  <div th:replace="~{fragments/pagination :: pagination}"></div>
+</section></body></html>

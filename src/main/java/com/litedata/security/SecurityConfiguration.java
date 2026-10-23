@@ -34,7 +34,7 @@ public class SecurityConfiguration {
                 .requestMatchers("/users", "/users/**").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.POST, "/services/*/credentials").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.GET, "/sources/new", "/sources/*/edit", "/pipelines/new", "/pipelines/*/edit",
-                        "/services/new", "/services/*/edit").hasAnyRole("ADMIN", "DEVELOPER")
+                        "/services/new", "/services/*/edit", "/metadata/collect", "/quality/new", "/quality/*/edit").hasAnyRole("ADMIN", "DEVELOPER")
                 .requestMatchers(HttpMethod.GET, "/**").authenticated()
                 .anyRequest().hasAnyRole("ADMIN", "DEVELOPER"))
                 .formLogin(f -> f.loginPage("/login").defaultSuccessUrl("/", true).permitAll())

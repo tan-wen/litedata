@@ -110,6 +110,19 @@ button, a, input, select, textarea { scroll-margin-block: 5rem; }
 .sql-token-comment { color: light-dark(#60756a, #a0b5a9); }
 .sql-token-operator { color: light-dark(#8b3c75, #e8a3d4); }
 @media (forced-colors: active) { .sql-editor-highlight { display: none; } .sql-editor .sql-editor-input { color: CanvasText; caret-color: CanvasText; } }
+.lineage-canvas { overflow: hidden; border: 1px solid var(--platform-line); border-radius: .6rem; background: var(--bs-bg-1); }
+#lineage-graph { width: 100%; height: 520px; display: block; touch-action: none; cursor: grab; }
+#lineage-graph:active { cursor: grabbing; }
+.lineage-edge { fill: none; stroke: var(--platform-muted); stroke-width: 1.7; opacity: .65; }
+.lineage-arrow { fill: var(--platform-muted); }
+.lineage-node { cursor: default; }
+a.lineage-node { cursor: pointer; text-decoration: none; }
+.lineage-node rect { fill: var(--platform-surface); stroke: var(--platform-line); stroke-width: 1.5; }
+.lineage-focus rect { stroke: var(--platform-primary); stroke-width: 2.5; }
+.lineage-uncollected rect { stroke-dasharray: 6 4; }
+a.lineage-node:hover rect, a.lineage-node:focus rect { stroke: var(--platform-primary); stroke-width: 3; }
+.lineage-node-source, .lineage-node-status { fill: var(--platform-muted); font-size: 11px; }
+.lineage-node-table { fill: var(--platform-text); font-size: 13px; font-weight: 600; }
 .modeling-fields { min-width: 1100px; }
 .modeling-fields td:first-child, .modeling-fields td:nth-child(2) { min-width: 160px; }
 .modeling-fields td:nth-child(5), .modeling-fields td:nth-child(6) { min-width: 180px; }
