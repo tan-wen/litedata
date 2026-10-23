@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.*;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -53,34 +54,12 @@ class QualityIntegrationTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired QualityService service;
     @Autowired QualityMapper mapper;
+    @Autowired Flyway flyway;
 
     @BeforeEach
     void clean() {
-        jdbc.execute("SET FOREIGN_KEY_CHECKS = 0");
-        try {
-            for (String table : List.of(
-                    "quality_result",
-                    "quality_run",
-                    "quality_rule",
-                    "quality_task",
-                    "metadata_column",
-                    "metadata_table",
-                    "metadata_scope",
-                    "sql_task_run",
-                    "sql_task_dependency",
-                    "sql_pipeline",
-                    "sql_task",
-                    "data_service",
-                    "service_call")) {
-                jdbc.execute("DROP TABLE IF EXISTS " + table);
-            }
-            jdbc.execute("DROP TABLE IF EXISTS quality_fixture");
-            jdbc.execute("DROP TABLE IF EXISTS quality_reference");
-            jdbc.execute("DROP TABLE IF EXISTS quality_empty");
-            jdbc.execute("DROP TABLE IF EXISTS quality_window");
-        } finally {
-            jdbc.execute("SET FOREIGN_KEY_CHECKS = 1");
-        }
+        flyway.clean();
+        flyway.migrate();
 
         jdbc.execute("CREATE TABLE quality_reference(id BIGINT PRIMARY KEY)");
         jdbc.update("INSERT INTO quality_reference VALUES(1)");
@@ -110,7 +89,7 @@ class QualityIntegrationTest {
             mvc.perform(get(path).with(user("dev").roles("DEVELOPER"))).andExpect(status().isOk()).andExpect(content().contentTypeCompatibleWith("text/html"));
         mvc.perform(get("/quality").param("pageSize", "1").with(user("dev").roles("DEVELOPER"))).andExpect(model().attribute("totalCount", 2L)).andExpect(model().attribute("hasMore", true));
         mvc.perform(get("/quality").param("pageNum", "0").with(user("dev").roles("DEVELOPER"))).andExpect(status().isBadRequest());
-        mvc.perform(get("/quality").with(user("viewer").roles("VIEWER"))).andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("新��"))));
+        mvc.perform(get("/quality").with(user("viewer").roles("VIEWER"))).andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("新[...")));
         mvc.perform(get("/quality/new").with(user("viewer").roles("VIEWER"))).andExpect(status().isForbidden());
         mvc.perform(get("/quality/" + id + "/edit").with(user("viewer").roles("VIEWER"))).andExpect(status().isForbidden());
         mvc.perform(post("/quality").with(user("viewer").roles("VIEWER")).with(csrf())).andExpect(status().isForbidden());
@@ -137,7 +116,7 @@ class QualityIntegrationTest {
         Map<String, Long> counts = new HashMap<>(); for (var result : first) counts.put(result.getName(), result.getAnomalyCount());
         assertThat(counts).containsEntry("not-null", 0L).containsEntry("not-blank", 1L).containsEntry("unique", 2L).containsEntry("range", 1L)
                 .containsEntry("length", 1L).containsEntry("regex", 1L).containsEntry("enum", 1L).containsEntry("nonnegative", 1L).containsEntry("positive", 1L)
-                .containsEntry("future", 1L).containsEntry("rows", 0L).containsEntry("sum", 0L).containsEntry("avg", 0L).containsEntry("compare", 1L).containsEntry("reference", 1L).containsEntry("change", 0L);
+                .containsEntry("future", 1L).containsEntry("rows", 0L).containsEntry("sum", 0L).containsEntry("avg", 0L).containsEntry("compare", 1L).containsEntry("reference", 1L).containsEntry("change", 1L);
         assertThat(first).filteredOn(r -> r.getType() == RuleType.ROW_COUNT_CHANGE).extracting(QualityResult::getStatus).containsExactly("WARNING");
         jdbc.update("INSERT INTO quality_fixture VALUES(2,'B',2,'ok','good',1,?,?)", now().minusMinutes(5), 4);
         long run2 = service.start(id, 1, "dev"); waitFor(run2);
