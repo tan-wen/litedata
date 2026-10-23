@@ -41,13 +41,11 @@ platform:
   internal-token: ${PLATFORM_INTERNAL_TOKEN}
   dolphinscheduler:
     url: ${DOLPHINSCHEDULER_URL:http://localhost:12345/dolphinscheduler}
-    web-url: ${DOLPHINSCHEDULER_WEB_URL:http://localhost:12345/dolphinscheduler}
     token: ${DOLPHINSCHEDULER_TOKEN:}
     project-code: ${DOLPHINSCHEDULER_PROJECT_CODE:0}
     tenant-code: ${DOLPHINSCHEDULER_TENANT:default}
   doris:
     jdbc-url: ${DORIS_JDBC_URL:jdbc:mysql://localhost:9030/warehouse?useSSL=false&serverTimezone=UTC}
-    web-url: ${DORIS_WEB_URL:http://localhost:8030}
     username: ${DORIS_USER:platform_reader}
     password: ${DORIS_PASSWORD}
   modeling:
