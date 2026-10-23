@@ -41,6 +41,7 @@ class QualityIntegrationTest {
         r.add("spring.datasource.url", MYSQL::getJdbcUrl);
         r.add("spring.datasource.username", MYSQL::getUsername);
         r.add("spring.datasource.password", MYSQL::getPassword);
+        r.add("spring.flyway.clean-disabled", () -> "false");
         r.add("platform.doris.jdbc-url", MYSQL::getJdbcUrl);
         r.add("platform.doris.username", MYSQL::getUsername);
         r.add("platform.doris.password", MYSQL::getPassword);
