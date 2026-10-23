@@ -1,7 +1,6 @@
 # LiteData
 
-LiteData（仓库名 `litedata`）是面向单机试点的轻量数据中台，采用服务端渲染页面，
-围绕 MySQL 每小时增量同步、Doris 幂等加工、DolphinScheduler 调度和受控数据 API 构建数据链路。
+LiteData 是一个部署简单、易上手的数据中台，围绕 MySQL 每小时增量同步、Doris 幂等加工、DolphinScheduler 调度和受控数据 API 构建数据链路。
 
 仓库：[tan-wen/litedata](https://github.com/tan-wen/litedata)。当前版本为 `0.1.0-SNAPSHOT`，
 处于首版开发与引擎联调阶段。平台功能已有实现及自动化测试，演示同步及多层 SQL 加工链路已实测跑通，百万行压测和连续七天运行仍待验收。
