@@ -21,6 +21,7 @@ LiteData 是一个部署简单、易上手的数据中台，围绕 MySQL 每小�
 | 数据服务 | 受控 SELECT、命名参数、发布/下线、凭证轮换、限流与调用审计 |
 | 元数据与血缘 | MySQL / Doris 结构采集、元数据检索及字段详情、同步及 SQL 加工表级血缘、上下游追溯 |
 | 数据质量 | 多规则异常扫描、18类规则、时间窗口、阈值分级、手动/定时执行、配置快照及运行历史 |
+| 指标管理 | 原子/复合/派生指标、模型与维度校验、公式和滚动窗口、SQL 预览、依赖版本快照及归档保护；[使用说明](docs/metrics.md) |
 | 账号权限 | ADMIN / DEVELOPER / VIEWER，管理页面 Session 登录与 CSRF 防护 |
 | 性能与容量分析 | 通用数据中台与 LiteData 视角下 [Doris 瓶颈与部署模式能力对比](docs/doris-capacity-and-bottlenecks.md) |
 

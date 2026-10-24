@@ -2,6 +2,7 @@ package com.litedata.modeling;
 
 import com.litedata.model.*;
 import com.litedata.store.ModelMapper;
+import com.litedata.store.MetricMapper;
 import com.litedata.store.PlatformMapper;
 import com.litedata.store.SqlTaskMapper;
 import com.litedata.service.QueryPage;
@@ -23,10 +24,12 @@ public class ModelingService {
     private final DorisDdl ddl;
     private final DorisModelGateway gateway;
     private final SqlTaskMapper sqlTasks;
+    private final MetricMapper metrics;
 
-    public ModelingService(ModelMapper mapper, PlatformMapper platform, DorisDdl ddl, DorisModelGateway gateway, SqlTaskMapper sqlTasks) {
+    public ModelingService(ModelMapper mapper, PlatformMapper platform, DorisDdl ddl, DorisModelGateway gateway, SqlTaskMapper sqlTasks, MetricMapper metrics) {
         this.mapper = mapper; this.platform = platform; this.ddl = ddl; this.gateway = gateway;
         this.sqlTasks = sqlTasks;
+        this.metrics = metrics;
     }
 
     public List<DataModel> list(String keyword, String layer) {
@@ -76,9 +79,11 @@ public class ModelingService {
     @Transactional
     public void archive(long id, int version, String actor) {
         sqlTasks.lockGraph();
+        metrics.lockGraph();
         var model = requireModel(mapper.lockModel(id));
         checkVersion(model, version);
         if (sqlTasks.modelReferences(id)>0) throw new IllegalArgumentException("模型仍关联 SQL 加工任务，请先归档加工任务");
+        if (metrics.modelReferences(id)>0) throw new IllegalArgumentException("模型仍关联指标，请先归档相关指标");
         mapper.archive(id);
         platform.audit(actor, "MODEL_ARCHIVE", Long.toString(id), "SUCCESS");
     }

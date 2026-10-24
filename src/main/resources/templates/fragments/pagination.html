@@ -6,6 +6,7 @@
     <form class="d-flex align-items-center gap-3" th:action="@{${pagePath}}" method="get">
       <input th:if="${keyword != null}" type="hidden" name="keyword" th:value="${keyword}">
       <input th:if="${layer != null}" type="hidden" name="layer" th:value="${layer}">
+      <input th:if="${metricType != null}" type="hidden" name="metricType" th:value="${metricType}">
       <label class="text-nowrap" for="list-page-size">每页</label>
       <select class="form-control form-control-sm w-auto" id="list-page-size" name="pageSize">
         <option th:if="${!#lists.contains(pageSizes,pageSize)}" th:value="${pageSize}" th:text="${pageSize}" selected></option>
@@ -15,12 +16,12 @@
     </form>
     <nav aria-label="资源列表分页"><ul class="pagination theme-primary pagination-sm mb-0">
       <li class="page-item" th:classappend="${!hasPrevious} ? 'disabled'">
-        <a th:if="${hasPrevious}" class="page-link" th:href="@{${pagePath}(pageNum=${pageNum - 1},pageSize=${pageSize},keyword=${keyword},layer=${layer})}">上一页</a>
+        <a th:if="${hasPrevious}" class="page-link" th:href="@{${pagePath}(pageNum=${pageNum - 1},pageSize=${pageSize},keyword=${keyword},layer=${layer},metricType=${metricType})}">上一页</a>
         <span th:unless="${hasPrevious}" class="page-link" aria-disabled="true">上一页</span>
       </li>
       <li class="page-item active" aria-current="page"><span class="page-link" th:text="${pageNum}"></span></li>
       <li class="page-item" th:classappend="${!hasMore} ? 'disabled'">
-        <a th:if="${hasMore}" class="page-link" th:href="@{${pagePath}(pageNum=${pageNum + 1},pageSize=${pageSize},keyword=${keyword},layer=${layer})}">下一页</a>
+        <a th:if="${hasMore}" class="page-link" th:href="@{${pagePath}(pageNum=${pageNum + 1},pageSize=${pageSize},keyword=${keyword},layer=${layer},metricType=${metricType})}">下一页</a>
         <span th:unless="${hasMore}" class="page-link" aria-disabled="true">下一页</span>
       </li>
     </ul></nav>
