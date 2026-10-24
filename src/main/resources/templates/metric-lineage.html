@@ -24,7 +24,7 @@
       </form>
       <div class="alert theme-info" th:if="${graph.snapshot}">这是该指标版本保存时冻结的配置血缘证据；它不证明任务曾运行成功，也不代表实际数据流量。</div>
       <div class="alert theme-warning" th:unless="${graph.snapshot}">未找到该版本的冻结血缘快照。指标依赖由固定版本重建，字段链路来自当前配置；这不是历史证明，也不证明任务曾运行成功。</div>
-      <p class="form-text">COUNT(*) 表示聚合行集（<code>*</code>），并不指向某一个具体字段。点击指标版本节点可跳转到对应版本的血缘。</p>
+      <p class="form-text">选择节点会高亮全部上游节点和连线，无关分支变淡；再选一次、按 Esc 或清除聚焦可恢复。拖动画布追溯更远的上游，“适应画布”查看全貌，“定位指标”回到当前指标。COUNT(*) 表示行集（<code>*</code>）。</p>
       <div class="alert theme-warning" th:if="${graph.truncated}">当前图已达到展示上限，部分关系未展示。请改选单个输出字段继续追溯。</div>
       <div class="alert theme-warning" th:each="warning : ${graph.warnings}" th:text="${warning}"></div>
       <div class="d-flex flex-wrap align-items-center gap-3 mb-3 small" aria-label="关系图例">
@@ -38,13 +38,20 @@
       </div>
       <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
         <span class="fg-2" th:text="${graph.nodes.size() + ' 个节点 · ' + graph.edges.size() + ' 条关系'}"></span>
-        <div class="d-flex gap-3" aria-label="血缘图缩放">
+        <div class="d-flex flex-wrap gap-3" aria-label="血缘图操作">
+          <button class="btn-outline theme-secondary btn-sm" type="button" data-metric-lineage-clear disabled>清除聚焦</button>
+          <button class="btn-outline theme-secondary btn-sm" type="button" data-lineage-zoom="focus">定位指标</button>
           <button class="btn-outline theme-secondary btn-sm" type="button" data-lineage-zoom="in">放大</button>
           <button class="btn-outline theme-secondary btn-sm" type="button" data-lineage-zoom="out">缩小</button>
           <button class="btn-outline theme-secondary btn-sm" type="button" data-lineage-zoom="fit">适应画布</button>
         </div>
       </div>
+      <p class="visually-hidden" role="status" aria-live="polite" data-metric-lineage-live>未选择节点，显示全部关系。</p>
       <div class="lineage-canvas"><svg id="metric-lineage-graph" role="group" aria-label="指标字段血缘关系图，可拖动画布并使用按钮缩放"></svg></div>
+      <aside class="metric-lineage-selection mt-4" data-metric-lineage-selection hidden aria-label="已选择节点详情">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3"><strong>聚焦节点</strong><a class="btn-link theme-primary btn-sm" data-metric-lineage-selection-link hidden>打开节点血缘</a></div>
+        <dl class="row mb-0"><dt class="sm:col-3">名称</dt><dd class="sm:col-9" data-metric-lineage-selection-name></dd><dt class="sm:col-3">类型</dt><dd class="sm:col-9" data-metric-lineage-selection-type></dd><dt class="sm:col-3">状态</dt><dd class="sm:col-9" data-metric-lineage-selection-status></dd><dt class="sm:col-3">说明</dt><dd class="sm:col-9" data-metric-lineage-selection-detail></dd><dt class="sm:col-3">关联</dt><dd class="sm:col-9" data-metric-lineage-selection-count></dd></dl>
+      </aside>
       <p th:if="${#lists.isEmpty(graph.edges)}" class="fg-2 mt-3">当前范围内未发现可解析的字段关系。</p>
       <details class="mt-4">
         <summary class="fg-2">节点与来源状态（无图形时可在此查看）</summary>
@@ -73,6 +80,7 @@
     </table></div></div>
   </article>
   <script th:inline="javascript">window.metricLineage = /*[[${graph}]]*/ {};</script>
+  <script th:src="@{/js/metric-lineage-graph.js}"></script>
   <script th:src="@{/js/metric-lineage.js}"></script>
 </section></body>
 </html>
