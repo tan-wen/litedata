@@ -19,6 +19,9 @@ import com.litedata.model.PipelineRun;
 import com.litedata.pipeline.PipelineService;
 import com.litedata.service.DataApiService;
 import com.litedata.store.PlatformMapper;
+import com.litedata.scheduling.DolphinMonitorClient;
+import static org.mockito.Mockito.*;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import java.time.*;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
@@ -72,9 +75,11 @@ class PlatformIntegrationTest {
     @Autowired SourceService sourceService;
     @Autowired PipelineService pipelineService;
     @Autowired DataApiService apiService;
+    @MockitoBean DolphinMonitorClient monitor;
 
     @BeforeEach
     void setUp() throws Exception {
+        reset(monitor);
         try(var root=java.sql.DriverManager.getConnection(MYSQL.getJdbcUrl(),"root",MYSQL.getPassword()); var statement=root.createStatement()) {
             statement.execute("CREATE DATABASE IF NOT EXISTS warehouse");
             statement.execute("GRANT ALL ON warehouse.* TO 'platform'@'%'");
@@ -119,6 +124,56 @@ class PlatformIntegrationTest {
                     .andExpect(status().isOk())
                     .andExpect(content().contentTypeCompatibleWith("text/html"));
         }
+    }
+
+    @Test void schedulerPagesReadRealInstanceIdentitiesAndProtectNodeLogs() throws Exception {
+        sourceService.create("scheduler-source",MYSQL.getJdbcUrl(),MYSQL.getUsername(),MYSQL.getPassword());
+        pipelineService.create("日志管道",mapper.sources().getFirst().getId(),"source_orders","updated_at","ods_orders","","0 0 * * * ?");
+        long id=mapper.pipelines().getFirst().getId();
+        mapper.definition(id,88); mapper.rememberWorkflow("pipeline",id,88);
+        var workflow=new DolphinMonitorClient.Workflow(101,88,"调度测试实例","FAILURE","2026-10-24 13:00:00","2026-10-24 13:01:00",1);
+        var node=new DolphinMonitorClient.Node(201,"同步节点","FAILURE","2026-10-24 13:00:01","2026-10-24 13:00:59",2);
+        when(monitor.instances(eq(88L),any(),eq(""))).thenReturn(new DolphinMonitorClient.Page(1,java.util.List.of(workflow)));
+        when(monitor.instance(101)).thenReturn(workflow); when(monitor.nodes(101)).thenReturn(java.util.List.of(node));
+        when(monitor.log(201,0,200)).thenReturn("INFO start\npassword=must-stay-private\n<script>alert(1)</script>\n");
+        String path="/scheduling/pipeline/"+id;
+        mvc.perform(get(path).with(user("viewer").roles("VIEWER"))).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("节点 / 日志")));
+        mvc.perform(get(path+"/instances/101").with(user("admin").roles("ADMIN"))).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-log-console")));
+        mvc.perform(get(path+"/instances/101").with(user("viewer").roles("VIEWER"))).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("data-log-console"))));
+        String log=path+"/instances/101/tasks/201/log";
+        mvc.perform(get(log).with(user("viewer").roles("VIEWER"))).andExpect(status().isForbidden());
+        mvc.perform(get(log).with(user("developer").roles("DEVELOPER"))).andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control",org.hamcrest.Matchers.containsString("no-store")))
+                .andExpect(jsonPath("$.nextOffset").value(3))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("must-stay-private"))));
+        mvc.perform(get(path+"/instances/101/tasks/999/log").with(user("admin").roles("ADMIN"))).andExpect(status().isNotFound());
+        mvc.perform(get(log).param("offset","-1").with(user("admin").roles("ADMIN"))).andExpect(status().isBadRequest());
+        mvc.perform(get(path).param("workflowCode","999").with(user("admin").roles("ADMIN"))).andExpect(status().isNotFound());
+        when(monitor.instance(102)).thenReturn(new DolphinMonitorClient.Workflow(102,999,"foreign","SUCCESS","","",1));
+        mvc.perform(get(path+"/instances/102").with(user("admin").roles("ADMIN"))).andExpect(status().isNotFound());
+        verify(monitor,never()).log(eq(999L),anyInt(),anyInt());
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_event WHERE action='SCHEDULER_LOG_READ'",Long.class)).isEqualTo(1L);
+    }
+
+    @Test void schedulerPaginationPreservesFiltersAndEngineOutagesKeepThePageUsable() throws Exception {
+        sourceService.create("scheduler-page-source",MYSQL.getJdbcUrl(),MYSQL.getUsername(),MYSQL.getPassword());
+        pipelineService.create("分页管道",mapper.sources().getFirst().getId(),"source_orders","updated_at","ods_orders","","0 0 * * * ?");
+        long id=mapper.pipelines().getFirst().getId(); mapper.definition(id,89);
+        var item=new DolphinMonitorClient.Workflow(103,89,"test","SUCCESS","","",1);
+        when(monitor.instances(eq(89L),any(),eq("SUCCESS"))).thenReturn(new DolphinMonitorClient.Page(21,java.util.List.of(item)));
+        String path="/scheduling/pipeline/"+id;
+        mvc.perform(get(path).param("stateType","SUCCESS").with(user("admin").roles("ADMIN"))).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("stateType=SUCCESS")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("workflowCode=89")));
+        when(monitor.instances(eq(89L),any(),eq(""))).thenThrow(new IllegalStateException("调度引擎暂不可用"));
+        mvc.perform(get(path).with(user("admin").roles("ADMIN"))).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("查看平台运行记录")));
+        mvc.perform(get("/scheduling/preview").param("cron","0 0 * * * ?").with(user("viewer").roles("VIEWER")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.timezone").value("Asia/Shanghai")).andExpect(jsonPath("$.nextTimes.length()").value(3));
+        mvc.perform(get("/scheduling/preview").param("cron","* * * * * *").with(user("admin").roles("ADMIN"))).andExpect(status().isBadRequest());
     }
 
     @Test

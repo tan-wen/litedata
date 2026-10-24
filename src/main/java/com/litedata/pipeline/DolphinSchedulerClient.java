@@ -41,7 +41,7 @@ public class DolphinSchedulerClient {
         int scheduleId;
         if(pipeline.getScheduleId()!=null) scheduleId=pipeline.getScheduleId();
         else {
-            String schedule=json.writeValueAsString(Map.of("startTime",LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")),
+            String schedule=json.writeValueAsString(Map.of("startTime",LocalDateTime.now(ZoneId.of("Asia/Shanghai")).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")),
                     "endTime","2099-12-31 23:59:59","crontab",pipeline.getCronExpression(),"timezoneId","Asia/Shanghai"));
             Object result=post("创建调度", "/schedules",Map.of("workflowDefinitionCode",Long.toString(code),"schedule",schedule,
                     "failureStrategy","END","warningType","NONE","workerGroup","default","tenantCode",config.tenantCode()));
@@ -50,6 +50,15 @@ public class DolphinSchedulerClient {
         }
         post("上线调度","/schedules/"+scheduleId+"/online",Map.of());
         mapper.schedule(id,scheduleId,"SCHEDULED");
+    }
+    @Transactional(noRollbackFor=IllegalStateException.class)
+    public void pause(long id) {
+        if(!configured()) throw new IllegalStateException("调度引擎尚未配置");
+        Pipeline pipeline=mapper.lockPipeline(id);
+        if(pipeline==null) throw new IllegalArgumentException("任务不存在");
+        if(pipeline.getScheduleId()==null) throw new IllegalArgumentException("尚未启用定时调度");
+        if(!"PAUSED".equals(pipeline.getStatus())) post("下线调度","/schedules/"+pipeline.getScheduleId()+"/offline",Map.of());
+        mapper.schedule(id,pipeline.getScheduleId(),"PAUSED");
     }
     private Pipeline lock(long id) {
         if(!configured()) throw new IllegalStateException("调度引擎尚未初始化，请先执行部署初始化脚本并配置访问令牌及项目编号");
@@ -81,6 +90,7 @@ public class DolphinSchedulerClient {
             mapper.definition(pipeline.getId(),code); pipeline.setDefinitionCode(code);
         }
         post("发布工作流","/workflow-definition/"+code+"/release",Map.of("releaseState","ONLINE"));
+        mapper.rememberWorkflow("pipeline",pipeline.getId(),code);
         return code;
     }
     private String path(String suffix) { return "/projects/"+config.projectCode()+suffix; }

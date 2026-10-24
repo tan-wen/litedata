@@ -68,6 +68,7 @@ class DolphinSchedulerClientTest {
 
         assertTrue(error.getMessage().contains("启动工作流失败（HTTP 500）"));
         verify(mapper).lockPipeline(1L);
+        verify(mapper).rememberWorkflow("pipeline",1L,100L);
         verifyNoMoreInteractions(mapper);
     }
 
@@ -102,6 +103,7 @@ class DolphinSchedulerClientTest {
                 "POST /projects/9/executors/start-workflow-instance"),requests);
         verify(mapper).lockPipeline(1L);
         verify(mapper).definition(1L,101L);
+        verify(mapper).rememberWorkflow("pipeline",1L,101L);
         verifyNoMoreInteractions(mapper);
     }
 
@@ -130,7 +132,20 @@ class DolphinSchedulerClientTest {
                 "POST /projects/9/schedules/55/online"),requests);
         verify(mapper).lockPipeline(1L);
         verify(mapper).schedule(1L,55,"SCHEDULED");
+        verify(mapper).rememberWorkflow("pipeline",1L,101L);
         verifyNoMoreInteractions(mapper);
+    }
+
+    @Test void pausesFutureSchedulingWithoutReleasingAnActiveRunAndIsIdempotent() {
+        Pipeline pipeline=pipeline(101L); pipeline.setScheduleId(55); pipeline.setStatus("SCHEDULED"); pipeline.setActiveRunId(7L);
+        when(mapper.lockPipeline(1L)).thenReturn(pipeline);
+        replies.add(new Reply(200,"{\"code\":0,\"data\":null}"));
+        client().pause(1L);
+        assertEquals(7L,pipeline.getActiveRunId());
+        pipeline.setStatus("PAUSED"); client().pause(1L);
+        assertEquals(List.of("POST /projects/9/schedules/55/offline"),requests);
+        verify(mapper,times(2)).schedule(1L,55,"PAUSED");
+        verify(mapper,never()).activeRun(anyLong(),any());
     }
 
     private DolphinSchedulerClient client() {

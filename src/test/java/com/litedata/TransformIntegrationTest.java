@@ -120,6 +120,17 @@ class TransformIntegrationTest {
         verify(engine,times(2)).create(anyString(),anyString(),anyList()); verify(engine).offline(77);
     }
 
+    @Test void keepsHistoricalWorkflowBindingsForEveryNodeWhenTheChainChanges() {
+        long upstream=task("dwd_history",List.of()),root=task("ads_history",List.of(upstream));
+        when(engine.create(anyString(),anyString(),anyList())).thenReturn(88L,99L);
+        scheduler.run(root,1,"dev");
+        var edit=tasks.require(upstream); edit.setName("changed-upstream"); tasks.save(upstream,edit,"dev");
+        scheduler.run(root,1,"dev");
+        assertThat(platform.workflowCodes("transform",root)).containsExactlyInAnyOrder(88L,99L);
+        assertThat(platform.workflowCodes("transform",upstream)).containsExactlyInAnyOrder(88L,99L);
+        assertThat(tasks.require(root).getDefinitionCode()).isEqualTo(99L);
+    }
+
     @Test void cannotEditOrArchiveARootWhileItsUpstreamNodeIsRunning() {
         long upstream=task("dwd_orders",List.of()),root=task("ads_orders",List.of(upstream));
         long runId=(Long)tasks.claim(upstream,1,root,tasks.graph(root).hash()).get("runId");

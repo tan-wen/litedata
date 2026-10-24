@@ -46,7 +46,10 @@ public class TransformScheduler {
     private long definition(long rootId,TransformService.Graph graph) {
         if(!engine.configured()) throw new IllegalStateException("调度引擎尚未配置，请先完成引擎初始化");
         var task=tasks.require(rootId);
-        if(task.getDefinitionCode()!=null && graph.hash().equals(task.getDefinitionHash())) return task.getDefinitionCode();
+        if(task.getDefinitionCode()!=null && graph.hash().equals(task.getDefinitionHash())) {
+            remember(graph,task.getDefinitionCode());
+            return task.getDefinitionCode();
+        }
         if(task.getScheduleId()!=null && !"PAUSED".equals(task.getStatus())) engine.offline(task.getScheduleId());
         var nodes=graph.nodes().stream().map(node-> {
             String script=node.kind().equals("同步")
@@ -57,6 +60,10 @@ public class TransformScheduler {
         }).toList();
         long code=engine.create("platform-sql-"+rootId+"-"+graph.hash().substring(0,12),task.getName(),nodes);
         mapper.definition(rootId,code,graph.hash());
+        remember(graph,code);
         return code;
+    }
+    private void remember(TransformService.Graph graph,long code) {
+        for(var node:graph.nodes()) platform.rememberWorkflow(node.kind().equals("同步")?"pipeline":"transform",node.refId(),code);
     }
 }

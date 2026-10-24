@@ -19,7 +19,7 @@ LiteData 是一个部署简单、易上手的数据中台，围绕 MySQL 每小�
 | 数据建模 | 分层/主题域、逻辑表与字段维护、标准备注、Doris DDL 预览、确认建表、结构比对、版本和执行记录 |
 | 同步管道 | 时间水位增量、运行互斥、执行实例及成功后推进水位 |
 | SQL 加工任务 | 独立 INSERT SELECT、同步/SQL 上游依赖、DAG 预览、整链运行、定时启停及节点执行记录 |
-| 加工与调度 | DataX runner、Doris INSERT SELECT、DS 依赖工作流和定时启停；演示链路已实测 |
+| 加工与调度 | DataX runner、Doris INSERT SELECT、DS 依赖工作流和定时启停、计划时间预览、平台内实例与节点日志；[调度运维说明](docs/scheduling-operations.md) |
 | 数据服务 | 受控 SELECT、命名参数、发布/下线、凭证轮换、限流与调用审计 |
 | 元数据与血缘 | MySQL / Doris 结构采集、元数据检索及字段详情、同步及 SQL 加工表级血缘、上下游追溯 |
 | 资产目录 | 物理表、逻辑模型、指标与数据服务统一检索，数据库分页、业务描述、负责人、标签与敏感级别，关联结构、血缘和质量任务；[使用说明](docs/asset-directory.md) |

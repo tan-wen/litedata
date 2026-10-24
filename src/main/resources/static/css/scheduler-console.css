@@ -1,0 +1,12 @@
+.scheduler-summary { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 1.25rem; }
+.scheduler-workspace { display: grid; grid-template-columns: minmax(14rem,20rem) minmax(0,1fr); gap: 1.25rem; align-items: start; }
+.scheduler-node-panel,.scheduler-log-panel { min-width: 0; }
+.scheduler-node-list { max-height: 42rem; overflow: auto; }
+.scheduler-node { display: block; padding: 1rem 1.25rem; color: var(--platform-text); text-decoration: none; border-bottom: 1px solid var(--platform-line); overflow-wrap: anywhere; }
+.scheduler-node:hover { background: var(--bs-bg-2); }
+.scheduler-node.is-selected { background: var(--bs-primary-bg-subtle); box-shadow: inset 3px 0 var(--platform-primary); }
+.scheduler-log-toolbar { display: flex; gap: .65rem; flex-wrap: wrap; align-items: center; }
+.scheduler-log-toolbar label { color: var(--platform-muted); font-size: .8rem; }
+.scheduler-log-output { margin: 0; padding: 1rem; min-height: 22rem; height: 30rem; overflow: auto; background: var(--platform-page); border: 1px solid var(--platform-line); border-radius: .5rem; color: var(--platform-text); font: .78rem/1.65 Consolas,monospace; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; }
+@media(max-width: 1100px) { .scheduler-workspace { grid-template-columns: 1fr; } .scheduler-node-list { display: flex; max-height: 14rem; } .scheduler-node { min-width: 13rem; flex: 1 0 13rem; } }
+@media(max-width: 650px) { .scheduler-summary { grid-template-columns: 1fr 1fr; } .scheduler-log-output { height: 25rem; } }

@@ -7,6 +7,10 @@ import org.apache.ibatis.annotations.*;
 
 @Mapper
 public interface PlatformMapper {
+    @Insert("INSERT IGNORE INTO scheduler_workflow_binding(resource_type,resource_id,definition_code) VALUES(#{type},#{id},#{code})")
+    void rememberWorkflow(@Param("type") String type,@Param("id") long id,@Param("code") long code);
+    @Select("SELECT definition_code FROM scheduler_workflow_binding WHERE resource_type=#{type} AND resource_id=#{id} ORDER BY registered_at DESC,definition_code DESC")
+    List<Long> workflowCodes(@Param("type") String type,@Param("id") long id);
     @Select("SELECT * FROM app_user WHERE username=#{username}") AppUser findUser(String username);
     @Insert("INSERT INTO app_user(username,password_hash,role) VALUES(#{username},#{password},#{role})")
     void insertUser(@Param("username") String username, @Param("password") String password, @Param("role") String role);

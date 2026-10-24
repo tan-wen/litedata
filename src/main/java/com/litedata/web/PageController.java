@@ -129,6 +129,10 @@ public class PageController {
         scheduler.schedule(id); audit(principal,"PIPELINE_SCHEDULE",Long.toString(id));
         redirect.addFlashAttribute("success","每小时调度已启用"); return "redirect:/pipelines";
     }
+    @PostMapping("/pipelines/{id}/pause") String pause(@PathVariable long id,RedirectAttributes redirect,Principal principal) {
+        scheduler.pause(id); audit(principal,"PIPELINE_PAUSE",Long.toString(id));
+        redirect.addFlashAttribute("success","定时调度已停用，已提交的实例继续执行"); return "redirect:/pipelines";
+    }
     @GetMapping("/services") String services(@RequestParam Map<String,String> params,Model model) {
         var page=ListPagination.prepare(model,"/services",params,mapper.serviceCount());
         model.addAttribute("services",services.list(page)); return "services";
