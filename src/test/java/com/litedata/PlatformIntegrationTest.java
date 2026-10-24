@@ -176,6 +176,41 @@ class PlatformIntegrationTest {
         mvc.perform(get("/scheduling/preview").param("cron","* * * * * *").with(user("admin").roles("ADMIN"))).andExpect(status().isBadRequest());
     }
 
+    @Test void schedulerStatusTracksCompletionRetriesAndLateNodesWithoutExposingOtherResources() throws Exception {
+        sourceService.create("status-source",MYSQL.getJdbcUrl(),MYSQL.getUsername(),MYSQL.getPassword());
+        pipelineService.create("状态管道",mapper.sources().getFirst().getId(),"source_orders","updated_at","ods_orders","","0 0 * * * ?");
+        long id=mapper.pipelines().getFirst().getId(); mapper.definition(id,88);
+        var running=new DolphinMonitorClient.Workflow(401,88,"status-fixture","RUNNING_EXECUTION","2026-10-24 22:00:00","",1);
+        var success=new DolphinMonitorClient.Workflow(401,88,"status-fixture","SUCCESS","2026-10-24 22:00:00","2026-10-24 22:01:00",1);
+        var activeNode=new DolphinMonitorClient.Node(501,"同步节点","RUNNING_EXECUTION","2026-10-24 22:00:01","",0);
+        var doneNode=new DolphinMonitorClient.Node(501,"同步节点","SUCCESS","2026-10-24 22:00:01","2026-10-24 22:00:59",1);
+        String path="/scheduling/pipeline/"+id+"/instances/401";
+        when(monitor.instance(401)).thenReturn(running); when(monitor.nodes(401)).thenReturn(java.util.List.of(activeNode));
+        mvc.perform(get(path+"/status").with(user("viewer").roles("VIEWER"))).andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control",org.hamcrest.Matchers.containsString("no-store")))
+                .andExpect(jsonPath("$.finished").value(false)).andExpect(jsonPath("$.instance.state").value("RUNNING_EXECUTION"))
+                .andExpect(jsonPath("$.nodes[0].id").value(501)).andExpect(jsonPath("$.updatedAt").isNotEmpty());
+        when(monitor.nodes(401)).thenReturn(java.util.List.of(new DolphinMonitorClient.Node(501,"同步节点","FAILURE","","",0)));
+        mvc.perform(get(path+"/status").with(user("admin").roles("ADMIN"))).andExpect(status().isOk()).andExpect(jsonPath("$.finished").value(false));
+        when(monitor.instance(401)).thenReturn(success); when(monitor.nodes(401)).thenReturn(java.util.List.of(activeNode));
+        mvc.perform(get(path+"/status").with(user("admin").roles("ADMIN"))).andExpect(status().isOk()).andExpect(jsonPath("$.finished").value(false));
+        when(monitor.nodes(401)).thenReturn(java.util.List.of(doneNode));
+        mvc.perform(get(path+"/status").with(user("viewer").roles("VIEWER"))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.finished").value(true)).andExpect(jsonPath("$.nodes[0].retryTimes").value(1))
+                .andExpect(jsonPath("$.labels.SUCCESS").value("成功"));
+        when(monitor.instance(401)).thenReturn(running); when(monitor.nodes(401)).thenReturn(java.util.List.of());
+        mvc.perform(get(path+"/status").with(user("admin").roles("ADMIN"))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.finished").value(false)).andExpect(jsonPath("$.nodes").isEmpty());
+        mvc.perform(get(path).with(user("admin").roles("ADMIN"))).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("等待节点派发")));
+        when(monitor.nodes(401)).thenThrow(new IllegalStateException("调度引擎暂不可用"));
+        mvc.perform(get(path+"/status").with(user("admin").roles("ADMIN"))).andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.message").value("调度引擎暂不可用"));
+        when(monitor.instance(402)).thenReturn(new DolphinMonitorClient.Workflow(402,999,"foreign","SUCCESS","","",1));
+        mvc.perform(get("/scheduling/pipeline/"+id+"/instances/402/status").with(user("admin").roles("ADMIN"))).andExpect(status().isNotFound());
+        verify(monitor,never()).nodes(402);
+    }
+
     @Test
     void csrfRejectsPageMutationsWithoutAToken() throws Exception {
         mvc.perform(post("/sources").with(user("admin").roles("ADMIN"))

@@ -24,6 +24,7 @@ public class SchedulerController {
     @ModelAttribute("statusLabels") Map<String,String> labels() {
         var values=new HashMap<>(FILTERS); values.putAll(Map.of("SUBMITTED_SUCCESS","已提交","SERIAL_WAIT","排队中","DELAY_EXECUTION","延迟等待",
                 "READY_STOP","停止中","READY_PAUSE","暂停中","FORCED_SUCCESS","强制成功","KILL","已终止","WAITING_DEPEND","等待上游"));
+        values.putAll(Map.of("FAILOVER","故障恢复中","DISPATCH","派发中","WAITING_THREAD","等待执行资源","NEED_FAULT_TOLERANCE","待故障恢复"));
         return values;
     }
     @GetMapping("/preview") @ResponseBody
@@ -60,12 +61,11 @@ public class SchedulerController {
     String detail(@PathVariable String type,@PathVariable long id,@PathVariable long instanceId,
                   @RequestParam(required=false) Long taskId,Model model,HttpServletRequest request) {
         var resource=operations.resource(type,id); prepare(model,resource);
+        model.addAttribute("instanceId",instanceId);
         model.addAttribute("instance",null); model.addAttribute("nodes",List.of()); model.addAttribute("selectedNode",null);
         try {
-            var instance=operations.instance(resource,instanceId);
-            var nodes=engine.nodes(instanceId).stream().sorted(Comparator
-                    .comparing((DolphinMonitorClient.Node node)->node.startedAt().isBlank()?"~":node.startedAt())
-                    .thenComparingLong(DolphinMonitorClient.Node::id)).toList();
+            var snapshot=operations.snapshot(resource,instanceId);
+            var instance=snapshot.instance(); var nodes=snapshot.nodes();
             model.addAttribute("instance",instance); model.addAttribute("nodes",nodes);
             if(canEdit(request) && !nodes.isEmpty()) {
                 var selected=taskId==null?nodes.stream().filter(n->n.state().equals("FAILURE")).findFirst().orElse(nodes.getFirst())
@@ -75,6 +75,17 @@ public class SchedulerController {
             }
         } catch(IllegalStateException exception) { model.addAttribute("engineError",exception.getMessage()); }
         return "scheduler-instance-detail";
+    }
+    @GetMapping("/{type}/{id}/instances/{instanceId}/status") @ResponseBody
+    ResponseEntity<?> status(@PathVariable String type,@PathVariable long id,@PathVariable long instanceId) {
+        try {
+            var snapshot=operations.snapshot(operations.resource(type,id),instanceId);
+            return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(Map.of(
+                    "instance",snapshot.instance(),"nodes",snapshot.nodes(),"finished",snapshot.finished(),
+                    "updatedAt",snapshot.updatedAt(),"labels",labels()));
+        } catch(IllegalStateException exception) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).cacheControl(CacheControl.noStore()).body(Map.of("message",exception.getMessage()));
+        }
     }
     @GetMapping("/{type}/{id}/instances/{instanceId}/tasks/{taskId}/log") @ResponseBody
     ResponseEntity<?> log(@PathVariable String type,@PathVariable long id,@PathVariable long instanceId,@PathVariable long taskId,

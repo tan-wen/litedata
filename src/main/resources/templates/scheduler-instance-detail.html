@@ -1,24 +1,47 @@
 <!doctype html>
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
-<head><title>节点与日志 · LiteData</title></head><body><section>
+<head><title>节点与日志 · LiteData</title></head><body><section data-scheduler-console
+  th:attr="data-status-url=${resource.path() + '/instances/' + instanceId + '/status'},data-instance-path=${resource.path() + '/instances/' + instanceId},data-can-read-logs=${canEdit}">
   <link rel="stylesheet" th:href="@{/css/scheduler-console.css}">
-  <div class="d-flex flex-wrap justify-content-between align-items-start gap-5 mb-7"><div><div class="page-kicker">调度运维 / <a th:href="${resource.path()}" th:text="${resource.name}"></a></div><h1 class="page-title">节点与执行日志</h1><p class="page-subtitle mb-0">选择节点查看该次执行的日志，失败节点优先展开。</p></div><div class="d-flex gap-3"><button class="btn-outline theme-primary" type="button" onclick="location.reload()">刷新状态</button><a class="btn-outline theme-secondary" th:href="${resource.path()}">返回实例</a></div></div>
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-5 mb-7">
+    <div>
+      <nav th:replace="~{fragments/scheduler-breadcrumb :: breadcrumb(${resource}, ${instanceId})}"></nav>
+      <h1 class="page-title">节点与执行日志</h1>
+      <p class="page-subtitle mb-0">选择节点查看该次执行的日志，失败节点优先展开。</p>
+      <p class="scheduler-status small fg-2 mb-0" data-scheduler-status role="status" aria-live="polite">每 5 秒自动更新状态</p>
+      <div class="alert theme-warning scheduler-status-error" data-scheduler-error role="alert" hidden></div>
+    </div>
+    <div class="d-flex flex-wrap gap-3">
+      <button th:if="${instance != null}" class="btn-outline theme-primary" type="button" data-scheduler-refresh>刷新状态</button>
+      <button th:unless="${instance != null}" class="btn-outline theme-primary" type="button" onclick="location.reload()">刷新状态</button>
+      <a class="btn-outline theme-secondary" th:href="${resource.path()}">返回实例</a>
+    </div>
+  </div>
   <div th:if="${engineError}" class="alert theme-warning" role="alert" th:text="${engineError}"></div>
   <th:block th:if="${instance != null}">
     <article class="platform-card card mb-5"><div class="card-body"><div class="scheduler-summary">
-      <div><div class="small fg-2 mb-2">工作流实例</div><strong th:text="${'#' + instance.id}"></strong></div>
-      <div><div class="small fg-2 mb-2">执行状态</div><span class="badge" th:classappend="${instance.state == 'SUCCESS' ? 'theme-success' : instance.state == 'FAILURE' ? 'theme-danger' : 'theme-info'}" th:text="${statusLabels[instance.state] ?: instance.state}"></span></div>
-      <div><div class="small fg-2 mb-2">开始 / 结束（引擎时间）</div><span th:text="${instance.startedAt}"></span><div class="fg-2" th:text="${#strings.isEmpty(instance.finishedAt) ? '尚未结束' : instance.finishedAt}"></div></div>
-      <div><div class="small fg-2 mb-2">运行次数 / 节点数</div><strong th:text="${instance.runTimes + ' / ' + #lists.size(nodes)}"></strong></div>
+      <div class="scheduler-summary-item"><div class="small fg-2 mb-2">工作流实例</div><strong th:text="${'#' + instance.id}"></strong></div>
+      <div class="scheduler-summary-item"><div class="small fg-2 mb-2">执行状态</div><span class="badge" data-workflow-state th:classappend="${instance.state == 'SUCCESS' ? 'theme-success' : instance.state == 'FAILURE' ? 'theme-danger' : 'theme-info'}" th:text="${statusLabels[instance.state] ?: instance.state}"></span></div>
+      <div class="scheduler-summary-item"><div class="small fg-2 mb-2">开始 / 结束（引擎时间）</div><time data-workflow-start th:text="${instance.startedAt}"></time><time class="fg-2 d-block" data-workflow-end th:text="${#strings.isEmpty(instance.finishedAt) ? '尚未结束' : instance.finishedAt}"></time></div>
+      <div class="scheduler-summary-item"><div class="small fg-2 mb-2">运行次数</div><strong data-workflow-runs th:text="${instance.runTimes}"></strong></div>
+      <div class="scheduler-summary-item"><div class="small fg-2 mb-2">节点统计</div><strong data-node-count th:text="${#lists.size(nodes)}"></strong></div>
     </div></div></article>
     <div class="scheduler-workspace">
-      <article class="platform-card card scheduler-node-panel"><div class="card-header">执行节点</div><div class="card-body p-0"><nav aria-label="执行节点选择" class="scheduler-node-list">
-        <a th:each="node : ${nodes}" class="scheduler-node" th:classappend="${selectedNode != null and selectedNode.id == node.id} ? 'is-selected'" th:attr="aria-current=${selectedNode != null and selectedNode.id == node.id ? 'true' : null}" th:href="${resource.path() + '/instances/' + instance.id + '?taskId=' + node.id}"><strong th:text="${node.name}"></strong><div class="d-flex flex-wrap gap-2 align-items-center mt-2"><span class="badge" th:classappend="${node.state == 'SUCCESS' ? 'theme-success' : node.state == 'FAILURE' ? 'theme-danger' : 'theme-info'}" th:text="${statusLabels[node.state] ?: node.state}"></span><small class="fg-2" th:text="${'重试 ' + node.retryTimes + ' 次 · #' + node.id}"></small></div><small class="fg-2 d-block mt-2" th:text="${node.startedAt}"></small></a>
-      </nav><p th:if="${#lists.isEmpty(nodes)}" class="fg-2 p-5 mb-0">尚未派发节点，或节点正在等待上游。请稍后刷新状态。</p></div></article>
-      <article class="platform-card card scheduler-log-panel" th:if="${selectedNode != null}" data-log-console th:attr="data-log-url=${logUrl}">
-        <div class="card-header"><span th:text="${selectedNode.name}"></span><small class="fw-normal fg-2 ms-3">节点日志</small></div>
+      <article class="platform-card card scheduler-node-panel"><div class="card-header">执行节点</div><div class="card-body p-0"><nav aria-label="执行节点选择" class="scheduler-node-list" data-scheduler-nodes>
+        <a th:each="node : ${nodes}" class="scheduler-node" th:classappend="${selectedNode != null and selectedNode.id == node.id} ? 'is-selected'" th:attr="aria-current=${selectedNode != null and selectedNode.id == node.id ? 'true' : null},data-node-id=${node.id}" th:href="${resource.path() + '/instances/' + instance.id + '?taskId=' + node.id}">
+          <strong data-node-name th:text="${node.name}"></strong>
+          <div class="scheduler-node-meta"><span class="small fg-2">状态</span><span class="badge" data-node-state th:classappend="${node.state == 'SUCCESS' ? 'theme-success' : node.state == 'FAILURE' ? 'theme-danger' : 'theme-info'}" th:text="${statusLabels[node.state] ?: node.state}"></span></div>
+          <div class="scheduler-node-meta"><span class="small fg-2">重试次数</span><span data-node-retries th:text="${node.retryTimes}"></span></div>
+          <div class="scheduler-node-meta"><span class="small fg-2">节点编号</span><span data-node-id-text th:text="${'#' + node.id}"></span></div>
+          <div class="scheduler-node-time"><span class="small fg-2">开始</span><time data-node-start th:text="${node.startedAt}"></time></div>
+          <div class="scheduler-node-time"><span class="small fg-2">结束</span><time data-node-end th:text="${#strings.isEmpty(node.finishedAt) ? '尚未结束' : node.finishedAt}"></time></div>
+        </a>
+      </nav><p th:if="${#lists.isEmpty(nodes)}" class="fg-2 p-5 mb-0" data-scheduler-empty>尚未派发节点，正在等待上游或调度资源；状态将自动更新。</p></div></article>
+      <template data-scheduler-node-template><a class="scheduler-node" data-node-id><strong data-node-name></strong><div class="scheduler-node-meta"><span class="small fg-2">状态</span><span class="badge" data-node-state></span></div><div class="scheduler-node-meta"><span class="small fg-2">重试次数</span><span data-node-retries></span></div><div class="scheduler-node-meta"><span class="small fg-2">节点编号</span><span data-node-id-text></span></div><div class="scheduler-node-time"><span class="small fg-2">开始</span><time data-node-start></time></div><div class="scheduler-node-time"><span class="small fg-2">结束</span><time data-node-end></time></div></a></template>
+      <article class="platform-card card scheduler-log-panel" th:if="${canEdit}" data-log-console th:attr="data-log-url=${selectedNode != null ? (logUrl ?: '') : ''},data-selected-id=${selectedNode != null ? selectedNode.id : ''},data-selected-name=${selectedNode != null ? selectedNode.name : ''}">
+        <div class="card-header scheduler-log-heading"><span data-log-title th:text="${selectedNode != null ? selectedNode.name : '等待节点派发'}"></span><span class="badge" data-log-node-state th:classappend="${selectedNode != null and selectedNode.state == 'SUCCESS' ? 'theme-success' : selectedNode != null and selectedNode.state == 'FAILURE' ? 'theme-danger' : 'theme-info'}" th:text="${selectedNode != null ? (statusLabels[selectedNode.state] ?: selectedNode.state) : '等待中'}"></span><small class="fw-normal fg-2">节点日志</small></div>
         <div class="card-body">
-          <div class="scheduler-log-toolbar"><button class="btn-solid theme-primary btn-sm" type="button" data-log-load>加载下一段</button><button class="btn-outline theme-secondary btn-sm" type="button" data-log-reset>从头读取</button><button class="btn-outline theme-secondary btn-sm" type="button" data-log-download disabled>下载已加载日志</button><label><input class="check" type="checkbox" data-log-auto> 每 5 秒刷新</label><label><input class="check" type="checkbox" data-log-follow checked> 跟随底部</label></div>
+          <div class="scheduler-log-toolbar"><div class="scheduler-log-actions"><button class="btn-solid theme-primary btn-sm" type="button" data-log-load>加载下一段</button><button class="btn-outline theme-secondary btn-sm" type="button" data-log-reset>从头读取</button><button class="btn-outline theme-secondary btn-sm" type="button" data-log-download disabled>下载已加载日志</button></div><div class="scheduler-log-options"><label><input class="check" type="checkbox" data-log-auto checked> 自动追踪日志</label><label><input class="check" type="checkbox" data-log-follow checked> 跟随底部</label></div></div>
           <label class="form-label mt-5" for="log-filter">检索已加载日志</label><input class="form-control" type="search" id="log-filter" data-log-filter placeholder="输入关键字筛选已加载的行" maxlength="200">
           <div class="d-flex justify-content-between gap-3 small fg-2 my-3"><span data-log-status role="status" aria-live="polite">准备读取日志…</span><span data-log-count>已读取 0 行</span></div>
           <div class="alert theme-warning" data-log-error role="alert" hidden></div>

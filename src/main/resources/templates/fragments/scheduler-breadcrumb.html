@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org"><body>
+<nav th:fragment="breadcrumb(resource, instanceId)" class="page-kicker scheduler-breadcrumb" aria-label="面包屑">
+  <ol>
+    <li>数据开发</li>
+    <li><a th:href="${resource.type == 'pipeline' ? '/pipelines' : '/transforms'}" th:text="${resource.type == 'pipeline' ? '同步管道' : 'SQL 加工任务'}"></a></li>
+    <li><a th:if="${resource.type == 'transform'}" th:href="${resource.backPath}" th:text="${resource.name}"></a><span th:unless="${resource.type == 'transform'}" th:text="${resource.name}"></span></li>
+    <li th:if="${instanceId == null}" aria-current="page">运行实例</li>
+    <th:block th:if="${instanceId != null}">
+      <li><a th:href="${resource.path()}">运行实例</a></li>
+      <li aria-current="page" th:text="${'实例 #' + instanceId}"></li>
+    </th:block>
+  </ol>
+</nav>
+</body></html>

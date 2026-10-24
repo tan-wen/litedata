@@ -12,6 +12,7 @@ public class SchedulerOperations {
         public String path() { return "/scheduling/"+type+"/"+id; }
     }
     public record LogPage(String content,int offset,int nextOffset,int lineCount,boolean hasMore,boolean running) {}
+    public record Snapshot(DolphinMonitorClient.Workflow instance,List<DolphinMonitorClient.Node> nodes,boolean finished,java.time.Instant updatedAt) {}
     private final PlatformMapper platform;
     private final SqlTaskMapper tasks;
     private final DolphinMonitorClient engine;
@@ -37,6 +38,15 @@ public class SchedulerOperations {
         var instance=engine.instance(id); checkCode(resource,instance.definitionCode());
         return instance;
     }
+    public Snapshot snapshot(Resource resource,long id) {
+        var instance=instance(resource,id);
+        var nodes=engine.nodes(id).stream().sorted(Comparator
+                .comparing((DolphinMonitorClient.Node node)->node.startedAt().isBlank()?"~":node.startedAt())
+                .thenComparingLong(DolphinMonitorClient.Node::id)).toList();
+        // A workflow result can arrive before the last node's final state becomes visible.
+        boolean finished=!isRunning(instance.state()) && nodes.stream().noneMatch(node->isRunning(node.state()));
+        return new Snapshot(instance,nodes,finished,java.time.Instant.now());
+    }
     public LogPage log(Resource resource,long instanceId,long taskId,int offset,int limit,String actor) {
         if(offset<0 || offset>1_000_000 || limit<1 || limit>1000) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"日志偏移须在0到1000000之间，每次读取1到1000行");
         instance(resource,instanceId);
@@ -47,6 +57,6 @@ public class SchedulerOperations {
         platform.audit(actor,"SCHEDULER_LOG_READ",resource.type()+":"+resource.id()+":"+instanceId+":"+taskId,"SUCCESS");
         return new LogPage(LogRedactor.redact(raw),offset,offset+lines,lines,lines==limit,isRunning(node.state()));
     }
-    public static boolean isRunning(String state) { return !Set.of("SUCCESS","FAILURE","STOP","PAUSE","KILL","FORCED_SUCCESS").contains(state); }
+    public static boolean isRunning(String state) { return !Set.of("SUCCESS","FAILURE","STOP","PAUSE","KILL","FORCED_SUCCESS","NEED_FAULT_TOLERANCE").contains(state); }
     private static ResponseStatusException missing() { return new ResponseStatusException(HttpStatus.NOT_FOUND,"任务或运行实例不存在"); }
 }
