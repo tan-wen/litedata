@@ -17,27 +17,34 @@
       <form class="d-flex flex-wrap align-items-center gap-3 mb-5" method="get" th:action="${lineagePath}">
         <label for="metric-lineage-field">输出字段</label>
         <select class="form-control w-auto" id="metric-lineage-field" name="field">
-          <option value="all" th:selected="${field == 'all'}">全部字段</option>
+          <option value="all" th:selected="${field == 'all'}">全部输出字段</option>
           <option th:each="output : ${graph.outputs}" th:value="${output.name}" th:text="${output.label}" th:selected="${field == output.name}"></option>
+        </select>
+        <label for="metric-lineage-mode">展示范围</label>
+        <select class="form-control w-auto" id="metric-lineage-mode" name="mode">
+          <option value="direct" th:selected="${mode == 'direct'}">直接来源（精简）</option>
+          <option value="full" th:selected="${mode == 'full'}">完整依赖（含条件）</option>
         </select>
         <button class="btn-outline theme-primary" type="submit">应用</button>
       </form>
       <div class="alert theme-info" th:if="${graph.snapshot}">这是该指标版本保存时冻结的配置血缘证据；它不证明任务曾运行成功，也不代表实际数据流量。</div>
       <div class="alert theme-warning" th:unless="${graph.snapshot}">未找到该版本的冻结血缘快照。指标依赖由固定版本重建，字段链路来自当前配置；这不是历史证明，也不证明任务曾运行成功。</div>
-      <p class="form-text">选择节点会高亮全部上游节点和连线，无关分支变淡；再选一次、按 Esc 或清除聚焦可恢复。拖动画布追溯更远的上游，“适应画布”查看全貌，“定位指标”回到当前指标。COUNT(*) 表示行集（<code>*</code>）。</p>
+      <p class="form-text" th:if="${mode == 'direct'}" data-lineage-scope-description>当前仅展示所选输出字段的取值、计算与映射来源。关联、筛选、分组及时间窗口等影响条件已折叠在下方，可切换“完整依赖”查看。</p>
+      <p class="form-text" th:if="${mode == 'full'}" data-lineage-scope-description>当前展示所选输出字段的直接来源和条件影响。条件字段会影响结果范围、分组或行数，不一定参与字段取值计算。</p>
+      <p class="form-text">选择节点高亮当前范围的上游关系；再次选择、按 Esc 或清除聚焦可恢复。拖动画布继续追溯，“适应画布”查看全貌，“定位指标”回到当前指标。<code>*</code> 表示行集，并非展开整张表的字段。</p>
       <div class="alert theme-warning" th:if="${graph.truncated}">当前图已达到展示上限，部分关系未展示。请改选单个输出字段继续追溯。</div>
       <div class="alert theme-warning" th:each="warning : ${graph.warnings}" th:text="${warning}"></div>
       <div class="d-flex flex-wrap align-items-center gap-3 mb-3 small" aria-label="关系图例">
         <span class="fg-2">关系图例：</span>
         <span class="badge theme-info">聚合 / 行数聚合</span>
-        <span class="badge theme-info">维度 / 维度关联</span>
-        <span class="badge theme-info">业务筛选</span>
-        <span class="badge theme-info">时间窗口</span>
-        <span class="badge theme-info">SQL 条件 / 映射</span>
+        <span class="badge theme-info">维度输出 / 指标公式</span>
+        <span class="badge theme-info">表达式 / 同名映射</span>
+        <span class="badge theme-info" th:if="${mode == 'full'}">关联 / 分组</span>
+        <span class="badge theme-info" th:if="${mode == 'full'}">筛选 / 时间窗口 / 行集影响</span>
         <span class="fg-2">连线悬停可查看完整关系；节点末行显示状态。</span>
       </div>
       <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
-        <span class="fg-2" th:text="${graph.nodes.size() + ' 个节点 · ' + graph.edges.size() + ' 条关系'}"></span>
+        <div><span class="fg-2" data-lineage-count th:text="${graph.nodes.size() + ' 个节点 · ' + graph.edges.size() + ' 条关系'}"></span><small class="fg-2 ms-3" th:if="${mode == 'direct' and projection.hiddenNodeCount > 0}" th:text="${'已折叠 ' + projection.hiddenNodeCount + ' 个条件分支节点 · 完整依赖 ' + projection.fullNodeCount + ' 个节点'}"></small></div>
         <div class="d-flex flex-wrap gap-3" aria-label="血缘图操作">
           <button class="btn-outline theme-secondary btn-sm" type="button" data-metric-lineage-clear disabled>清除聚焦</button>
           <button class="btn-outline theme-secondary btn-sm" type="button" data-lineage-zoom="focus">定位指标</button>
@@ -46,7 +53,7 @@
           <button class="btn-outline theme-secondary btn-sm" type="button" data-lineage-zoom="fit">适应画布</button>
         </div>
       </div>
-      <p class="visually-hidden" role="status" aria-live="polite" data-metric-lineage-live>未选择节点，显示全部关系。</p>
+      <p class="visually-hidden" role="status" aria-live="polite" data-metric-lineage-live>未选择节点，显示当前范围全部关系。</p>
       <div class="lineage-canvas"><svg id="metric-lineage-graph" role="group" aria-label="指标字段血缘关系图，可拖动画布并使用按钮缩放"></svg></div>
       <aside class="metric-lineage-selection mt-4" data-metric-lineage-selection hidden aria-label="已选择节点详情">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3"><strong>聚焦节点</strong><a class="btn-link theme-primary btn-sm" data-metric-lineage-selection-link hidden>打开节点血缘</a></div>
@@ -58,7 +65,7 @@
         <ul class="mb-0 mt-3">
           <li th:each="node : ${graph.nodes}" class="mb-2">
             <span th:switch="${node.kind}" class="badge theme-info"><span th:case="'METRIC'">指标字段</span><span th:case="'WAREHOUSE_FIELD'">仓库字段</span><span th:case="'SOURCE_FIELD'">业务源字段</span><span th:case="'BOUNDARY'">追溯边界</span><span th:case="*" th:text="${node.kind}"></span></span>
-            <a th:if="${!#strings.isEmpty(node.href)}" th:href="${node.href}" th:text="${node.label}"></a><span th:if="${#strings.isEmpty(node.href)}" th:text="${node.label}"></span>
+            <a th:if="${!#strings.isEmpty(node.href)}" th:href="${node.kind == 'METRIC' ? node.href + '&amp;mode=' + mode : node.href}" th:text="${node.label}"></a><span th:if="${#strings.isEmpty(node.href)}" th:text="${node.label}"></span>
             <span class="fg-2" th:text="${' · ' + node.detail + ' · ' + node.status}"></span>
           </li>
         </ul>
@@ -66,8 +73,18 @@
     </div>
   </article>
 
+  <details class="platform-card card mb-5" th:if="${!#lists.isEmpty(projection.contexts)}" data-lineage-contexts>
+    <summary class="card-header" th:text="${'影响结果的条件（' + projection.contexts.size() + ' 组，点击查看）'}"></summary>
+    <div class="card-body">
+      <p class="form-text">以下条件来自该版本保存的血缘证据，会影响筛选范围、关联、分组或行数。相同任务的相同条件已合并；精简图折叠这些分支，完整依赖仍可查看逐条关系。</p>
+      <div class="table-responsive"><table class="table mb-0"><thead><tr><th>类型</th><th>涉及字段 / 行集</th><th>条件 / 规则</th><th>来源任务</th></tr></thead><tbody>
+        <tr th:each="context : ${projection.contexts}"><td th:text="${context.role}"></td><td class="modeling-diff"><div th:each="input : ${context.inputs}" th:text="${input}"></div></td><td class="modeling-diff" th:text="${context.expression}"></td><td><a th:if="${!#strings.isEmpty(context.href)}" th:href="${context.href}" th:text="${context.task ?: '查看'}"></a><span th:if="${#strings.isEmpty(context.href)}" th:text="${context.task ?: '—'}"></span></td></tr>
+      </tbody></table></div>
+    </div>
+  </details>
+
   <article class="platform-card card">
-    <div class="card-header">关系明细 <small class="fw-normal fg-2">聚合、维度、筛选、时间与 SQL 条件会标注在关系中</small></div>
+    <div class="card-header">当前范围关系明细 <small class="fw-normal fg-2">与上方关系图保持一致</small></div>
     <div class="card-body p-0"><div class="table-responsive"><table class="table mb-0">
       <thead><tr><th>上游</th><th>下游</th><th>关系</th><th>表达式 / 条件</th><th>来源任务</th></tr></thead>
       <tbody>
@@ -79,7 +96,7 @@
       </tbody>
     </table></div></div>
   </article>
-  <script th:inline="javascript">window.metricLineage = /*[[${graph}]]*/ {};</script>
+  <script th:inline="javascript">window.metricLineage = /*[[${graph}]]*/ {}; window.metricLineageMode = /*[[${mode}]]*/ 'direct';</script>
   <script th:src="@{/js/metric-lineage-graph.js}"></script>
   <script th:src="@{/js/metric-lineage.js}"></script>
 </section></body>

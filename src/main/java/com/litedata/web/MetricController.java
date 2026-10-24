@@ -44,12 +44,13 @@ public class MetricController {
     @GetMapping("/{id}/versions/{version}") String history(@PathVariable long id, @PathVariable int version, @RequestParam Map<String,String> params, Model model) {
         return detail(model, metrics.historyDefinition(id, version), true, params);
     }
-    @GetMapping("/{id}/lineage") String lineage(@PathVariable long id, @RequestParam(defaultValue="metric_value") String field, Model model) {
-        return lineage(model, metrics.require(id), field, false);
+    @GetMapping("/{id}/lineage") String lineage(@PathVariable long id, @RequestParam(defaultValue="metric_value") String field,
+            @RequestParam(defaultValue="direct") String mode, Model model) {
+        return lineage(model, metrics.require(id), field, mode, false);
     }
     @GetMapping("/{id}/versions/{version}/lineage") String historicalLineage(@PathVariable long id, @PathVariable int version,
-            @RequestParam(defaultValue="metric_value") String field, Model model) {
-        return lineage(model, metrics.historyDefinition(id, version), field, true);
+            @RequestParam(defaultValue="metric_value") String field, @RequestParam(defaultValue="direct") String mode, Model model) {
+        return lineage(model, metrics.historyDefinition(id, version), field, mode, true);
     }
     @PostMapping String create(@ModelAttribute("draft") MetricDefinition draft, BindingResult errors, Model model, Principal principal, RedirectAttributes redirect) {
         return save(null, draft, errors, model, principal, redirect);
@@ -81,10 +82,13 @@ public class MetricController {
         var page = ListPagination.prepare(model, path, params, metrics.versionCount(definition.getId()));
         model.addAttribute("history", metrics.versions(definition.getId(), page)); return "metric-detail";
     }
-    private String lineage(Model model, MetricDefinition definition, String field, boolean historical) {
+    private String lineage(Model model, MetricDefinition definition, String field, String mode, boolean historical) {
+        if (!mode.equals("direct") && !mode.equals("full"))
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "血缘展示范围无效");
         String path = "/metrics/" + definition.getId() + (historical ? "/versions/" + definition.getVersion() : "");
         model.addAttribute("definition", definition); model.addAttribute("field", field);
-        model.addAttribute("graph", lineage.view(definition, field));
+        var projection = MetricLineageProjection.project(lineage.view(definition, field), mode);
+        model.addAttribute("graph", projection.graph()); model.addAttribute("projection", projection); model.addAttribute("mode", mode);
         model.addAttribute("backPath", path); model.addAttribute("lineagePath", path + "/lineage"); return "metric-lineage";
     }
 }

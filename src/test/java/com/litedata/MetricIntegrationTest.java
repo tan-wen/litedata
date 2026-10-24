@@ -211,6 +211,46 @@ class MetricIntegrationTest {
         assertThat(lineage.view(archived, "metric_value").outputs().getFirst().key()).contains(":v2:");
         mvc.perform(get("/metrics/" + unsupported + "/versions/2/lineage").with(user("viewer").roles("VIEWER"))).andExpect(status().isOk());
     }
+    @Test void defaultsToDirectFieldOriginsAndKeepsConditionsAvailableWithoutRewritingSnapshots() throws Exception {
+        configureLineage();
+        var controls = new DataModel(); controls.setTableName("metric_controls"); controls.setName("质量与产品条件"); controls.setSubjectArea("交易");
+        controls.setFields(new ArrayList<>(List.of(field("id", "BIGINT", true), field("water_m3", "DECIMAL(12,2)", false), field("product_code", "VARCHAR(20)", false))));
+        modeling.save(null, controls, "dev");
+        jdbc.update("UPDATE sql_task SET sql_text=? WHERE model_id=?",
+                "INSERT INTO metric_orders(id,amount,region,status,occurred_at) SELECT o.id,o.net_amount/100,o.region,o.status,o.occurred_at FROM ods_metric_orders o JOIN metric_controls c ON o.id=c.id WHERE o.status <> 'deleted' AND c.water_m3 >= 0 AND c.product_code='A'", modelId);
+        long atom = metrics.save(null, atomic("compact_amount", "SUM", "amount", "region"), "dev");
+        String frozen = mapper.version(atom, 1).definitionJson();
+        var directResult = mvc.perform(get("/metrics/" + atom + "/lineage").param("field", "region").with(user("viewer").roles("VIEWER")))
+                .andExpect(status().isOk()).andExpect(model().attribute("mode", "direct"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("影响结果的条件"))).andReturn();
+        var direct = (MetricLineage.Graph) directResult.getModelAndView().getModel().get("graph");
+        assertThat(direct.nodes()).extracting(MetricLineage.Node::label).contains("demo.orders.region", "warehouse.metric_orders.region")
+                .noneMatch(label -> label.endsWith(".water_m3") || label.endsWith(".product_code") || label.endsWith(".status") || label.endsWith(".*"));
+        var presentation = (MetricLineageProjection.Projection) directResult.getModelAndView().getModel().get("projection");
+        assertThat(presentation.hiddenNodeCount()).isPositive();
+        assertThat(presentation.contexts()).anySatisfy(context -> {
+            assertThat(context.role()).isEqualTo("SQL 筛选");
+            assertThat(context.inputs()).contains("warehouse.metric_controls.water_m3");
+        });
+        var fullResult = mvc.perform(get("/metrics/" + atom + "/versions/1/lineage").param("field", "region").param("mode", "full").with(user("viewer").roles("VIEWER")))
+                .andExpect(status().isOk()).andExpect(model().attribute("mode", "full"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("&amp;mode=full"))).andReturn();
+        var full = (MetricLineage.Graph) fullResult.getModelAndView().getModel().get("graph");
+        assertThat(full.nodes()).extracting(MetricLineage.Node::label).contains("warehouse.metric_controls.water_m3", "warehouse.metric_controls.product_code");
+        assertThat(direct.nodes().size()).isLessThan(full.nodes().size());
+        var valueResult = mvc.perform(get("/metrics/" + atom + "/lineage").param("mode", "direct").with(user("viewer").roles("VIEWER"))).andExpect(status().isOk()).andReturn();
+        var values = (MetricLineage.Graph) valueResult.getModelAndView().getModel().get("graph");
+        assertThat(values.nodes()).extracting(MetricLineage.Node::label).contains("demo.orders.net_amount").doesNotContain("demo.orders.region");
+        long count = metrics.save(null, atomic("compact_rows", "COUNT", "*", "region"), "dev");
+        var countResult = mvc.perform(get("/metrics/" + count + "/lineage").with(user("viewer").roles("VIEWER"))).andExpect(status().isOk()).andReturn();
+        var rowGraph = (MetricLineage.Graph) countResult.getModelAndView().getModel().get("graph");
+        assertThat(rowGraph.nodes()).extracting(MetricLineage.Node::label).contains("warehouse.metric_orders.*", "demo.orders.*");
+        assertThat(rowGraph.edges()).extracting(MetricLineage.Edge::role).contains("行数聚合", "SQL 行集", "同步行集");
+        assertThat(mapper.version(atom, 1).definitionJson()).isEqualTo(frozen);
+        for (String path : List.of("/metrics/" + atom + "/lineage", "/metrics/" + atom + "/versions/1/lineage"))
+            mvc.perform(get(path).param("mode", "unexpected").with(user("viewer").roles("VIEWER"))).andExpect(status().isBadRequest());
+    }
+
     private void configureLineage() {
         var source = new DataModel(); source.setTableName("ods_metric_orders"); source.setName("源订单"); source.setSubjectArea("交易");
         source.setFields(new ArrayList<>(List.of(field("id", "BIGINT", true), field("net_amount", "DECIMAL(12,2)", false),

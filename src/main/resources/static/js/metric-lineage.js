@@ -13,12 +13,20 @@
     parent.appendChild(element); return element;
   };
   const safeHref = value => typeof value === 'string' && value.startsWith('/') && !value.startsWith('//') ? value : null;
-  const kind = value => ({METRIC: '指标字段', WAREHOUSE_FIELD: '仓库字段', SOURCE_FIELD: '业务源字段', BOUNDARY: '追溯边界'})[value] || value || '节点';
+  const kind = (value, label = '') => label.endsWith('.*') && ['WAREHOUSE_FIELD', 'SOURCE_FIELD'].includes(value)
+    ? (value === 'SOURCE_FIELD' ? '业务源行集' : '仓库行集')
+    : ({METRIC: '指标字段', WAREHOUSE_FIELD: '仓库字段', SOURCE_FIELD: '业务源字段', BOUNDARY: '追溯边界'})[value] || value || '节点';
   const shorten = (value, max) => {
     const text = String(value || '—'); if (text.length <= max) return text;
     const suffix = text.includes('.') ? text.slice(text.lastIndexOf('.')) : '';
     if (suffix && suffix.length <= max - 5) return `${text.slice(0, max - suffix.length - 1)}…${suffix}`;
     const tail = Math.max(5, Math.floor((max - 1) / 2)); return `${text.slice(0, max - tail - 1)}…${text.slice(-tail)}`;
+  };
+  const caption = node => {
+    const dot = node.label.lastIndexOf('.'), field = node.label.slice(dot + 1);
+    if (node.kind === 'METRIC') return {heading: kind(node.kind), name: `${node.detail.split(' · ')[0]} · ${field === 'metric_value' ? '指标值' : field}`};
+    const table = node.label.slice(0, dot).split('.').pop() || '';
+    return {heading: `${kind(node.kind, node.label)} · ${table.length > 25 ? '…' + table.slice(-24) : table}`, name: field === '*' ? '行集（*）' : field};
   };
   const defs = create('defs', {});
   for (const [id, className] of [['metric-lineage-arrow', 'lineage-arrow'], ['metric-lineage-arrow-active', 'metric-lineage-arrow-active']]) {
@@ -42,11 +50,12 @@
   const nodeElements = new Map();
   graph.nodes.forEach(node => {
     const point = positions.get(node.key);
-    const group = create('g', {transform: `translate(${point.x} ${point.y})`, class: `lineage-node metric-lineage-node${node.level === 0 ? ' lineage-focus' : ''}${node.kind === 'BOUNDARY' ? ' lineage-uncollected' : ''}`, role: 'button', tabindex: 0, 'aria-pressed': 'false', 'data-lineage-node': node.key, 'aria-label': `${kind(node.kind)} ${node.label}，选择以聚焦上游关系`});
-    create('title', {}, group, [kind(node.kind), node.label, node.detail, node.status].filter(Boolean).join(' · '));
+    const label = caption(node);
+    const group = create('g', {transform: `translate(${point.x} ${point.y})`, class: `lineage-node metric-lineage-node${node.level === 0 ? ' lineage-focus' : ''}${node.kind === 'BOUNDARY' ? ' lineage-uncollected' : ''}`, role: 'button', tabindex: 0, 'aria-pressed': 'false', 'data-lineage-node': node.key, 'aria-label': `${kind(node.kind, node.label)} ${node.label}，选择以聚焦上游关系`});
+    create('title', {}, group, [kind(node.kind, node.label), node.label, node.detail, node.status].filter(Boolean).join(' · '));
     create('rect', {width: 250, height: 80, rx: 9}, group);
-    create('text', {x: 14, y: 21, class: 'lineage-node-source'}, group, shorten(kind(node.kind), 28));
-    create('text', {x: 14, y: 46, class: 'lineage-node-table'}, group, shorten(node.label, 28));
+    create('text', {x: 14, y: 21, class: 'lineage-node-source'}, group, label.heading);
+    create('text', {x: 14, y: 46, class: 'lineage-node-table'}, group, shorten(label.name, 32));
     create('text', {x: 14, y: 66, class: 'lineage-node-status'}, group, shorten(node.status || node.detail, 34));
     nodeElements.set(node.key, group);
   });
@@ -55,7 +64,7 @@
     selectedKey = null;
     nodeElements.forEach(element => { element.classList.remove('metric-lineage-selected', 'metric-lineage-ancestor', 'metric-lineage-unrelated'); element.setAttribute('aria-pressed', 'false'); });
     edgeElements.forEach(edge => { if (edge) { edge.classList.remove('metric-lineage-edge-active', 'metric-lineage-edge-muted'); edge.setAttribute('marker-end', 'url(#metric-lineage-arrow)'); } });
-    if (panel) panel.hidden = true; if (clear) clear.disabled = true; if (live) live.textContent = '未选择节点，显示全部关系。';
+    if (panel) panel.hidden = true; if (clear) clear.disabled = true; if (live) live.textContent = '未选择节点，显示当前范围全部关系。';
   };
   const select = key => {
     if (selectedKey === key) return reset();
@@ -70,11 +79,12 @@
     if (panel && node) {
       panel.hidden = false;
       document.querySelector('[data-metric-lineage-selection-name]').textContent = node.label;
-      document.querySelector('[data-metric-lineage-selection-type]').textContent = kind(node.kind);
+      document.querySelector('[data-metric-lineage-selection-type]').textContent = kind(node.kind, node.label);
       document.querySelector('[data-metric-lineage-selection-status]').textContent = node.status || '—';
       document.querySelector('[data-metric-lineage-selection-detail]').textContent = node.detail || '—';
       document.querySelector('[data-metric-lineage-selection-count]').textContent = `${count} 个上游节点，${trace.edgeIndexes.size} 条关联关系`;
-      const link = document.querySelector('[data-metric-lineage-selection-link]'), href = safeHref(node.href); link.hidden = !href; if (href) link.href = href;
+      const link = document.querySelector('[data-metric-lineage-selection-link]'), href = safeHref(node.href); link.hidden = !href;
+      if (href) link.href = node.kind === 'METRIC' ? `${href}${href.includes('?') ? '&' : '?'}mode=${window.metricLineageMode === 'full' ? 'full' : 'direct'}` : href;
     }
     if (clear) clear.disabled = false; if (live) live.textContent = `已选择 ${node?.label || '节点'}，高亮 ${count} 个上游节点和 ${trace.edgeIndexes.size} 条关联关系。`;
   };
@@ -85,7 +95,9 @@
   clear?.addEventListener('click', reset); svg.addEventListener('keydown', event => { if (event.key === 'Escape') reset(); });
   const bounds = {x: 0, y: 0, width: Math.max(380, levels.length * 330 + 50), height};
   const locateMetric = () => {
-    const canvas = svg.getBoundingClientRect(), scale = Math.max(.85, canvas.width / bounds.width);
+    const canvas = svg.getBoundingClientRect();
+    if (Math.min(canvas.width / bounds.width, canvas.height / bounds.height) >= .65) return {...bounds};
+    const scale = Math.max(.85, canvas.width / bounds.width);
     const width = canvas.width / scale, viewportHeight = canvas.height / scale;
     const target = graph.nodes.find(node => node.level === 0 && node.key.endsWith(':metric_value')) || graph.nodes.find(node => node.level === 0) || graph.nodes[0];
     const point = positions.get(target.key);
