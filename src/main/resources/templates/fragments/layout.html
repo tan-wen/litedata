@@ -24,6 +24,7 @@
       <a class="side-link" th:classappend="${activeNav == 'transforms'} ? ' active'" th:attr="aria-current=${activeNav == 'transforms' ? 'page' : null}" th:href="@{/transforms}" title="SQL 加工任务" aria-label="SQL 加工任务"><svg class="nav-icon" viewBox="0 0 18 18" aria-hidden="true"><path d="M6 4 2 9l4 5M12 4l4 5-4 5M10 2 8 16"/></svg><span class="nav-text">SQL 加工任务</span></a>
       <a class="side-link" th:classappend="${activeNav == 'services'} ? ' active'" th:attr="aria-current=${activeNav == 'services' ? 'page' : null}" th:href="@{/services}" title="数据服务" aria-label="数据服务"><svg class="nav-icon" viewBox="0 0 18 18" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="11" y="11" width="5" height="5" rx="1"/><path d="M12 3h4v4M16 3l-5 5M3 12v4h4M3 16l5-5"/></svg><span class="nav-text">数据服务</span></a>
       <div class="nav-section">数据治理</div>
+      <a class="side-link" th:classappend="${activeNav == 'assets'} ? ' active'" th:attr="aria-current=${activeNav == 'assets' ? 'page' : null}" th:href="@{/assets}" title="资产目录" aria-label="资产目录"><svg class="nav-icon" viewBox="0 0 18 18" aria-hidden="true"><rect x="2" y="3" width="14" height="12" rx="2"/><path d="M5 7h8M5 10h8M5 13h5"/></svg><span class="nav-text">资产目录</span></a>
       <a class="side-link" th:classappend="${activeNav == 'metadata'} ? ' active'" th:attr="aria-current=${activeNav == 'metadata' ? 'page' : null}" th:href="@{/metadata}" title="元数据与血缘" aria-label="元数据与血缘"><svg class="nav-icon" viewBox="0 0 18 18" aria-hidden="true"><rect x="1" y="6" width="5" height="6" rx="1"/><rect x="12" y="1" width="5" height="5" rx="1"/><rect x="12" y="12" width="5" height="5" rx="1"/><path d="M6 9h3V3.5h3M9 9v5.5h3"/></svg><span class="nav-text">元数据与血缘</span></a>
       <a class="side-link" th:classappend="${activeNav == 'quality'} ? ' active'" th:attr="aria-current=${activeNav == 'quality' ? 'page' : null}" th:href="@{/quality}" title="数据质量" aria-label="数据质量"><svg class="nav-icon" viewBox="0 0 18 18" aria-hidden="true"><path d="M9 1 16 4v5c0 4-7 8-7 8S2 13 2 9V4zM5 9l3 3 5-6"/></svg><span class="nav-text">数据质量</span></a>
       <a class="side-link" th:classappend="${activeNav == 'metrics'} ? ' active'" th:attr="aria-current=${activeNav == 'metrics' ? 'page' : null}" th:href="@{/metrics}" title="指标管理" aria-label="指标管理"><svg class="nav-icon" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 15V9h3v6M8 15V3h3v12M13 15V6h3v9"/></svg><span class="nav-text">指标管理</span></a>
@@ -50,7 +51,7 @@
   </div>
 </div>
 <dialog class="navigation-dialog" id="mobile-navigation" aria-label="导航菜单">
-  <div class="mobile-nav-header"><a class="side-brand" th:href="@{/}"><span class="brand-mark" aria-hidden="true">L</span><span class="brand-name">LiteData</span></a><button class="btn-close" type="button" data-close-nav aria-label="关闭">×</button></div>
+  <div class="mobile-nav-header"><a class="side-brand" th:href="@{/}"><span class="brand-mark" aria-hidden="true">L</span><span class="brand-name">LiteData</span></a><button class="btn-close" type="button" data-mobile-nav-close aria-label="关闭">×</button></div>
   <nav th:replace="~{fragments/layout :: navigation}"></nav>
 </dialog>
 <script type="module" th:src="@{/vendor/bootstrap/bootstrap.bundle.min.js}"></script>

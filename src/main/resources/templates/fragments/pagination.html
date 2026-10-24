@@ -7,6 +7,11 @@
       <input th:if="${keyword != null}" type="hidden" name="keyword" th:value="${keyword}">
       <input th:if="${layer != null}" type="hidden" name="layer" th:value="${layer}">
       <input th:if="${metricType != null}" type="hidden" name="metricType" th:value="${metricType}">
+      <input th:if="${assetType != null}" type="hidden" name="assetType" th:value="${assetType}">
+      <input th:if="${subjectArea != null}" type="hidden" name="subjectArea" th:value="${subjectArea}">
+      <input th:if="${owner != null}" type="hidden" name="owner" th:value="${owner}">
+      <input th:if="${tag != null}" type="hidden" name="tag" th:value="${tag}">
+      <input th:if="${assetStatus != null}" type="hidden" name="assetStatus" th:value="${assetStatus}">
       <label class="text-nowrap" for="list-page-size">每页</label>
       <select class="form-control form-control-sm w-auto" id="list-page-size" name="pageSize">
         <option th:if="${!#lists.contains(pageSizes,pageSize)}" th:value="${pageSize}" th:text="${pageSize}" selected></option>
@@ -16,12 +21,12 @@
     </form>
     <nav aria-label="资源列表分页"><ul class="pagination theme-primary pagination-sm mb-0">
       <li class="page-item" th:classappend="${!hasPrevious} ? 'disabled'">
-        <a th:if="${hasPrevious}" class="page-link" th:href="@{${pagePath}(pageNum=${pageNum - 1},pageSize=${pageSize},keyword=${keyword},layer=${layer},metricType=${metricType})}">上一页</a>
+        <a th:if="${hasPrevious}" class="page-link" th:href="@{${pagePath}(pageNum=${pageNum - 1},pageSize=${pageSize},keyword=${keyword},layer=${layer},metricType=${metricType},assetType=${assetType},subjectArea=${subjectArea},owner=${owner},tag=${tag},assetStatus=${assetStatus})}">上一页</a>
         <span th:unless="${hasPrevious}" class="page-link" aria-disabled="true">上一页</span>
       </li>
       <li class="page-item active" aria-current="page"><span class="page-link" th:text="${pageNum}"></span></li>
       <li class="page-item" th:classappend="${!hasMore} ? 'disabled'">
-        <a th:if="${hasMore}" class="page-link" th:href="@{${pagePath}(pageNum=${pageNum + 1},pageSize=${pageSize},keyword=${keyword},layer=${layer},metricType=${metricType})}">下一页</a>
+        <a th:if="${hasMore}" class="page-link" th:href="@{${pagePath}(pageNum=${pageNum + 1},pageSize=${pageSize},keyword=${keyword},layer=${layer},metricType=${metricType},assetType=${assetType},subjectArea=${subjectArea},owner=${owner},tag=${tag},assetStatus=${assetStatus})}">下一页</a>
         <span th:unless="${hasMore}" class="page-link" aria-disabled="true">下一页</span>
       </li>
     </ul></nav>
