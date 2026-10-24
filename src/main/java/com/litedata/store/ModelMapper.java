@@ -6,6 +6,8 @@ import org.apache.ibatis.annotations.*;
 
 @Mapper
 public interface ModelMapper {
+    @Select("SELECT * FROM data_model WHERE table_name=#{name} AND archived=FALSE")
+    DataModel modelByTable(String name);
     @Select("SELECT * FROM data_model WHERE archived=FALSE ORDER BY id DESC")
     List<DataModel> models();
     @Select("SELECT COUNT(*) FROM data_model WHERE archived=FALSE AND (#{layer}='' OR layer=#{layer}) AND (#{keyword}='' OR LOCATE(#{keyword}, LOWER(CONCAT(table_name, ' ', name, ' ', subject_area)))>0)")

@@ -27,6 +27,20 @@ public final class MetricExpressions {
         var parser = new Predicate(tokens(input, FILTER_TOKEN), columns);
         String result = parser.or(0); parser.end(); return result;
     }
+    /** Reuses the filter grammar so quoted literal text is never mistaken for a field. */
+    public static Set<String> filterColumns(String input) {
+        if (input == null || input.isBlank()) return Set.of();
+        var tokens = tokens(input, FILTER_TOKEN);
+        var columns = new LinkedHashSet<String>();
+        for (int i = 0; i < tokens.size(); i++) {
+            String token = tokens.get(i);
+            if (token.matches("[a-zA-Z_][a-zA-Z0-9_]*") && i + 1 < tokens.size()
+                    && Set.of("=", "!=", "<>", ">", ">=", "<", "<=", "IS", "IN").contains(tokens.get(i + 1).toUpperCase(Locale.ROOT)))
+                columns.add(token.toLowerCase(Locale.ROOT));
+        }
+        filter(input, columns);
+        return Collections.unmodifiableSet(columns);
+    }
     private static List<String> tokens(String input, Pattern pattern) {
         if (input == null || input.isBlank() || input.length() > 2000) throw invalid("表达式不能为空且最长 2000 字符");
         input = input.trim(); var result = new ArrayList<String>();

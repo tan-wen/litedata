@@ -46,6 +46,7 @@ class MetricIntegrationTest {
     @Autowired MetricService metrics;
     @Autowired ModelingService modeling;
     @Autowired MetricMapper mapper;
+    @Autowired MetricLineageService lineage;
     @Autowired Flyway flyway;
     long modelId;
 
@@ -145,6 +146,81 @@ class MetricIntegrationTest {
         Path preview = Path.of("target", "metric-preview"); Files.createDirectories(preview);
         Map<String,String> previews = Map.of("list", "/metrics", "atomic", "/metrics/new", "composite", "/metrics/new?type=COMPOSITE", "derived", "/metrics/new?type=DERIVED", "detail", "/metrics/" + composite);
         for (var entry : previews.entrySet()) Files.writeString(preview.resolve(entry.getKey() + ".html"), mvc.perform(get(entry.getValue()).with(user("dev").roles("DEVELOPER"))).andReturn().getResponse().getContentAsString(), StandardCharsets.UTF_8);
+    }
+    @Test void capturesFieldOriginsThroughSqlAndSyncAndFreezesEveryVersion() throws Exception {
+        configureLineage();
+        long amount = metrics.save(null, atomic("paid_amount", "SUM", "amount", "region"), "dev");
+        long recent = metrics.save(null, derived("paid_amount_7d", amount, "status = 'paid'"), "dev");
+        long composite = metrics.save(null, composite("amount_ratio", "[paid_amount_7d] / [paid_amount]"), "dev");
+        var first = metrics.require(amount);
+        var graph = lineage.view(first, "metric_value");
+        assertThat(graph.snapshot()).isTrue();
+        assertThat(graph.nodes()).extracting(MetricLineage.Node::label).contains("demo.orders.net_amount", "warehouse.metric_orders.amount");
+        assertThat(graph.edges()).anySatisfy(e -> { assertThat(e.role()).isEqualTo("表达式"); assertThat(e.expression()).contains("net_amount / 100"); });
+        assertThat(graph.edges()).anySatisfy(e -> { assertThat(e.role()).isEqualTo("SQL 筛选"); assertThat(e.expression()).contains("deleted"); });
+        assertThat(graph.edges()).anySatisfy(e -> assertThat(e.role()).isEqualTo("同步同名映射"));
+        var dimensions = lineage.view(first, "region");
+        assertThat(dimensions.nodes()).extracting(MetricLineage.Node::label).contains("demo.orders.region").doesNotContain("demo.orders.net_amount");
+        var derived = lineage.view(metrics.require(recent), "metric_value");
+        assertThat(derived.edges()).extracting(MetricLineage.Edge::role).contains("时间窗口", "业务筛选", "原子指标");
+        assertThat(derived.nodes()).extracting(MetricLineage.Node::label).contains("demo.orders.occurred_at", "demo.orders.status");
+        var formula = lineage.view(metrics.require(composite), "metric_value");
+        assertThat(formula.edges()).extracting(MetricLineage.Edge::role).contains("复合公式", "维度关联");
+        assertThat(formula.nodes()).anySatisfy(n -> assertThat(n.href()).contains("/versions/1/lineage"));
+        jdbc.update("UPDATE sql_task SET sql_text=REPLACE(sql_text,'o.net_amount / 100','o.id'),version=version+1 WHERE model_id=?", modelId);
+        assertThat(lineage.view(metrics.historyDefinition(amount, 1), "metric_value")).isEqualTo(graph);
+        first.setDescription("重新核对来源后保存"); metrics.save(amount, first, "dev");
+        var second = lineage.view(metrics.require(amount), "metric_value");
+        assertThat(second.nodes()).extracting(MetricLineage.Node::label).contains("demo.orders.id").doesNotContain("demo.orders.net_amount");
+        assertThat(lineage.view(metrics.require(composite), "metric_value")).isEqualTo(formula);
+        var changedMeasure = metrics.require(amount); changedMeasure.setMeasureColumn("id"); metrics.save(amount, changedMeasure, "dev");
+        assertThat(lineage.view(metrics.require(amount), "metric_value").nodes()).extracting(MetricLineage.Node::label)
+                .contains("warehouse.metric_orders.id").doesNotContain("warehouse.metric_orders.amount");
+        for (String path : List.of("/metrics/" + composite + "/lineage", "/metrics/" + amount + "/versions/1/lineage", "/metrics/" + amount + "/lineage?field=region", "/metrics/" + amount + "/lineage?field=all"))
+            mvc.perform(get(path).with(user("viewer").roles("VIEWER"))).andExpect(status().isOk())
+                    .andExpect(content().string(org.hamcrest.Matchers.containsString("输出字段")))
+                    .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("href=\"\""))));
+        mvc.perform(get("/metrics/" + amount + "/lineage").param("field", "missing").with(user("viewer").roles("VIEWER"))).andExpect(status().isBadRequest());
+        mvc.perform(get("/metrics/" + amount + "/lineage")).andExpect(status().is3xxRedirection());
+        Path preview = Path.of("target", "metric-preview"); Files.createDirectories(preview);
+        Files.writeString(preview.resolve("lineage.html"), mvc.perform(get("/metrics/" + composite + "/lineage").with(user("viewer").roles("VIEWER"))).andReturn().getResponse().getContentAsString(), StandardCharsets.UTF_8);
+        String stored = mapper.version(composite, 1).definitionJson();
+        assertThat(stored).doesNotContain("jdbc:mysql", "test-encrypted", "source_reader");
+    }
+    @Test void marksLegacyVersionsAndAmbiguousOrUnsupportedMappingsWithoutInventingFields() throws Exception {
+        configureLineage();
+        long atom = metrics.save(null, atomic("legacy_amount", "SUM", "amount", "region"), "dev");
+        jdbc.update("UPDATE metric_version SET definition_json=JSON_REMOVE(definition_json,'$.lineageSnapshot') WHERE metric_id=?", atom);
+        var old = metrics.historyDefinition(atom, 1);
+        assertThat(old.getLineageSnapshot()).isNull();
+        var legacy = lineage.view(old, "metric_value");
+        assertThat(legacy.snapshot()).isFalse(); assertThat(legacy.warnings()).anySatisfy(w -> assertThat(w).contains("当前配置"));
+        mvc.perform(get("/metrics/" + atom + "/versions/1/lineage").with(user("viewer").roles("VIEWER")))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("未找到该版本的冻结血缘快照")));
+        jdbc.update("INSERT INTO pipeline(name,source_id,source_table,watermark_column,target_table,transform_sql,cron_expression) SELECT 'ambiguous',source_id,source_table,watermark_column,'metric_orders','','' FROM pipeline LIMIT 1");
+        long ambiguous = metrics.save(null, atomic("ambiguous_amount", "SUM", "amount", ""), "dev");
+        var graph = lineage.view(metrics.require(ambiguous), "metric_value");
+        assertThat(graph.warnings()).anySatisfy(w -> assertThat(w).contains("多个写入配置"));
+        assertThat(graph.nodes()).noneSatisfy(n -> assertThat(n.kind()).isEqualTo("SOURCE_FIELD"));
+        jdbc.update("DELETE FROM pipeline WHERE name='ambiguous'");
+        jdbc.update("UPDATE sql_task SET sql_text='INSERT INTO metric_orders SELECT * FROM (SELECT * FROM ods_metric_orders) nested' WHERE model_id=?", modelId);
+        long unsupported = metrics.save(null, atomic("unsupported_amount", "SUM", "amount", ""), "dev");
+        assertThat(lineage.view(metrics.require(unsupported), "metric_value").warnings()).anySatisfy(w -> assertThat(w).contains("映射无法确定"));
+        metrics.archive(unsupported, 1, "dev");
+        var archived = metrics.historyDefinition(unsupported, 2);
+        assertThat(lineage.view(archived, "metric_value").outputs().getFirst().key()).contains(":v2:");
+        mvc.perform(get("/metrics/" + unsupported + "/versions/2/lineage").with(user("viewer").roles("VIEWER"))).andExpect(status().isOk());
+    }
+    private void configureLineage() {
+        var source = new DataModel(); source.setTableName("ods_metric_orders"); source.setName("源订单"); source.setSubjectArea("交易");
+        source.setFields(new ArrayList<>(List.of(field("id", "BIGINT", true), field("net_amount", "DECIMAL(12,2)", false),
+                field("region", "VARCHAR(20)", false), field("status", "VARCHAR(20)", false), field("occurred_at", "DATETIME", false))));
+        modeling.save(null, source, "dev");
+        jdbc.update("INSERT INTO data_source(name,jdbc_url,username,encrypted_password) VALUES('演示业务源','jdbc:mysql://example.invalid:3306/demo','source_reader','test-encrypted')");
+        long sourceId = jdbc.queryForObject("SELECT id FROM data_source WHERE name='演示业务源'", Long.class);
+        jdbc.update("INSERT INTO pipeline(name,source_id,source_table,watermark_column,target_table,transform_sql,cron_expression) VALUES('同步订单',?,'orders','occurred_at','ods_metric_orders','','')", sourceId);
+        jdbc.update("INSERT INTO sql_task(name,model_id,sql_text) VALUES('订单金额换算',?,?)", modelId,
+                "INSERT INTO metric_orders(id,amount,region,status,occurred_at) SELECT o.id,o.net_amount / 100,o.region,o.status,o.occurred_at FROM ods_metric_orders o WHERE o.status <> 'deleted'");
     }
     private MetricDefinition atomic(String code, String aggregation, String column, String dimensions) {
         var m = definition(code, MetricType.ATOMIC); m.setModelId(modelId); m.setAggregation(aggregation); m.setMeasureColumn(column); m.setDimensions(dimensions); m.setTimeColumn("occurred_at"); return m;

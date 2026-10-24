@@ -18,8 +18,10 @@ public class MetricService {
     private final ModelMapper models;
     private final PlatformMapper platform;
     private final ObjectMapper json;
-    public MetricService(MetricMapper mapper, ModelMapper models, PlatformMapper platform, ObjectMapper json) {
+    private final MetricLineageService lineage;
+    public MetricService(MetricMapper mapper, ModelMapper models, PlatformMapper platform, ObjectMapper json, MetricLineageService lineage) {
         this.mapper = mapper; this.models = models; this.platform = platform; this.json = json;
+        this.lineage = lineage;
     }
     public record Option(Long id, String code, String name, MetricType type, int version) {}
     public record ModelOption(Long id, String name, String tableName) {}
@@ -67,7 +69,7 @@ public class MetricService {
             if (!current.getCode().equals(input.getCode()) || current.getType() != input.getType())
                 throw new IllegalArgumentException("指标编码和类型保存后不可更改，请新建指标");
         }
-        input.setId(id); input.setArchived(false);
+        input.setId(id); input.setArchived(false); input.setLineageSnapshot(null);
         var upstreams = new ArrayList<MetricDefinition>();
         switch (input.getType()) {
             case ATOMIC -> {
@@ -128,6 +130,7 @@ public class MetricService {
         platform.audit(actor, "METRIC_ARCHIVE", id + ":v" + snapshot.getVersion(), "SUCCESS");
     }
     private void snapshot(MetricDefinition metric, String actor) {
+        metric.setLineageSnapshot(metric.getLineageSnapshot() == null ? lineage.capture(metric) : lineage.reversion(metric.getLineageSnapshot(), metric));
         mapper.snapshot(metric.getId(), metric.getVersion(), actor, json.writeValueAsString(metric), metric.getSqlText());
     }
     private DataModel model(Long id) {

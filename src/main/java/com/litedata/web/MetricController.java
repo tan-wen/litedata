@@ -15,7 +15,8 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 @RequestMapping("/metrics")
 public class MetricController {
     private final MetricService metrics;
-    public MetricController(MetricService metrics) { this.metrics = metrics; }
+    private final MetricLineageService lineage;
+    public MetricController(MetricService metrics, MetricLineageService lineage) { this.metrics = metrics; this.lineage = lineage; }
     @ModelAttribute("activeNav") String activeNav() { return "metrics"; }
     @ModelAttribute("canEdit") boolean canEdit(HttpServletRequest r) { return r.isUserInRole("ADMIN") || r.isUserInRole("DEVELOPER"); }
     @ModelAttribute("canManageUsers") boolean canManageUsers(HttpServletRequest r) { return r.isUserInRole("ADMIN"); }
@@ -42,6 +43,13 @@ public class MetricController {
     }
     @GetMapping("/{id}/versions/{version}") String history(@PathVariable long id, @PathVariable int version, @RequestParam Map<String,String> params, Model model) {
         return detail(model, metrics.historyDefinition(id, version), true, params);
+    }
+    @GetMapping("/{id}/lineage") String lineage(@PathVariable long id, @RequestParam(defaultValue="metric_value") String field, Model model) {
+        return lineage(model, metrics.require(id), field, false);
+    }
+    @GetMapping("/{id}/versions/{version}/lineage") String historicalLineage(@PathVariable long id, @PathVariable int version,
+            @RequestParam(defaultValue="metric_value") String field, Model model) {
+        return lineage(model, metrics.historyDefinition(id, version), field, true);
     }
     @PostMapping String create(@ModelAttribute("draft") MetricDefinition draft, BindingResult errors, Model model, Principal principal, RedirectAttributes redirect) {
         return save(null, draft, errors, model, principal, redirect);
@@ -72,5 +80,11 @@ public class MetricController {
         String path = "/metrics/" + definition.getId() + (historical ? "/versions/" + definition.getVersion() : "");
         var page = ListPagination.prepare(model, path, params, metrics.versionCount(definition.getId()));
         model.addAttribute("history", metrics.versions(definition.getId(), page)); return "metric-detail";
+    }
+    private String lineage(Model model, MetricDefinition definition, String field, boolean historical) {
+        String path = "/metrics/" + definition.getId() + (historical ? "/versions/" + definition.getVersion() : "");
+        model.addAttribute("definition", definition); model.addAttribute("field", field);
+        model.addAttribute("graph", lineage.view(definition, field));
+        model.addAttribute("backPath", path); model.addAttribute("lineagePath", path + "/lineage"); return "metric-lineage";
     }
 }

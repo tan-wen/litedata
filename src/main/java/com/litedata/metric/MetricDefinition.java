@@ -26,6 +26,7 @@ public class MetricDefinition {
     private boolean archived;
     private String sqlText = "";
     private List<MetricDependency> dependencies = new ArrayList<>();
+    private MetricLineage.Graph lineageSnapshot;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -71,4 +72,6 @@ public class MetricDefinition {
     public void setSqlText(String sqlText) { this.sqlText = sqlText; }
     public List<MetricDependency> getDependencies() { return dependencies; }
     public void setDependencies(List<MetricDependency> dependencies) { this.dependencies = dependencies; }
+    public MetricLineage.Graph getLineageSnapshot() { return lineageSnapshot; }
+    public void setLineageSnapshot(MetricLineage.Graph lineageSnapshot) { this.lineageSnapshot = lineageSnapshot; }
 }
