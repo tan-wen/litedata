@@ -1,9 +1,12 @@
 package com.litedata.governance;
 
 import com.litedata.config.PlatformProperties;
+import com.litedata.data.DatabaseType;
 import com.litedata.data.JdbcConnections;
 import com.litedata.data.SourceService;
+import com.litedata.model.DataSource;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -12,7 +15,7 @@ import java.util.List;
 import java.util.Objects;
 import org.springframework.stereotype.Component;
 
-/** Reads only schema metadata from a registered MySQL source or the Doris warehouse. */
+/** Reads only schema metadata from registered sources or the Doris warehouse. */
 @Component
 public class JdbcMetadataCollector {
     static final int MAX_TABLES = 2_000;
@@ -35,17 +38,57 @@ public class JdbcMetadataCollector {
     }
 
     public Snapshot collect(Long sourceId) throws SQLException {
-        try (Connection connection = connection(sourceId)) {
-            String catalog = sourceId == null ? "warehouse" : JdbcConnections.identifier(connection.getCatalog());
-            return new Snapshot(catalog, tables(connection, catalog));
+        DataSource source = sourceId == null ? null : sources.require(sourceId);
+        DatabaseType type = source == null ? DatabaseType.MYSQL : source.getDatabaseType();
+        try (Connection connection = connection(source)) {
+            if (type == DatabaseType.MYSQL) {
+                String catalog = source == null ? "warehouse" : JdbcConnections.identifier(connection.getCatalog());
+                return new Snapshot(catalog, tables(connection, catalog));
+            }
+            String schema = type.schema(connection);
+            return new Snapshot(schema, jdbcTables(connection, schema));
         }
     }
 
-    private Connection connection(Long sourceId) throws SQLException {
-        if (sourceId != null) return sources.connect(sources.require(sourceId));
+    private Connection connection(DataSource source) throws SQLException {
+        if (source != null) return sources.connect(source);
         var doris = properties.doris();
         if (doris == null) throw new IllegalStateException("未配置 Doris 只读采集连接");
         return connections.open(doris.jdbcUrl(), doris.username(), doris.password());
+    }
+
+    private List<Table> jdbcTables(Connection connection, String schema) throws SQLException {
+        DatabaseMetaData metadata = connection.getMetaData();
+        var tables = new ArrayList<Table>();
+        try (ResultSet result = metadata.getTables(connection.getCatalog(), schema, "%", new String[] {"TABLE", "VIEW"})) {
+            while (result.next()) {
+                if (!schema.equals(result.getString("TABLE_SCHEM"))) continue;
+                if (tables.size() == MAX_TABLES) throw new IllegalArgumentException("元数据表数量超过2000，拒绝采集部分结果");
+                String name = JdbcConnections.identifier(result.getString("TABLE_NAME"));
+                tables.add(new Table(name, Objects.toString(result.getString("REMARKS"), ""), jdbcColumns(metadata, connection.getCatalog(), schema, name)));
+            }
+        }
+        return List.copyOf(tables);
+    }
+
+    private List<Column> jdbcColumns(DatabaseMetaData metadata, String catalog, String schema, String table) throws SQLException {
+        var keys = new java.util.HashSet<String>();
+        try (ResultSet result = metadata.getPrimaryKeys(catalog, schema, table)) {
+            while (result.next()) keys.add(result.getString("COLUMN_NAME"));
+        }
+        var columns = new ArrayList<Column>();
+        try (ResultSet result = metadata.getColumns(catalog, schema, table, "%")) {
+            while (result.next()) {
+                if (!schema.equals(result.getString("TABLE_SCHEM")) || !table.equals(result.getString("TABLE_NAME"))) continue;
+                if (columns.size() == MAX_COLUMNS_PER_TABLE) throw new IllegalArgumentException("表 " + table + " 的字段数量超过500，拒绝采集部分结果");
+                String name = JdbcConnections.identifier(result.getString("COLUMN_NAME"));
+                columns.add(new Column(name, Objects.toString(result.getString("TYPE_NAME"), ""),
+                        result.getInt("NULLABLE") != DatabaseMetaData.columnNoNulls, keys.contains(name),
+                        Objects.toString(result.getString("REMARKS"), ""), result.getInt("ORDINAL_POSITION")));
+            }
+        }
+        if (columns.isEmpty()) throw new IllegalArgumentException("表 " + table + " 未读取到字段，拒绝采集不完整结构");
+        return List.copyOf(columns);
     }
 
     private List<Table> tables(Connection connection, String catalog) throws SQLException {

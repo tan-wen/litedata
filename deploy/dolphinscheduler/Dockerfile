@@ -1,5 +1,5 @@
 # DataX has no maintained official container image. Build the official Apache-2.0 source
-# at a pinned tag so mysqlreader and doriswriter are installed in the DS worker.
+# at a pinned commit with the supported JDBC readers and doriswriter in the worker.
 ARG DOLPHINSCHEDULER_VERSION=3.4.0
 FROM apache/dolphinscheduler-standalone-server:${DOLPHINSCHEDULER_VERSION} AS datax-builder
 ARG DATAX_REF=9a1f88751e24314b083a74f1b83ef56d69ce98bd
@@ -17,10 +17,16 @@ RUN git init . \
     && git fetch --depth 1 origin "${DATAX_REF}" \
     && git checkout --detach FETCH_HEAD \
     && find . -path '*/src/main/assembly/package.xml' -exec sed -i -E 's|<id>[[:space:]]*</id>|<id>datax</id>|g;s|<id[[:space:]]*/>|<id>datax</id>|g' {} + \
-    && sed -i 's|<finalName>datax</finalName>|<finalName>datax</finalName><appendAssemblyId>false</appendAssemblyId>|g' core/pom.xml transformer/pom.xml mysqlreader/pom.xml doriswriter/pom.xml
-RUN --mount=type=cache,target=/root/.m2 /opt/maven/bin/mvn -B -ntp -DskipTests clean package -pl core,transformer,mysqlreader,doriswriter -am \
+    && sed -i 's|<finalName>datax</finalName>|<finalName>datax</finalName><appendAssemblyId>false</appendAssemblyId>|g' core/pom.xml transformer/pom.xml mysqlreader/pom.xml postgresqlreader/pom.xml sqlserverreader/pom.xml oraclereader/pom.xml doriswriter/pom.xml \
+    && sed -i 's|<version>42.3.3</version>|<version>42.7.8</version>|g' postgresqlreader/pom.xml \
+    && sed -i 's|<artifactId>sqljdbc4</artifactId>|<artifactId>mssql-jdbc</artifactId>|g;s|<version>4.0</version>|<version>12.10.1.jre8</version>|g' sqlserverreader/pom.xml \
+    && sed -i 's|<groupId>com.oracle</groupId>|<groupId>com.oracle.database.jdbc</groupId>|g;s|<artifactId>ojdbc6</artifactId>|<artifactId>ojdbc8</artifactId>|g;s|<version>11.2.0.3</version>|<version>23.9.0.25.07</version>|g' oraclereader/pom.xml
+RUN --mount=type=cache,target=/root/.m2 /opt/maven/bin/mvn -B -ntp -DskipTests clean package -pl core,transformer,mysqlreader,postgresqlreader,sqlserverreader,oraclereader,doriswriter -am \
     && test -f core/target/datax/bin/datax.py \
     && test -f mysqlreader/target/datax/plugin/reader/mysqlreader/plugin.json \
+    && test -f postgresqlreader/target/datax/plugin/reader/postgresqlreader/plugin.json \
+    && test -f sqlserverreader/target/datax/plugin/reader/sqlserverreader/plugin.json \
+    && test -f oraclereader/target/datax/plugin/reader/oraclereader/plugin.json \
     && test -f doriswriter/target/datax/plugin/writer/doriswriter/plugin.json
 RUN curl -fsSLo /tmp/mysql-connector-j.jar "https://repo.maven.apache.org/maven2/com/mysql/mysql-connector-j/${MYSQL_CONNECTOR_VERSION}/mysql-connector-j-${MYSQL_CONNECTOR_VERSION}.jar" \
     && echo "d77962877d010777cff997015da90ee689f0f4bb76848340e1488f2b83332af5  /tmp/mysql-connector-j.jar" | sha256sum -c - \
@@ -43,6 +49,9 @@ RUN mkdir -p /opt/dolphinscheduler/plugins/task-plugins \
 COPY --from=datax-builder /src/core/target/datax/ /opt/datax/
 COPY --from=datax-builder /src/transformer/target/datax/ /opt/datax/
 COPY --from=datax-builder /src/mysqlreader/target/datax/ /opt/datax/
+COPY --from=datax-builder /src/postgresqlreader/target/datax/ /opt/datax/
+COPY --from=datax-builder /src/sqlserverreader/target/datax/ /opt/datax/
+COPY --from=datax-builder /src/oraclereader/target/datax/ /opt/datax/
 COPY --from=datax-builder /src/doriswriter/target/datax/ /opt/datax/
 COPY --from=datax-builder /tmp/mysql-connector-j.jar /opt/dolphinscheduler/standalone-server/libs/mysql-connector-j-8.4.0.jar
 COPY deploy/dolphinscheduler/run_pipeline.py /opt/platform/bin/run_pipeline.py

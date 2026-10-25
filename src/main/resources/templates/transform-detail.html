@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
 <head><title>加工依赖链 · LiteData</title></head><body><section>
-  <div class="d-flex justify-content-between align-items-start mb-7 gap-5"><div><div class="page-kicker">数据开发 / <a th:href="@{/transforms}">SQL 加工任务</a></div><h1 class="page-title" th:text="${task.name}"></h1><p class="page-subtitle mb-0"><span th:text="${task.layer + ' / warehouse.' + task.targetTable + ' · v' + task.version}"></span> · <code th:text="${task.cronExpression}"></code> · <span th:text="${task.status}"></span></p></div><a th:if="${canEdit}" class="btn-outline theme-primary" th:href="@{/transforms/{id}/edit(id=${task.id})}">编辑任务</a></div>
+  <div class="d-flex justify-content-between align-items-start mb-7 gap-5"><div><div class="page-kicker">数据开发 / <a th:href="@{/transforms}">数据加工</a></div><h1 class="page-title" th:text="${task.name}"></h1><p class="page-subtitle mb-0"><span th:text="${task.layer + ' / warehouse.' + task.targetTable + ' · v' + task.version}"></span> · <code th:text="${task.cronExpression}"></code> · <span th:text="${task.status}"></span></p></div><a th:if="${canEdit}" class="btn-outline theme-primary" th:href="@{/transforms/{id}/edit(id=${task.id})}">编辑任务</a></div>
   <div th:replace="~{fragments/messages :: messages}"></div>
   <div class="d-flex flex-wrap gap-3 mb-5"><a class="btn-solid theme-primary" th:href="@{/scheduling/transform/{id}(id=${task.id})}">运行实例与日志</a><a class="btn-outline theme-secondary" href="#platform-runs">平台 SQL 记录</a></div>
   <div class="alert theme-info">下方为本次执行的完整依赖链，按上游成功后执行下游。每次会重新执行所有上游，共享节点只执行一次；上游失败时不会执行其下游。</div>

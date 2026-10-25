@@ -112,6 +112,29 @@ class PlatformIntegrationTest {
     }
 
     @Test
+    void sourceFormsPersistAndRenderAllDatabaseTypesAndRejectMismatchedSelections() throws Exception {
+        var urls=Map.of("MYSQL","jdbc:mysql://host/sales", "POSTGRESQL","jdbc:postgresql://host/sales?currentSchema=source_data",
+                "SQLSERVER","jdbc:sqlserver://host:1433;databaseName=sales", "ORACLE","jdbc:oracle:thin:@//host:1521/service");
+        for(var entry:urls.entrySet()) {
+            mvc.perform(post("/sources").with(csrf()).with(user("developer").roles("DEVELOPER"))
+                    .param("name","form-"+entry.getKey()).param("databaseType",entry.getKey()).param("jdbcUrl",entry.getValue())
+                    .param("username","reader").param("password","test-password"))
+                    .andExpect(status().is3xxRedirection()).andExpect(header().string("Location","/sources"));
+            var saved=mapper.sources().stream().filter(s->s.getName().equals("form-"+entry.getKey())).findFirst().orElseThrow();
+            assertThat(saved.getDatabaseType().name()).isEqualTo(entry.getKey());
+            mvc.perform(get("/sources/"+saved.getId()+"/edit").with(user("admin").roles("ADMIN")))
+                    .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("value=\""+entry.getKey()+"\" selected=\"selected\"")));
+        }
+        mvc.perform(get("/sources").with(user("viewer").roles("VIEWER"))).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("SQL Server")));
+        mvc.perform(post("/sources").with(csrf()).with(user("developer").roles("DEVELOPER"))
+                .param("name","mismatched").param("databaseType","ORACLE").param("jdbcUrl",urls.get("POSTGRESQL"))
+                .param("username","reader").param("password","test-password"))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("所选数据库类型与 JDBC 地址不一致")));
+        assertThat(mapper.sourceCount()).isEqualTo(4);
+    }
+
+    @Test
     void flywayCreatesPlatformTablesAndProtectedPagesRender() throws Exception {
         Integer tables = jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ('data_source','pipeline','pipeline_run','data_service','api_credential','service_call')", Integer.class);
         assertThat(tables).isEqualTo(6);
@@ -460,7 +483,7 @@ class PlatformIntegrationTest {
         assertThat(mapper.pipeline(pipeline.getId()).getName()).isEqualTo(pipeline.getName());
         pipelineService.finish(runId,true,"done");
         var watermark=mapper.pipeline(pipeline.getId()).getWatermark();
-        mapper.definition(pipeline.getId(),12345L); mapper.schedule(pipeline.getId(),42,"SCHEDULED");
+        mapper.definition(pipeline.getId(),12345L); mapper.rememberWorkflow("pipeline",pipeline.getId(),12345L); mapper.schedule(pipeline.getId(),42,"SCHEDULED");
         mvc.perform(pipelineEdit(pipeline).param("name","edited-pipeline").param("watermark","2099-01-01T00:00:00")
                 .param("activeRunId","1").param("definitionCode","1"))
                 .andExpect(status().is3xxRedirection()).andExpect(header().string("Location","/pipelines"));
@@ -470,10 +493,25 @@ class PlatformIntegrationTest {
         assertThat(edited.getDefinitionCode()).isEqualTo(12345L);
         assertThat(edited.getScheduleId()).isEqualTo(42);
         assertThat(edited.getActiveRunId()).isNull();
+        var frequencyChanged=new Pipeline(); org.springframework.beans.BeanUtils.copyProperties(edited,frequencyChanged);
+        frequencyChanged.setCronExpression("0 */5 * * * ?");
+        mvc.perform(pipelineEdit(frequencyChanged).param("name","edited-pipeline"))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("请先暂停后再修改执行周期")));
+        assertThat(mapper.pipeline(pipeline.getId()).getCronExpression()).isEqualTo("0 0 * * * ?");
+        mapper.schedule(pipeline.getId(),42,"PAUSED");
+        mvc.perform(pipelineEdit(frequencyChanged).param("name","edited-pipeline"))
+                .andExpect(status().is3xxRedirection()).andExpect(header().string("Location","/pipelines"));
+        var rescheduled=mapper.pipeline(pipeline.getId());
+        assertThat(rescheduled.getCronExpression()).isEqualTo("0 */5 * * * ?");
+        assertThat(rescheduled.getWatermark()).isEqualTo(watermark);
+        assertThat(rescheduled.getDefinitionCode()).isNull();
+        assertThat(rescheduled.getScheduleId()).isNull();
+        assertThat(rescheduled.getStatus()).isEqualTo("PAUSED");
+        assertThat(mapper.workflowCodes("pipeline",pipeline.getId())).contains(12345L);
         var changed=new Pipeline(); org.springframework.beans.BeanUtils.copyProperties(pipeline,changed);
         changed.setTargetTable("other_target");
         mvc.perform(pipelineEdit(changed).param("name","bad-boundary")).andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("同步边界及调度配置创建后固定")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("同步边界创建后固定")));
         assertThat(mapper.pipeline(pipeline.getId()).getTargetTable()).isEqualTo(pipeline.getTargetTable());
         mvc.perform(post("/pipelines").with(csrf()).with(user("developer").roles("DEVELOPER"))
                 .param("name","invalid-source").param("sourceId","not-a-number"))

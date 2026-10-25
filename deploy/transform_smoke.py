@@ -48,7 +48,7 @@ def task(client, name, model_id, sql, upstream=None, pipeline=None):
     if pipeline:
         fields["upstreamPipelineIds"] = pipeline
     status, page = post_form(client, page, "/transforms", fields)
-    checked(status, page, "SQL 加工任务已保存")
+    checked(status, page, "数据加工已保存")
     return resource_id(page, "/transforms", "run")
 
 
@@ -170,7 +170,7 @@ def main():
     status, page = post_form(client, edit, f"/transforms/{dwd_id}", {"name": dwd, "modelId": dwd_model,
         "sqlText": f"INSERT INTO {dwd} SELECT id,customer_name,amount,updated_at FROM missing_flow_{suffix}",
         "cronExpression": "0 */5 * * * ?", "upstreamPipelineIds": pipeline_id})
-    checked(status, page, "SQL 加工任务已保存")
+    checked(status, page, "数据加工已保存")
     _, page = client.request("GET", f"/transforms/{root}")
     status, page = post_form(client, page, f"/transforms/{root}/run", {})
     checked(status, page, "DolphinScheduler 已接受整条依赖链")
@@ -193,7 +193,7 @@ def main():
     _, edit = client.request("GET", f"/transforms/{dwd_id}/edit")
     status, page = post_form(client, edit, f"/transforms/{dwd_id}", {"name": dwd, "modelId": dwd_model, "sqlText": dwd_sql,
         "cronExpression": "0 */5 * * * ?", "upstreamPipelineIds": pipeline_id})
-    checked(status, page, "SQL 加工任务已保存")
+    checked(status, page, "数据加工已保存")
     return {"status": "success", "rootTaskId": int(root), "tables": names,
             "checks": ["pure-ods-sync", "manual-real-dag", "dwd-dws-ads-results", "actual-timer-trigger", "pause", "upstream-failure-gates-downstream"]}
 

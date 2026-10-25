@@ -2,14 +2,16 @@
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
 <head><title>数据源 · 数据中台</title></head>
 <body><section>
-  <div class="mb-7"><div class="page-kicker">数据开发 / <a th:href="@{/sources}">数据源</a></div><h1 class="page-title" th:text="${resourceId == null ? '新增数据源' : '编辑数据源'}">新增数据源</h1><p class="page-subtitle mb-0">登记要同步的 MySQL 连接；密码只在提交时接收，不会回显。</p></div>
+  <div class="mb-7"><div class="page-kicker">数据开发 / <a th:href="@{/sources}">数据源</a></div><h1 class="page-title" th:text="${resourceId == null ? '新增数据源' : '编辑数据源'}">新增数据源</h1><p class="page-subtitle mb-0">支持 MySQL、PostgreSQL、SQL Server、Oracle；密码加密保存且不会回显。</p></div>
   <div th:replace="~{fragments/messages :: messages}"></div>
   <form th:if="${canEdit}" th:object="${draft}" th:action="${formAction}" method="post">
     <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
     <article class="platform-card card mb-5"><div class="card-header">连接信息</div><div class="card-body"><div class="row g-5">
       <div class="md:col-6"><label class="form-label" for="name">名称</label><input class="form-control" th:field="*{name}" required maxlength="100" placeholder="例如：业务主库"></div>
       <div class="md:col-6"><label class="form-label" for="username">用户名</label><input class="form-control" th:field="*{username}" required autocomplete="off"></div>
+      <div class="col-12"><label class="form-label" for="databaseType">数据库类型</label><select class="form-control" th:field="*{databaseType}"><option value="">按 JDBC 地址识别</option><option value="MYSQL">MySQL</option><option value="POSTGRESQL">PostgreSQL</option><option value="SQLSERVER">SQL Server</option><option value="ORACLE">Oracle</option></select></div>
       <div class="col-12"><label class="form-label" for="jdbcUrl">JDBC 地址</label><input class="form-control" th:field="*{jdbcUrl}" required placeholder="jdbc:mysql://host:3306/database"></div>
+      <div class="col-12 form-text"><div>MySQL：<code>jdbc:mysql://host:3306/database</code></div><div>PostgreSQL：<code>jdbc:postgresql://host:5432/database?currentSchema=public</code></div><div>SQL Server：<code>jdbc:sqlserver://host:1433;databaseName=database;encrypt=true</code>，读取 dbo 模式。</div><div>Oracle：<code>jdbc:oracle:thin:@//host:1521/service</code>，读取登录用户模式，表名和字段名按实际大小写填写。</div><div>PostgreSQL 默认 public，可用 currentSchema 指定单个模式。水位须为非空、不带时区的时间戳并有前导索引；新类型暂不支持数据质量扫描。</div></div>
       <div class="col-12"><label class="form-label" for="password">密码</label><input class="form-control" id="password" name="password" type="password" th:required="${resourceId == null}" autocomplete="new-password"><div class="form-text" th:text="${resourceId == null ? '新建数据源时必须填写。' : '留空将保留现有密码。'}"></div></div>
     </div></div></article>
     <div class="d-flex gap-3"><button class="btn-solid theme-primary" type="submit" th:text="${resourceId == null ? '保存数据源' : '保存修改'}">保存数据源</button><a class="btn-outline theme-secondary" th:href="@{/sources}">取消</a></div>

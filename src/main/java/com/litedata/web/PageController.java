@@ -29,7 +29,7 @@ public class PageController {
     }
     @GetMapping("/login") String login() { return "login"; }
     @InitBinder("draft") void bind(WebDataBinder binder) {
-        binder.setAllowedFields("name","jdbcUrl","username","password","sourceId","sourceTable","watermarkColumn",
+        binder.setAllowedFields("name","databaseType","jdbcUrl","username","password","sourceId","sourceTable","watermarkColumn",
                 "targetTable","transformSql","cronExpression","slug","querySql");
     }
     @ModelAttribute("canEdit") boolean canEdit(jakarta.servlet.http.HttpServletRequest request) {
@@ -61,6 +61,7 @@ public class PageController {
     @GetMapping("/sources/new") String newSource(Model model) { return form(model,new SourceDraft(),null,"sources"); }
     @GetMapping("/sources/{id}/edit") String editSource(@PathVariable long id,Model model) {
         var draft=new SourceDraft(); BeanUtils.copyProperties(source(id),draft);
+        draft.setDatabaseType(source(id).getDatabaseType().name());
         return form(model,draft,id,"sources");
     }
     @PostMapping("/sources") String createSource(@ModelAttribute("draft") SourceDraft draft,BindingResult errors,
@@ -74,6 +75,9 @@ public class PageController {
     private String saveSource(Long id,SourceDraft draft,BindingResult errors,Model model,RedirectAttributes redirect,Principal principal) {
         try {
             if(errors.hasErrors()) throw new IllegalArgumentException("数据源表单格式有误");
+            if(draft.getDatabaseType()!=null && !draft.getDatabaseType().isBlank() &&
+                    !com.litedata.data.DatabaseType.fromUrl(draft.getJdbcUrl()).name().equals(draft.getDatabaseType()))
+                throw new IllegalArgumentException("所选数据库类型与 JDBC 地址不一致");
             if(id==null) sources.create(draft.getName(),draft.getJdbcUrl(),draft.getUsername(),draft.getPassword());
             else sources.update(id,draft.getName(),draft.getJdbcUrl(),draft.getUsername(),draft.getPassword());
             audit(principal,id==null?"SOURCE_CREATE":"SOURCE_UPDATE",draft.getName());
@@ -127,7 +131,7 @@ public class PageController {
     }
     @PostMapping("/pipelines/{id}/schedule") String schedule(@PathVariable long id,RedirectAttributes redirect,Principal principal) {
         scheduler.schedule(id); audit(principal,"PIPELINE_SCHEDULE",Long.toString(id));
-        redirect.addFlashAttribute("success","每小时调度已启用"); return "redirect:/pipelines";
+        redirect.addFlashAttribute("success","定时调度已启用"); return "redirect:/pipelines";
     }
     @PostMapping("/pipelines/{id}/pause") String pause(@PathVariable long id,RedirectAttributes redirect,Principal principal) {
         scheduler.pause(id); audit(principal,"PIPELINE_PAUSE",Long.toString(id));

@@ -42,7 +42,7 @@ public class LineageService {
             String pipelineHref="/pipelines?pageNum="+((pipelines.size()-1-index)/20+1)+"#pipeline-"+pipeline.getId();
             var source=sources.get(pipeline.getSourceId());
             if(source!=null) {
-                String catalog=URI.create(source.getJdbcUrl().substring(5)).getPath().substring(1);
+                String catalog=source.getNamespace();
                 var from=ref("source:"+source.getId(),catalog,pipeline.getSourceTable(),source.getName());
                 var to=doris(pipeline.getTargetTable());
                 add(refs,edges,from,to,pipeline.getName(),"同步",pipelineHref);
@@ -50,7 +50,7 @@ public class LineageService {
             if(pipeline.getTransformSql()!=null && !pipeline.getTransformSql().isBlank())
                 parse(refs,edges,warnings,pipeline.getTransformSql(),pipeline.getName(),"管道加工",pipelineHref);
         }
-        for(var task:tasks) parse(refs,edges,warnings,task.getSqlText(),task.getName(),"SQL 加工","/transforms/"+task.getId());
+        for(var task:tasks) parse(refs,edges,warnings,task.getSqlText(),task.getName(),"数据加工","/transforms/"+task.getId());
         var levels=new LinkedHashMap<String,Integer>(); levels.put(focus.key(),0);
         boolean truncated=false;
         if(!direction.equals("downstream")) truncated=walk(focus.key(),edges,levels,depth,true);

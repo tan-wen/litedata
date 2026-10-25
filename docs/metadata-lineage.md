@@ -4,10 +4,10 @@
 
 ## 使用
 
-1. 打开“采集元数据”独立页面，选择 Doris 数仓或已登记的 MySQL 数据源。
-2. Doris 固定采集 `warehouse`，使用平台只读账号；MySQL 采集 JDBC URL 指定的数据库，使用已加密登记的账号。只读 `information_schema.TABLES/COLUMNS`，不扫描业务数据。
+1. 打开“采集元数据”独立页面，选择 Doris 数仓或已登记的 MySQL、PostgreSQL、SQL Server、Oracle 数据源。
+2. Doris 固定采集 `warehouse`；MySQL 采集 JDBC URL 指定的数据库，读取 `information_schema.TABLES/COLUMNS`。其他源通过 JDBC 结构接口读取对应模式（PostgreSQL 的 currentSchema、SQL Server 的 dbo、Oracle 的用户模式），不扫描业务数据。连接范围见[数据源说明](data-sources.md)。
 3. 在目录按库表名、注释、数据源、模型名称和分层检索，使用数据库分页。只有 Doris 表关联平台逻辑模型。
-4. 打开表详情查看字段、类型、可空、主键标记、注释和上次发现时间。主键标记取 `COLUMN_KEY='PRI'`，不支持该属性的引擎显示“—”，不能替代 Doris 模型的 UNIQUE KEY 核对。
+4. 打开表详情查看字段、类型、可空、主键标记、注释和上次发现时间。MySQL 主键标记取 `COLUMN_KEY='PRI'`，其他源取 JDBC 主键元数据；不支持该属性的引擎显示“—”，不能替代 Doris 模型的 UNIQUE KEY 核对。
 5. 点击“查看血缘”，选择上游、下游或上下游及 1–6 层；图支持缩放、拖动、节点跳转，关系明细链接到产生关系的任务。未采集或最近未发现的节点使用虚线边框。
 
 ## 快照与身份

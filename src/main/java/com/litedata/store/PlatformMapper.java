@@ -43,6 +43,8 @@ public interface PlatformMapper {
     @Options(useGeneratedKeys=true,keyProperty="id") void insertPipeline(Pipeline pipeline);
     @Update("UPDATE pipeline SET name=#{name},transform_sql=#{transformSql} WHERE id=#{id}")
     void updatePipeline(Pipeline pipeline);
+    @Update("UPDATE pipeline SET name=#{name},transform_sql=#{transformSql},cron_expression=#{cronExpression},definition_code=NULL,schedule_id=NULL WHERE id=#{id}")
+    void updatePipelineFrequency(Pipeline pipeline);
     @Update("UPDATE pipeline SET definition_code=#{code} WHERE id=#{id}")
     void definition(@Param("id") long id,@Param("code") long code);
     @Update("UPDATE pipeline SET schedule_id=#{scheduleId},status=#{status},last_error=NULL WHERE id=#{id}")

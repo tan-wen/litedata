@@ -228,7 +228,7 @@ public class MetricLineageService {
             var pipeline = writer.sync(); var source = platform.source(pipeline.getSourceId());
             if (source == null) { boundary(target, "数据源已不存在"); warn("同步数据源缺失，无法继续追溯。"); return; }
             String catalog;
-            try { catalog = URI.create(source.getJdbcUrl().substring(5)).getPath().substring(1); }
+            try { catalog = source.getNamespace(); }
             catch (RuntimeException exception) { boundary(target, "源库信息无法确定"); return; }
             var asset = metadata.find("source:" + source.getId(), catalog, pipeline.getSourceTable());
             boolean found = asset != null && asset.isPresent() && (column.equals("*") || metadata.columns(asset.getId()).stream().anyMatch(c -> c.name().equals(column)));

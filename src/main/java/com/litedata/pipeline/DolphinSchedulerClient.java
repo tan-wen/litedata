@@ -83,7 +83,7 @@ public class DolphinSchedulerClient {
             String tasks=json.writeValueAsString(List.of(task));
             String relations=json.writeValueAsString(List.of(Map.of("preTaskCode",0,"preTaskVersion",0,"postTaskCode",taskCode,
                     "postTaskVersion",1,"conditionType","NONE","conditionParams",Map.of())));
-            Object created=post("创建工作流","/workflow-definition",Map.of("name","platform-pipeline-"+pipeline.getId(),"description",pipeline.getName(),
+            Object created=post("创建工作流","/workflow-definition",Map.of("name","platform-pipeline-"+pipeline.getId()+"-"+taskCode,"description",pipeline.getName(),
                     "tenantCode",config.tenantCode(),"globalParams","[]","locations","[]","timeout","55",
                     "executionType","SERIAL_WAIT","taskDefinitionJson",tasks,"taskRelationJson",relations));
             code=workflowCode(created);

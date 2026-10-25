@@ -3,8 +3,8 @@
 依据本次确认更新 v4 的技术基线：Spring Boot 4.1.1、JDK 25、Thymeleaf、MyBatis Starter 4.1.0、
 Bootstrap 5.3.8、MySQL 元数据库；DataX、Doris、DolphinScheduler 是固定依赖。部署按单机试点设计。
 
-首版闭环：MySQL 源表 → DataX 时间水位增量 → Doris UNIQUE KEY ODS → INSERT SELECT 加工 →
-DolphinScheduler 每小时调度/重试 → 只读 API、单服务凭证和调用审计。
+当前闭环：MySQL / PostgreSQL / SQL Server / Oracle 源表 → DataX 时间水位增量 → Doris UNIQUE KEY ODS → INSERT SELECT 加工 →
+DolphinScheduler 按管道 Cron 调度/重试 → 只读 API、单服务凭证和调用审计。
 
 ## 分步验收
 1. 基础平台：数据库迁移、登录和三种角色、页面服务端渲染、数据源加密与连通测试。

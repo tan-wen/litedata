@@ -8,7 +8,7 @@
       <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
       <label class="form-label" for="source-id">数据库</label><select class="form-control mb-5" id="source-id" name="sourceId"><option value="">Doris 数仓 · warehouse</option><option th:each="source : ${sources}" th:value="${source.id}" th:text="${source.name}"></option></select>
       <p class="form-text">每次采集一个数据库。采集成功后，不再发现的表会标记为“最近采集未发现”，原有结构保留；失败时保留上次快照。结构发生变化时版本递增。</p>
-      <p class="form-text mb-5">表级血缘依据平台当前同步管道和 SQL 加工定义生成。源库账号需要结构读取权限，Doris 使用平台只读账号。</p>
+      <p class="form-text mb-5">表级血缘依据平台当前同步管道和 数据加工定义生成。源库账号需要结构读取权限，Doris 使用平台只读账号。</p>
       <div class="d-flex gap-3"><button class="btn-solid theme-primary" type="submit">开始采集</button><a class="btn-outline theme-secondary" th:href="@{/metadata}">取消</a></div>
     </form>
   </div></article>

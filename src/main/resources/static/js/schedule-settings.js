@@ -42,5 +42,5 @@
     });
   });
 
-  if (cron) { cron.addEventListener('change', loadPreview); loadPreview(); }
+  if (cron) { cron.addEventListener('input', loadPreview); cron.addEventListener('change', loadPreview); loadPreview(); }
 })();

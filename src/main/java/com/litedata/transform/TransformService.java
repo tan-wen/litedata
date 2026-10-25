@@ -45,7 +45,7 @@ public class TransformService {
         if(!SCHEDULES.containsKey(input.getCronExpression())) throw new IllegalArgumentException("请选择支持的调度周期");
         if(input.getModelId()==null) throw new IllegalArgumentException("请选择目标模型");
         var model=models.require(input.getModelId());
-        if("ODS".equals(model.getLayer())) throw new IllegalArgumentException("SQL 加工目标请选择 DWD、DWS 或 ADS 模型；ODS 使用同步管道接入");
+        if("ODS".equals(model.getLayer())) throw new IllegalArgumentException("数据加工目标请选择 DWD、DWS 或 ADS 模型；ODS 使用同步管道接入");
         var validated=policy.validate(input.getSqlText(),model.getTableName());
         input.setName(input.getName().trim()); input.setSqlText(validated.sql());
         input.setUpstreamTaskIds(ids(input.getUpstreamTaskIds())); input.setUpstreamPipelineIds(ids(input.getUpstreamPipelineIds()));
@@ -166,7 +166,7 @@ public class TransformService {
         var task=required(mapper.lockTask(run.getTaskId())); run=mapper.lockRun(runId);
         if(!"RUNNING".equals(run.getStatus())) return;
         if(!Objects.equals(task.getActiveRunId(),runId)) throw new ResponseStatusException(HttpStatus.CONFLICT,"实例已失去执行权");
-        mapper.finishRun(runId,success?"SUCCESS":"FAILED",success?"Doris SQL 加工完成":"SQL 加工失败，请查看调度节点受限日志");
+        mapper.finishRun(runId,success?"SUCCESS":"FAILED",success?"Doris 数据加工完成":"数据加工失败，请查看调度节点受限日志");
         mapper.activeRun(task.getId(),null);
         platform.audit("worker","SQL_TASK_FINISH",Long.toString(runId),success?"SUCCESS":"FAILED");
     }
@@ -185,7 +185,7 @@ public class TransformService {
         return ids.stream().distinct().sorted().toList();
     }
     private static SqlTask required(SqlTask task) {
-        if(task==null) throw new IllegalArgumentException("SQL 加工任务不存在或已归档");
+        if(task==null) throw new IllegalArgumentException("数据加工不存在或已归档");
         return task;
     }
     public static void checkVersion(SqlTask task,int version) {

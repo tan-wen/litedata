@@ -13,6 +13,8 @@ public class DataSource {
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
     public String getJdbcUrl() { return jdbcUrl; }
+    public com.litedata.data.DatabaseType getDatabaseType() { return com.litedata.data.DatabaseType.fromUrl(jdbcUrl); }
+    public String getNamespace() { return getDatabaseType().namespace(jdbcUrl,username); }
     public void setJdbcUrl(String jdbcUrl) { this.jdbcUrl = jdbcUrl; }
     public String getUsername() { return username; }
     public void setUsername(String username) { this.username = username; }

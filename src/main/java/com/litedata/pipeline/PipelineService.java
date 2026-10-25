@@ -3,6 +3,7 @@ package com.litedata.pipeline;
 import com.litedata.config.PlatformProperties;
 import com.litedata.data.*;
 import com.litedata.model.*;
+import com.litedata.scheduling.SchedulePreview;
 import com.litedata.store.PlatformMapper;
 import java.sql.*;
 import java.time.LocalDateTime;
@@ -34,18 +35,20 @@ public class PipelineService {
         if(existing==null) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"同步任务不存在");
         if(existing.getActiveRunId()!=null) throw new IllegalArgumentException("任务已有执行中的实例，请等待完成后编辑");
         if(existing.getSourceId()!=sourceId || !Objects.equals(existing.getSourceTable(),table) ||
-                !Objects.equals(existing.getWatermarkColumn(),column) || !Objects.equals(existing.getTargetTable(),target) ||
-                !Objects.equals(existing.getCronExpression(),cron))
-            throw new IllegalArgumentException("同步边界及调度配置创建后固定，调整时请新建管道以避免复用旧水位");
+                !Objects.equals(existing.getWatermarkColumn(),column) || !Objects.equals(existing.getTargetTable(),target))
+            throw new IllegalArgumentException("同步边界创建后固定，调整时请新建管道以避免复用旧水位");
         var pipeline=definition(name,sourceId,table,column,target,transform,cron);
         pipeline.setId(id);
-        mapper.updatePipeline(pipeline);
+        if(!Objects.equals(existing.getCronExpression(),pipeline.getCronExpression())) {
+            if(existing.getScheduleId()!=null && !"PAUSED".equals(existing.getStatus()))
+                throw new IllegalArgumentException("定时调度已启用，请先暂停后再修改执行周期");
+            mapper.updatePipelineFrequency(pipeline);
+        } else mapper.updatePipeline(pipeline);
     }
     private Pipeline definition(String name,long sourceId,String table,String column,String target,String transform,String cron) {
         sources.require(sourceId);
         if(name==null || name.isBlank() || name.length()>100) throw new IllegalArgumentException("任务名称不能为空，最长100字符");
-        // The first release deliberately has a single hourly policy, in Quartz syntax.
-        if(!"0 0 * * * ?".equals(cron)) throw new IllegalArgumentException("首版固定每小时整点运行：0 0 * * * ?");
+        cron=SchedulePreview.validate(cron);
         transform=transform==null?"":transform.trim();
         if(!transform.isEmpty()) {
             if(transform.length()>20000 ||
@@ -73,23 +76,11 @@ public class PipelineService {
         if(pipeline==null) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"任务不存在");
         if(pipeline.getActiveRunId()!=null) throw new ResponseStatusException(HttpStatus.CONFLICT,"已有实例运行；确认执行节点停止后再恢复");
         DataSource source=sources.require(pipeline.getSourceId());
-        LocalDateTime upper;
-        try(Connection connection=sources.connect(source); Statement statement=connection.createStatement()) {
-            statement.setQueryTimeout(10);
-            // Verify timestamp watermarks at the source and fail before emitting a runnable specification.
-            try(ResultSet columns=connection.getMetaData().getColumns(connection.getCatalog(),null,pipeline.getSourceTable(),pipeline.getWatermarkColumn())) {
-                if(!columns.next() || !Set.of(Types.TIMESTAMP,Types.TIMESTAMP_WITH_TIMEZONE).contains(columns.getInt("DATA_TYPE")))
-                    throw new IllegalArgumentException("增量水位字段须为 DATETIME/TIMESTAMP，并建立索引");
-                if(columns.getInt("NULLABLE")!=DatabaseMetaData.columnNoNulls)
-                    throw new IllegalArgumentException("增量水位字段必须为 NOT NULL");
-            }
-            boolean indexed=false;
-            try(ResultSet indexes=connection.getMetaData().getIndexInfo(connection.getCatalog(),null,pipeline.getSourceTable(),false,false)) {
-                while(indexes.next()) if(indexes.getShort("ORDINAL_POSITION")==1 && pipeline.getWatermarkColumn().equals(indexes.getString("COLUMN_NAME"))) indexed=true;
-            }
-            if(!indexed) throw new IllegalArgumentException("请为水位字段创建以该字段开头的索引，避免每小时扫描全表");
-            try(ResultSet result=statement.executeQuery("SELECT CURRENT_TIMESTAMP(6)")) { result.next(); upper=result.getObject(1,LocalDateTime.class); }
-        } catch(SQLException e) { throw new IllegalArgumentException("无法读取源库水位，请先检查连接和字段"); }
+        SourceTable sourceTable;
+        try(Connection connection=sources.connect(source)) {
+            sourceTable=SourceTable.inspect(connection,source.getDatabaseType(),pipeline.getSourceTable(),pipeline.getWatermarkColumn());
+        } catch(SQLException e) { throw new IllegalArgumentException("无法读取源库水位，请先检查连接、模式和字段"); }
+        LocalDateTime upper=sourceTable.upperBound();
         if(!upper.isAfter(pipeline.getWatermark())) throw new IllegalArgumentException("源库时间未超过已完成水位");
         // A five-minute replay window handles bounded lateness; target UNIQUE KEY makes replays idempotent.
         LocalDateTime lower=pipeline.getWatermark().minusMinutes(5);
@@ -97,7 +88,8 @@ public class PipelineService {
         if(lower.isBefore(epoch)) lower=epoch;
         PipelineRun run=new PipelineRun(); run.setPipelineId(id); run.setLowerBound(lower); run.setUpperBound(upper);
         mapper.insertRun(run); mapper.activeRun(id,run.getId());
-        return Map.of("runId",run.getId(),"source",Map.of("jdbcUrl",source.getJdbcUrl(),"username",source.getUsername(),"password",sources.password(source)),
+        return Map.of("runId",run.getId(),"source",Map.of("jdbcUrl",source.getJdbcUrl(),"username",source.getUsername(),"password",sources.password(source),
+                        "databaseType",source.getDatabaseType().name(),"schema",Objects.toString(sourceTable.schema(),""),"columns",sourceTable.columns(),"timestampColumns",sourceTable.timestampColumns()),
                 "sourceTable",pipeline.getSourceTable(),"watermarkColumn",pipeline.getWatermarkColumn(),"targetTable",pipeline.getTargetTable(),
                 "lowerBound",TIME.format(lower),"upperBound",TIME.format(upper),"transformSql",pipeline.getTransformSql(),
                 "doris",Map.of("jdbcUrl",properties.doris().jdbcUrl(),"username",properties.doris().username(),"password",properties.doris().password()));

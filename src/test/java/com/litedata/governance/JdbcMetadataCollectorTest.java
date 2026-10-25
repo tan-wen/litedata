@@ -11,10 +11,14 @@ import com.litedata.data.JdbcConnections;
 import com.litedata.data.SourceService;
 import com.litedata.model.DataSource;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
@@ -29,6 +33,7 @@ class JdbcMetadataCollectorTest {
         ResultSet columnRows = rows(List.of(new Object[] {"id", "bigint", "NO", "PRI", "identifier", 1},
                 new Object[] {"amount", "decimal(12,2)", "YES", "", null, 2}));
         DataSource source = new DataSource();
+        source.setJdbcUrl("jdbc:mysql://source.example/sales");
         when(sources.require(9L)).thenReturn(source);
         when(sources.connect(source)).thenReturn(connection);
         when(connection.getCatalog()).thenReturn("sales");
@@ -80,6 +85,7 @@ class JdbcMetadataCollectorTest {
         JdbcConnections connections = mock(JdbcConnections.class);
         Connection connection = mock(Connection.class);
         DataSource source = new DataSource();
+        source.setJdbcUrl("jdbc:mysql://source.example/sales");
         when(sources.require(9L)).thenReturn(source);
         when(sources.connect(source)).thenReturn(connection);
         when(connection.getCatalog()).thenReturn(null);
@@ -87,6 +93,41 @@ class JdbcMetadataCollectorTest {
         assertThatIllegalArgumentException().isThrownBy(() -> collector(sources, connections).collect(9L));
 
         verify(connection).close();
+    }
+
+    @Test void collectsPostgresMetadataOnlyFromCurrentSchemaAndClosesResources() throws Exception {
+        SourceService sources = mock(SourceService.class);
+        JdbcConnections connections = mock(JdbcConnections.class);
+        Connection connection = mock(Connection.class);
+        DatabaseMetaData metadata = mock(DatabaseMetaData.class);
+        DataSource source = new DataSource();
+        source.setJdbcUrl("jdbc:postgresql://source.example:5432/sales");
+        when(sources.require(9L)).thenReturn(source);
+        when(sources.connect(source)).thenReturn(connection);
+        when(connection.getCatalog()).thenReturn("sales");
+        when(connection.getSchema()).thenReturn("reporting");
+        when(connection.getMetaData()).thenReturn(metadata);
+        ResultSet tables = metadataRows(List.of(
+                Map.of("TABLE_SCHEM", "other", "TABLE_NAME", "orders", "REMARKS", "wrong schema"),
+                Map.of("TABLE_SCHEM", "reporting", "TABLE_NAME", "orders", "REMARKS", "Orders")));
+        ResultSet keys = metadataRows(List.of(Map.of("COLUMN_NAME", "id")));
+        ResultSet columns = metadataRows(List.of(
+                Map.of("TABLE_SCHEM", "other", "TABLE_NAME", "orders", "COLUMN_NAME", "ignored", "TYPE_NAME", "text", "NULLABLE", 1, "REMARKS", "", "ORDINAL_POSITION", 1),
+                Map.of("TABLE_SCHEM", "reporting", "TABLE_NAME", "orders", "COLUMN_NAME", "id", "TYPE_NAME", "int8", "NULLABLE", 0, "REMARKS", "identifier", "ORDINAL_POSITION", 1),
+                Map.of("TABLE_SCHEM", "reporting", "TABLE_NAME", "orders", "COLUMN_NAME", "amount", "TYPE_NAME", "numeric", "NULLABLE", 1, "REMARKS", "", "ORDINAL_POSITION", 2)));
+        when(metadata.getTables(eq("sales"), eq("reporting"), eq("%"), any(String[].class))).thenReturn(tables);
+        when(metadata.getPrimaryKeys("sales", "reporting", "orders")).thenReturn(keys);
+        when(metadata.getColumns("sales", "reporting", "orders", "%")).thenReturn(columns);
+
+        JdbcMetadataCollector.Snapshot snapshot = collector(sources, connections).collect(9L);
+
+        assertThat(snapshot).isEqualTo(new JdbcMetadataCollector.Snapshot("reporting", List.of(
+                new JdbcMetadataCollector.Table("orders", "Orders", List.of(
+                        new JdbcMetadataCollector.Column("id", "int8", false, true, "identifier", 1),
+                        new JdbcMetadataCollector.Column("amount", "numeric", true, false, "", 2))))));
+        verify(metadata).getTables(eq("sales"), eq("reporting"), eq("%"), argThat(types -> Arrays.equals(types, new String[] {"TABLE", "VIEW"})));
+        verify(tables).close(); verify(keys).close(); verify(columns).close(); verify(connection).close();
+        verifyNoInteractions(connections);
     }
 
     @Test void propagatesSqlFailureAndClosesOpenedResources() throws Exception {
@@ -184,6 +225,15 @@ class JdbcMetadataCollectorTest {
         when(result.next()).thenAnswer(call -> index.getAndIncrement() < count);
         when(result.getString(anyInt())).thenAnswer(call -> (String) value[call.getArgument(0, Integer.class) - 1]);
         when(result.getInt(anyInt())).thenAnswer(call -> (Integer) value[call.getArgument(0, Integer.class) - 1]);
+        return result;
+    }
+
+    private static ResultSet metadataRows(List<Map<String, Object>> values) throws SQLException {
+        ResultSet result = mock(ResultSet.class);
+        AtomicInteger index = new AtomicInteger(-1);
+        when(result.next()).thenAnswer(call -> index.incrementAndGet() < values.size());
+        when(result.getString(anyString())).thenAnswer(call -> Objects.toString(values.get(index.get()).get(call.getArgument(0, String.class)), null));
+        when(result.getInt(anyString())).thenAnswer(call -> (Integer) values.get(index.get()).get(call.getArgument(0, String.class)));
         return result;
     }
 }

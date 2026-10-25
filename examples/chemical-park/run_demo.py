@@ -409,7 +409,7 @@ class Demo:
                       "sqlText": task["sqlText"], "cronExpression": task["cronExpression"],
                       "upstreamPipelineIds": [self.report["resources"]["pipelines"][key] for key in task["upstreamPipelines"]],
                       "upstreamTaskIds": [self.report["resources"]["transforms"][key] for key in task["upstreamTasks"]]}
-            checked(self.client.post(page, "/transforms", fields), "SQL 加工任务已保存")
+            checked(self.client.post(page, "/transforms", fields), "数据加工已保存")
             self.report["resources"]["transforms"][task["key"]] = int(self.client.last_path.rsplit("/", 1)[-1])
         for quality in self.manifest["qualities"]:
             self.quality(quality)

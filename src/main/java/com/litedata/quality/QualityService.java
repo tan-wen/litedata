@@ -52,6 +52,8 @@ public class QualityService {
     public long save(Long id,QualityTask input,String actor) {
         validation.validate(input);
         if(input.getSourceId()!=null && platform.source(input.getSourceId())==null) throw new IllegalArgumentException("数据源不存在");
+        if(input.getSourceId()!=null && platform.source(input.getSourceId()).getDatabaseType()!=com.litedata.data.DatabaseType.MYSQL)
+            throw new IllegalArgumentException("当前数据质量扫描仅支持 MySQL 数据源和 Doris；其他数据库可用于 ODS 同步及元数据采集");
         return transactions.execute(tx->{
             if(id==null) { input.setId(null); mapper.insert(input); }
             else { var t=editable(id,input.getVersion()); input.setId(t.getId()); mapper.update(input); mapper.deleteRules(id); }

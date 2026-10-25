@@ -90,7 +90,21 @@ def build_datax_job(claim):
     upper = claim["upperBound"]
     if not isinstance(lower, str) or not isinstance(upper, str) or not TIMESTAMP.fullmatch(lower) or not TIMESTAMP.fullmatch(upper):
         raise ValueError("claim bounds must be microsecond timestamps")
-    columns = source_columns(source, table)
+    # The platform inspects JDBC metadata while claiming the immutable range.
+    # Keep the MySQL fallback for an older platform during a rolling upgrade.
+    kind = source.get("databaseType", "MYSQL")
+    readers = {"MYSQL": "mysqlreader", "POSTGRESQL": "postgresqlreader", "SQLSERVER": "sqlserverreader", "ORACLE": "oraclereader"}
+    prefixes = {"MYSQL": "jdbc:mysql://", "POSTGRESQL": "jdbc:postgresql://", "SQLSERVER": "jdbc:sqlserver://", "ORACLE": "jdbc:oracle:thin:@//"}
+    if kind not in readers or not source["jdbcUrl"].startswith(prefixes[kind]):
+        raise ValueError("unsupported or mismatched source database type")
+    columns = source.get("columns")
+    if columns is None and kind == "MYSQL":
+        columns = source_columns(source, table)
+    if not isinstance(columns, list) or not columns or len(columns) > 500:
+        raise ValueError("claim must include the ordered source columns")
+    columns = [require_identifier(column, "source column") for column in columns]
+    if len(set(columns)) != len(columns):
+        raise ValueError("source columns must be unique")
     if watermark not in columns:
         raise ValueError("watermarkColumn is not present in the source table")
     writer_user = os.environ["DORIS_WRITER_USER"]
@@ -100,16 +114,55 @@ def build_datax_job(claim):
     # All-in-one FE redirects to its internal loopback BE; Compose supplies the
     # worker-reachable BE endpoint. External clusters may keep the FE default.
     load_url = os.environ.get("DORIS_LOAD_URL", f"{doris_host}:8030")
-    quoted_columns = [f"`{column}`" for column in columns]
+    def quote(value):
+        value = require_identifier(value, "SQL identifier")
+        if kind == "MYSQL":
+            return f"`{value}`"
+        if kind == "SQLSERVER":
+            return f"[{value}]"
+        return f'"{value}"'
+
+    def stamp(value):
+        if kind == "ORACLE":
+            return f"TO_TIMESTAMP('{value}', 'YYYY-MM-DD HH24:MI:SS.FF6')"
+        if kind == "SQLSERVER":
+            return f"CONVERT(datetime2(6), '{value}', 121)"
+        if kind == "POSTGRESQL":
+            return f"TIMESTAMP '{value}'"
+        return f"'{value}'"
+
+    schema = source.get("schema", "")
+    qualified = (quote(schema) + "." if schema else "") + quote(table)
+    quoted_columns = [quote(column) for column in columns]
+    timestamp_columns = source.get("timestampColumns", [watermark])
+    if not isinstance(timestamp_columns, list) or any(column not in columns for column in timestamp_columns):
+        raise ValueError("timestampColumns must be a subset of source columns")
+
+    def projection(column):
+        value = quote(column)
+        if column not in timestamp_columns:
+            return value
+        # DataX DateColumn stringification loses fractional seconds. Read local
+        # timestamps as text, which Doris casts back to its target DATETIME type.
+        if kind == "MYSQL":
+            expression = f"DATE_FORMAT({value}, '%Y-%m-%d %H:%i:%s.%f')"
+        elif kind == "POSTGRESQL":
+            expression = f"TO_CHAR({value}, 'YYYY-MM-DD HH24:MI:SS.US')"
+        elif kind == "SQLSERVER":
+            expression = f"CONVERT(varchar(27), {value}, 121)"
+        else:
+            expression = f"TO_CHAR({value}, 'YYYY-MM-DD HH24:MI:SS.FF6')"
+        return f"{expression} AS {value}"
+
     query = (
-        f"SELECT {', '.join(quoted_columns)} FROM `{table}` "
-        f"WHERE `{watermark}` >= '{lower}' AND `{watermark}` < '{upper}'"
+        f"SELECT {', '.join(projection(column) for column in columns)} FROM {qualified} "
+        f"WHERE {quote(watermark)} >= {stamp(lower)} AND {quote(watermark)} < {stamp(upper)}"
     )
     return {
         "job": {
             "setting": {"speed": {"channel": int(os.environ.get("DATAX_CHANNELS", "4"))}, "errorLimit": {"record": 0, "percentage": 0.0}},
             "content": [{
-                "reader": {"name": "mysqlreader", "parameter": {"username": source["username"], "password": source["password"], "column": quoted_columns, "connection": [{"jdbcUrl": [source["jdbcUrl"]], "querySql": [query]}]}},
+                "reader": {"name": readers[kind], "parameter": {"username": source["username"], "password": source["password"], "column": quoted_columns, "connection": [{"jdbcUrl": [source["jdbcUrl"]], "querySql": [query]}]}},
                 "writer": {"name": "doriswriter", "parameter": {"username": writer_user, "password": writer_password, "column": columns, "loadUrl": [load_url], "connection": [{"jdbcUrl": writer_jdbc, "selectedDatabase": "warehouse", "table": [target]}], "loadProps": {"format": "json", "strip_outer_array": "true", "strict_mode": "true"}, "maxRetries": 3}},
             }],
         }

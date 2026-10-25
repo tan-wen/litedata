@@ -24,6 +24,9 @@ public class SourceService {
     }
     public void update(long id, String name, String url, String user, String password) {
         var existing = require(id);
+        if (!existing.getUsername().equals(user) && existing.getDatabaseType()!=DatabaseType.MYSQL &&
+                (mapper.pipelines().stream().anyMatch(p -> p.getSourceId()==id) || mapper.qualitySourceReferences(id)>0))
+            throw new IllegalArgumentException("数据源已被任务引用，修改数据库用户名请新建数据源，避免改变默认模式和水位口径");
         if (!existing.getJdbcUrl().equals(url) && mapper.pipelines().stream().anyMatch(p -> p.getSourceId() == id))
             throw new IllegalArgumentException("数据源已被同步管道引用，修改连接地址请新建数据源和管道");
         if (!existing.getJdbcUrl().equals(url) && mapper.qualitySourceReferences(id)>0)
@@ -44,7 +47,7 @@ public class SourceService {
     public void test(long id) {
         var source = require(id);
         try (Connection connection = connect(source); Statement statement = connection.createStatement()) {
-            statement.setQueryTimeout(5); statement.executeQuery("SELECT 1").close();
+            statement.setQueryTimeout(5); statement.executeQuery(source.getDatabaseType().getTestSql()).close();
             mapper.sourceStatus(id, "CONNECTED", null);
         } catch (SQLException e) {
             mapper.sourceStatus(id, "FAILED", "连接失败，SQLState=" + e.getSQLState());

@@ -13,7 +13,7 @@ DolphinScheduler standalone。调度元数据保存在 MySQL 的独立 `dolphins
 | Doris | 官方 `apache/doris:all-in-one-4.1.3` |
 | DolphinScheduler | 官方 `apache/dolphinscheduler-standalone-server:3.4.0`，独立运行时 |
 | DataX | Alibaba DataX tag datax_v202309，commit `9a1f88751e24314b083a74f1b83ef56d69ce98bd` |
-| MySQL 驱动 | Connector/J 8.4.0，Maven Central SHA-256固定校验 |
+| DataX JDBC 驱动 | MySQL Connector/J 8.4.0（固定 SHA-256）；PostgreSQL 42.7.8；SQL Server 12.10.1.jre8；Oracle ojdbc8 23.9.0.25.07 |
 
 Doris 使用镜像内置的集群健康检查，数据持久化至 FE/BE 的命名卷。
 DS 内存 H2 已替换成 MySQL profile，并关闭启动时的 SQL 自动初始化。
@@ -70,6 +70,7 @@ runner claim 取得不可变上下界，409 时不执行。DataX 读取 `[lowerB
 
 DataX 使用独立 Java 8；DS 保留镜像运行时；平台使用 Java 25。
 mysqlreader 的 5.1 旧驱动由 Connector/J 8.4 替换以支持 MySQL 8 默认认证。
+worker 同时构建 postgresqlreader、sqlserverreader、oraclereader，并替换为上述固定的 Java 8 兼容驱动；平台使用其独立 JDBC 驱动。数据源范围及升级步骤见[多数据库接入](data-sources.md)。
 完整 DataX 输出仅暂存在 0600 文件；失败输出先替换凭据再截取尾部摘要，任务结束清理临时文件。
 
 ## 故障排查和恢复
@@ -120,7 +121,7 @@ DS 控制台在 <http://localhost:12345/dolphinscheduler>，运行日志由 DS �
 - 上述两行演示任务不代表完整验收。失败修复后的自动重试、容器重启后的完整恢复、
   连续七天运行及百万行压测仍待独立验证。
 - 后续独立 SQL 加工已实测纯 ODS 同步 → DWD → DWS → ADS → 只读 API，包含一次真实定时触发、
-  调度停用及上游失败阻断下游。操作、边界及证据见 [SQL 加工](sql-transforms.md)。
+  调度停用及上游失败阻断下游。操作、边界及证据见 [数据加工](sql-transforms.md)。
 
 ## 官方依据
 

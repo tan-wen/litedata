@@ -22,6 +22,7 @@ class DolphinSchedulerClientTest {
     private PlatformMapper mapper;
     private final Queue<Reply> replies=new ArrayDeque<>();
     private final List<String> requests=new ArrayList<>();
+    private final List<String> definitionNames=new ArrayList<>();
 
     @BeforeEach void startServer() throws IOException {
         mapper=mock(PlatformMapper.class);
@@ -136,6 +137,43 @@ class DolphinSchedulerClientTest {
         verifyNoMoreInteractions(mapper);
     }
 
+    @Test void createsANewWorkflowAndScheduleWhenAPausedFrequencyChangeClearedEngineIds() {
+        Pipeline pipeline=pipeline(null);
+        pipeline.setCronExpression("0 */5 * * * ?");
+        when(mapper.lockPipeline(1L)).thenReturn(pipeline);
+        replies.add(new Reply(200,"{\"code\":0,\"data\":[7]}"));
+        replies.add(new Reply(200,"{\"code\":0,\"data\":{\"code\":101}}"));
+        replies.add(new Reply(200,"{\"code\":0,\"data\":null}"));
+        replies.add(new Reply(200,"{\"code\":0,\"data\":55}"));
+        replies.add(new Reply(200,"{\"code\":0,\"data\":null}"));
+
+        client().schedule(1L);
+
+        assertEquals(List.of(
+                "GET /projects/9/task-definition/gen-task-codes?genNum=1",
+                "POST /projects/9/workflow-definition",
+                "POST /projects/9/workflow-definition/101/release",
+                "POST /projects/9/schedules",
+                "POST /projects/9/schedules/55/online"),requests);
+        verify(mapper).definition(1L,101L);
+        verify(mapper).rememberWorkflow("pipeline",1L,101L);
+        verify(mapper).schedule(1L,55,"SCHEDULE_PENDING");
+        verify(mapper).schedule(1L,55,"SCHEDULED");
+    }
+
+    @Test void replacementWorkflowNamesDoNotCollideWithPausedDefinitions() {
+        for(int revision=1;revision<=2;revision++) {
+            when(mapper.lockPipeline(1L)).thenReturn(pipeline(null));
+            replies.add(new Reply(200,"{\"code\":0,\"data\":["+revision+"]}"));
+            replies.add(new Reply(200,"{\"code\":0,\"data\":{\"code\":"+(100+revision)+"}}"));
+            replies.add(new Reply(200,"{\"code\":0,\"data\":null}"));
+            replies.add(new Reply(200,"{\"code\":0,\"data\":null}"));
+            client().run(1L);
+        }
+        assertEquals(2,new HashSet<>(definitionNames).size());
+        assertTrue(definitionNames.stream().allMatch(name->name.startsWith("platform-pipeline-1-")));
+    }
+
     @Test void pausesFutureSchedulingWithoutReleasingAnActiveRunAndIsIdempotent() {
         Pipeline pipeline=pipeline(101L); pipeline.setScheduleId(55); pipeline.setStatus("SCHEDULED"); pipeline.setActiveRunId(7L);
         when(mapper.lockPipeline(1L)).thenReturn(pipeline);
@@ -165,7 +203,10 @@ class DolphinSchedulerClientTest {
         byte[] body=response.body().getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type","application/json");
         try(var requestBody=exchange.getRequestBody(); var responseBody=exchange.getResponseBody()) {
-            requestBody.transferTo(OutputStream.nullOutputStream());
+            String requestText=new String(requestBody.readAllBytes(),StandardCharsets.UTF_8);
+            if(exchange.getRequestURI().getPath().equals("/projects/9/workflow-definition"))
+                for(String part:requestText.split("&")) if(part.startsWith("name="))
+                    definitionNames.add(java.net.URLDecoder.decode(part.substring(5),StandardCharsets.UTF_8));
             exchange.sendResponseHeaders(response.status(),body.length);
             responseBody.write(body);
         } finally { exchange.close(); }

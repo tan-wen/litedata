@@ -82,7 +82,7 @@ public class ModelingService {
         metrics.lockGraph();
         var model = requireModel(mapper.lockModel(id));
         checkVersion(model, version);
-        if (sqlTasks.modelReferences(id)>0) throw new IllegalArgumentException("模型仍关联 SQL 加工任务，请先归档加工任务");
+        if (sqlTasks.modelReferences(id)>0) throw new IllegalArgumentException("模型仍关联数据加工，请先归档加工任务");
         if (metrics.modelReferences(id)>0) throw new IllegalArgumentException("模型仍关联指标，请先归档相关指标");
         mapper.archive(id);
         platform.audit(actor, "MODEL_ARCHIVE", Long.toString(id), "SUCCESS");

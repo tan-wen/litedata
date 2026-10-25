@@ -5,6 +5,9 @@ public final class ResourceForms {
     private ResourceForms() {}
 
     public static class SourceDraft {
+        private String databaseType = "";
+        public String getDatabaseType() { return databaseType; }
+        public void setDatabaseType(String databaseType) { this.databaseType=databaseType; }
         private String name = "";
         private String jdbcUrl = "";
         private String username = "";

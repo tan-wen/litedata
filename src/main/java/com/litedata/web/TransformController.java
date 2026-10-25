@@ -56,7 +56,7 @@ public class TransformController {
         try {
             if(errors.hasErrors()) throw new IllegalArgumentException("表单格式有误，请检查模型和上游任务选择");
             long saved=tasks.save(id,draft,principal.getName());
-            redirect.addFlashAttribute("success","SQL 加工任务已保存，请检查依赖链后运行或启用调度");
+            redirect.addFlashAttribute("success","数据加工已保存，请检查依赖链后运行或启用调度");
             return "redirect:/transforms/"+saved;
         } catch(IllegalArgumentException exception) {
             model.addAttribute("error",exception.getMessage()); return form(model,draft,id);

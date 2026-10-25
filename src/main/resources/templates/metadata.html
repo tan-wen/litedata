@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
 <head><title>元数据 · LiteData</title></head><body><section>
-  <div class="d-flex flex-wrap justify-content-between align-items-center mb-7 gap-5"><div><div class="page-kicker">数据治理 / 元数据</div><h1 class="page-title">元数据目录</h1><p class="page-subtitle mb-0">检索源库与数仓的表结构，追溯同步和 SQL 加工形成的表级血缘。</p></div><a th:if="${canEdit}" class="btn-solid theme-primary" th:href="@{/metadata/collect}">采集元数据</a></div>
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-7 gap-5"><div><div class="page-kicker">数据治理 / 元数据</div><h1 class="page-title">元数据目录</h1><p class="page-subtitle mb-0">检索源库与数仓的表结构，追溯同步和 数据加工形成的表级血缘。</p></div><a th:if="${canEdit}" class="btn-solid theme-primary" th:href="@{/metadata/collect}">采集元数据</a></div>
   <div th:replace="~{fragments/messages :: messages}"></div>
   <article class="platform-card card"><div class="card-header">表目录</div><div class="card-body">
     <form class="row g-3 mb-5" th:action="@{/metadata}" method="get"><div class="sm:col-6"><input class="form-control" name="keyword" th:value="${keyword}" maxlength="100" aria-label="搜索元数据" placeholder="库表名、注释、数据源或模型名称"></div><div class="sm:col-3"><select class="form-control" name="layer" aria-label="分层筛选"><option value="">全部分层</option><option th:each="item : ${ {'ODS','DWD','DWS','ADS'} }" th:value="${item}" th:text="${item}" th:selected="${layer == item}"></option></select></div><div class="sm:col-3"><button class="btn-outline theme-primary" type="submit">查询</button><a class="btn-link theme-primary" th:href="@{/metadata}">重置</a></div></form>
