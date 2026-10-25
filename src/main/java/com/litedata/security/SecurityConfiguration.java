@@ -24,7 +24,7 @@ public class SecurityConfiguration {
         };
     }
     @Bean @Order(1) SecurityFilterChain apiSecurity(HttpSecurity http) throws Exception {
-        return http.securityMatcher("/api/**", "/internal/**")
+        return http.securityMatcher("/api/**", "/internal/**", "/mcp", "/mcp/**")
                 .csrf(csrf -> csrf.disable()).sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(a -> a.anyRequest().permitAll()).build();
     }
@@ -32,6 +32,7 @@ public class SecurityConfiguration {
         return http.authorizeHttpRequests(a -> a
                 .requestMatchers("/login", "/css/**", "/js/**", "/vendor/**", "/favicon.ico", "/actuator/health").permitAll()
                 .requestMatchers("/users", "/users/**").hasRole("ADMIN")
+                .requestMatchers("/settings/api-keys", "/settings/api-keys/**").authenticated()
                 .requestMatchers(HttpMethod.POST, "/services/*/credentials").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.GET,"/scheduling/*/*/instances/*/tasks/*/log").hasAnyRole("ADMIN","DEVELOPER")
                 .requestMatchers(HttpMethod.GET, "/sources/new", "/sources/*/edit", "/pipelines/new", "/pipelines/*/edit",

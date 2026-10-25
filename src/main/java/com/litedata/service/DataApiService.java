@@ -2,6 +2,8 @@ package com.litedata.service;
 
 import com.litedata.model.DataService;
 import com.litedata.model.ServiceCall;
+import com.litedata.security.UserApiKeyService;
+import com.litedata.security.UserApiKeyService.Identity;
 import com.litedata.store.PlatformMapper;
 import com.litedata.store.ServiceCallMapper;
 import java.nio.charset.StandardCharsets;
@@ -18,11 +20,12 @@ import org.springframework.web.server.ResponseStatusException;
 public class DataApiService {
     private final PlatformMapper mapper; private final QueryPolicy policy; private final MyBatisRuntimeQueries queries;
     private final ServiceCallMapper calls;
+    private final UserApiKeyService userKeys;
     private static final ZoneId DISPLAY_ZONE=ZoneId.of("Asia/Shanghai");
     private final Semaphore concurrent=new Semaphore(8);
     private final ConcurrentMap<String,Window> limits=new ConcurrentHashMap<>();
-    public DataApiService(PlatformMapper mapper,QueryPolicy policy,MyBatisRuntimeQueries queries,ServiceCallMapper calls) {
-        this.mapper=mapper; this.policy=policy; this.queries=queries; this.calls=calls;
+    public DataApiService(PlatformMapper mapper,QueryPolicy policy,MyBatisRuntimeQueries queries,ServiceCallMapper calls,UserApiKeyService userKeys) {
+        this.mapper=mapper; this.policy=policy; this.queries=queries; this.calls=calls; this.userKeys=userKeys;
     }
     public void create(String name,String slug,String sql) {
         mapper.insertService(definition(name,slug,sql));
@@ -76,6 +79,13 @@ public class DataApiService {
         mapper.revokeCredentials(id); mapper.insertCredential(id,hash(token)); return token;
     }
     public Map<String,Object> query(String slug,String token,Map<String,String> params) {
+        return query(slug,token,null,params);
+    }
+    public Map<String,Object> queryForUser(String slug,Identity identity,Map<String,String> params) {
+        Objects.requireNonNull(identity);
+        return query(slug,null,identity,params);
+    }
+    private Map<String,Object> query(String slug,String token,Identity identity,Map<String,String> params) {
         Instant startedAt=Instant.now();
         long started=System.nanoTime();
         DataService service=mapper.serviceBySlug(slug);
@@ -85,9 +95,15 @@ public class DataApiService {
         boolean acquired=false;
         try {
             if(!service.isPublished()) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"服务不存在或尚未发布");
-            String digest=hash(token==null?"":token);
-            if(token==null || token.length()>128 || mapper.credentialValid(service.getId(),digest)==0)
-                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"API凭证无效");
+            String digest;
+            if(identity==null) {
+                digest=hash(token==null?"":token);
+                if(token==null || token.length()>128 || mapper.credentialValid(service.getId(),digest)==0)
+                    throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"API凭证无效");
+            } else {
+                userKeys.requireService(identity,service.getId(),UserApiKeyService.QUERY);
+                digest="mcp:"+identity.keyId();
+            }
             if(limits.size()>10000) limits.entrySet().removeIf(e->e.getValue().minute()<Instant.now().getEpochSecond()/60-1);
             Window window=limits.compute(digest,(key,old)->{
                 long minute=Instant.now().getEpochSecond()/60;
@@ -125,7 +141,8 @@ public class DataApiService {
             if(acquired) concurrent.release();
             call.setDurationMs(TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-started));
             calls.insert(call);
-            mapper.audit("api:"+service.getId(),"SERVICE_QUERY",service.getSlug(),call.getStatusCode()==200?"SUCCESS":"FAILED");
+            mapper.audit(identity==null?"api:"+service.getId():identity.username(),"SERVICE_QUERY",
+                    identity==null?service.getSlug():"key:"+identity.keyId()+"/service:"+service.getId(),call.getStatusCode()==200?"SUCCESS":"FAILED");
         }
     }
     public static String hash(String input) {

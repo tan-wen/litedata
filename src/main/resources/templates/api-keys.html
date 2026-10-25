@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title>我的 API Key · LiteData</title></head><body><section>
+  <div class="d-flex justify-content-between align-items-start gap-5 mb-7"><div><div class="page-kicker">系统设置 / 我的 API Key</div><h1 class="page-title">我的 API Key</h1><p class="page-subtitle mb-0">为 Agent 创建权限受限的 MCP 凭证。密钥只在创建时显示一次。</p></div><a class="btn-solid theme-primary" th:href="@{/settings/api-keys/new}">创建 API Key</a></div>
+  <div th:replace="~{fragments/messages :: messages}"></div>
+  <p class="fg-2">时间以 UTC 显示。权限或资源范围需要调整时，请创建替代 Key 并吊销旧 Key。</p>
+  <article class="platform-card card"><div class="card-header">已创建的 Key</div><div class="card-body p-0"><div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>名称</th><th>前缀</th><th>权限</th><th>资源范围</th><th>有效期</th><th>最近使用</th><th>状态</th><th>操作</th></tr></thead><tbody>
+    <tr th:each="key : ${keys}">
+      <td class="fw-semibold" th:text="${key.name}">分析 Agent</td>
+      <td><code th:text="${key.tokenPrefix}">ld_mcp_…</code></td>
+      <td><span th:each="scope : ${#strings.arraySplit(key.scopes, ',')}" class="badge theme-secondary me-1" th:text="${scope}">services:read</span></td>
+      <td><span th:text="${'服务：' + key.serviceSlugs + '；管道：' + key.pipelineIds}">服务：orders；管道：1</span></td>
+      <td th:text="${#temporals.format(key.expiresAt, 'yyyy-MM-dd HH:mm')}">2026-01-01 00:00</td>
+      <td th:text="${key.lastUsedAt == null ? '从未使用' : #temporals.format(key.lastUsedAt, 'yyyy-MM-dd HH:mm')}">从未使用</td>
+      <td><span th:if="${key.revokedAt != null}" class="badge theme-danger">已吊销</span><span th:if="${key.revokedAt == null and !key.expiresAt.isAfter(now)}" class="badge theme-warning">已过期</span><span th:if="${key.revokedAt == null and key.expiresAt.isAfter(now)}" class="badge theme-success">有效</span></td>
+      <td><form th:if="${key.revokedAt == null}" th:action="@{/settings/api-keys/{id}/revoke(id=${key.id})}" method="post"><input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"><button class="btn-outline theme-danger btn-sm" type="submit">吊销</button></form></td>
+    </tr>
+    <tr th:if="${#lists.isEmpty(keys)}"><td colspan="8" class="text-center fg-2 py-7">尚未创建 API Key。</td></tr>
+  </tbody></table></div></div></article>
+  <div th:replace="~{fragments/pagination :: pagination}"></div>
+</section></body></html>
