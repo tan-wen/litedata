@@ -154,6 +154,9 @@ Asia/Shanghai 当天统计，包含成功和失败请求；每个服务可进入
 
 ## 本地开发和验证
 
+生产单机的 JAR + Docker Compose 部署包及打包入口见 [生产部署说明](deploy/production/README.md)，
+按 32 核 / 128GB、独立 Doris FE/BE 和分进程 DolphinScheduler 配置，支持联网/离线交付、凭据初始化、持久化和备份恢复。
+
 使用 JDK 25 和仓库自带的 Maven Wrapper（Maven 3.9.11），无需安装全局 Maven。
 自动化测试由 Testcontainers 启动真实 MySQL，需要 Docker；不需要先配置 `.env` 或启动完整引擎。
 

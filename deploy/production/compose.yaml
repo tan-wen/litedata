@@ -1,0 +1,308 @@
+name: litedata-prod
+
+x-service: &service
+  restart: unless-stopped
+  init: true
+  stop_grace_period: 90s
+  logging:
+    driver: json-file
+    options: {max-size: 50m, max-file: '5'}
+  networks: [backend]
+
+x-scheduler-env: &scheduler-env
+  TZ: Asia/Shanghai
+  DOCKER: 'false'
+  DATABASE: mysql
+  SPRING_PROFILES_ACTIVE: mysql
+  SPRING_SQL_INIT_MODE: never
+  SPRING_DATASOURCE_URL: jdbc:mysql://scheduler-db:3306/dolphinscheduler?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+  SPRING_DATASOURCE_USERNAME: scheduler
+  SPRING_DATASOURCE_PASSWORD: ${DOLPHINSCHEDULER_DB_PASSWORD:?Run python3 bin/configure.py}
+  SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: '20'
+  REGISTRY_TYPE: zookeeper
+  REGISTRY_ZOOKEEPER_CONNECT_STRING: registry:2181
+  MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,metrics,prometheus
+
+x-scheduler: &scheduler
+  <<: *service
+  image: litedata/scheduler:3.4.0-v1
+  build:
+    context: .
+    dockerfile: engine/Dockerfile
+  volumes:
+    - ${DATA_DIR:-./data}/scheduler/resources:/dolphinscheduler
+  depends_on:
+    scheduler-db: {condition: service_healthy}
+    registry: {condition: service_healthy}
+
+services:
+  platform-db:
+    <<: *service
+    image: mysql:8.4.11
+    cpus: 2
+    mem_limit: 6g
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_DATABASE: platform
+      MYSQL_USER: platform_app
+      MYSQL_PASSWORD: ${PLATFORM_DB_PASSWORD:?Run configure.py}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Run configure.py}
+    volumes:
+      - ${DATA_DIR:-./data}/platform-db:/var/lib/mysql
+      - ./config/mysql.cnf:/etc/mysql/conf.d/litedata.cnf:ro
+    healthcheck:
+      test: [CMD-SHELL, 'MYSQL_PWD=$$MYSQL_PASSWORD mysql -h127.0.0.1 -uplatform_app platform -e "SELECT 1" >/dev/null']
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  scheduler-db:
+    <<: *service
+    image: mysql:8.4.11
+    cpus: 2
+    mem_limit: 6g
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_DATABASE: dolphinscheduler
+      MYSQL_USER: scheduler
+      MYSQL_PASSWORD: ${DOLPHINSCHEDULER_DB_PASSWORD:?Run configure.py}
+      MYSQL_ROOT_PASSWORD: ${SCHEDULER_MYSQL_ROOT_PASSWORD:?Run configure.py}
+      DOLPHINSCHEDULER_ADMIN_PASSWORD: ${DOLPHINSCHEDULER_ADMIN_PASSWORD:?Run configure.py}
+    volumes:
+      - ${DATA_DIR:-./data}/scheduler-db:/var/lib/mysql
+      - ./config/mysql.cnf:/etc/mysql/conf.d/litedata.cnf:ro
+      - ./engine/init-scheduler.sh:/docker-entrypoint-initdb.d/01-scheduler.sh:ro
+      - ./engine/dolphinscheduler_mysql.sql:/opt/litedata/schema.sql:ro
+    healthcheck:
+      test: [CMD-SHELL, 'MYSQL_PWD=$$MYSQL_PASSWORD mysql -h127.0.0.1 -uscheduler dolphinscheduler -e "SELECT * FROM t_ds_version LIMIT 1" >/dev/null']
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 90s
+
+  doris-fe:
+    <<: *service
+    # Reuse the pinned official distribution; bypass its integration-test entrypoint.
+    image: apache/doris:all-in-one-4.1.3
+    entrypoint: [bash, /opt/litedata/start-doris.sh, fe]
+    cpus: 4
+    mem_limit: 12g
+    environment:
+      TZ: Asia/Shanghai
+      DORIS_FE_HEAP: 8g
+      DORIS_ROOT_PASSWORD: ${DORIS_ROOT_PASSWORD:?Run configure.py}
+    networks:
+      backend:
+        ipv4_address: ${DORIS_FE_IP:-172.29.80.10}
+    volumes:
+      - ./engine/start-doris.sh:/opt/litedata/start-doris.sh:ro
+      - ./config/fe.conf:/opt/litedata/doris.conf:ro
+      - ${DATA_DIR:-./data}/doris/fe-meta:/opt/apache-doris/fe/doris-meta
+      - ${DATA_DIR:-./data}/doris/fe-log:/opt/apache-doris/fe/log
+    ulimits:
+      nofile: {soft: 1000000, hard: 1000000}
+    healthcheck:
+      test: [CMD-SHELL, 'MYSQL_PWD=$$DORIS_ROOT_PASSWORD mysql -h127.0.0.1 -P9030 -uroot -e "SHOW FRONTENDS" >/dev/null']
+      interval: 15s
+      timeout: 5s
+      retries: 40
+      start_period: 90s
+
+  doris-be:
+    <<: *service
+    image: apache/doris:all-in-one-4.1.3
+    entrypoint: [bash, /opt/litedata/start-doris.sh, be]
+    cpus: 18
+    mem_limit: 72g
+    environment: {TZ: Asia/Shanghai}
+    networks:
+      backend:
+        ipv4_address: ${DORIS_BE_IP:-172.29.80.11}
+    volumes:
+      - ./engine/start-doris.sh:/opt/litedata/start-doris.sh:ro
+      - ./config/be.conf:/opt/litedata/doris.conf:ro
+      - ${DATA_DIR:-./data}/doris/be-storage:/opt/apache-doris/be/storage
+      - ${DATA_DIR:-./data}/doris/be-log:/opt/apache-doris/be/log
+    ulimits:
+      nofile: {soft: 1000000, hard: 1000000}
+    depends_on:
+      doris-fe: {condition: service_healthy}
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://127.0.0.1:8040/api/health >/dev/null']
+      interval: 15s
+      timeout: 5s
+      retries: 40
+      start_period: 90s
+
+  registry:
+    <<: *scheduler
+    command: [registry]
+    depends_on: {}
+    cpus: 1
+    mem_limit: 2g
+    environment:
+      JAVA_OPTS: -Xms512m -Xmx1g -XX:+UseG1GC -XX:ActiveProcessorCount=1
+    volumes:
+      - ${DATA_DIR:-./data}/scheduler/registry:/var/lib/zookeeper
+    healthcheck:
+      test: [CMD-SHELL, 'python3 /opt/platform/bin/registry-health.py']
+      interval: 15s
+      timeout: 5s
+      retries: 30
+
+  scheduler-api:
+    <<: *scheduler
+    command: [api-server]
+    cpus: 2
+    mem_limit: 3g
+    environment:
+      <<: *scheduler-env
+      JAVA_OPTS: -Xms1g -Xmx2g -XX:+UseG1GC -XX:ActiveProcessorCount=2
+    ports: ['127.0.0.1:${DOLPHINSCHEDULER_PORT:-12345}:12345']
+    volumes:
+      - ${DATA_DIR:-./data}/scheduler/resources:/dolphinscheduler
+      - ${DATA_DIR:-./data}/scheduler/logs/api:/opt/dolphinscheduler/api-server/logs
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://127.0.0.1:12345/dolphinscheduler/actuator/health >/dev/null']
+      interval: 15s
+      timeout: 5s
+      retries: 40
+      start_period: 60s
+
+  scheduler-master:
+    <<: *scheduler
+    command: [master-server]
+    cpus: 2
+    mem_limit: 4g
+    environment:
+      <<: *scheduler-env
+      JAVA_OPTS: -Xms1g -Xmx2g -XX:+UseG1GC -XX:ActiveProcessorCount=2
+      MASTER_SERVER_LOAD_PROTECTION_MAX_CONCURRENT_WORKFLOW_INSTANCES: '20'
+    volumes:
+      - ${DATA_DIR:-./data}/scheduler/resources:/dolphinscheduler
+      - ${DATA_DIR:-./data}/scheduler/logs/master:/opt/dolphinscheduler/master-server/logs
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://127.0.0.1:5679/actuator/health >/dev/null']
+      interval: 15s
+      timeout: 5s
+      retries: 40
+      start_period: 60s
+
+  scheduler-worker:
+    <<: *scheduler
+    command: [worker-server]
+    cpus: 6
+    mem_limit: 12g
+    environment:
+      <<: *scheduler-env
+      JAVA_OPTS: -Xms1g -Xmx2g -XX:+UseG1GC -XX:ActiveProcessorCount=6
+      WORKER_PHYSICAL_TASK_CONFIG_TASK_EXECUTOR_THREAD_SIZE: '4'
+      WORKER_TENANT_CONFIG_DEFAULT_TENANT_ENABLED: 'true'
+      WORKER_TENANT_CONFIG_AUTO_CREATE_TENANT_ENABLED: 'false'
+      PLATFORM_URL: http://platform:8080
+      PLATFORM_INTERNAL_TOKEN: ${PLATFORM_INTERNAL_TOKEN:?Run configure.py}
+      DORIS_WRITER_JDBC_URL: jdbc:mysql://doris-fe:9030/warehouse
+      DORIS_LOAD_URL: doris-be:8040
+      DORIS_WRITER_USER: platform_writer
+      DORIS_WRITER_PASSWORD: ${DORIS_WRITER_PASSWORD:?Run configure.py}
+      DATAX_CHANNELS: '2'
+    volumes:
+      - ${DATA_DIR:-./data}/scheduler/resources:/dolphinscheduler
+      - ${DATA_DIR:-./data}/scheduler/worker:/tmp/dolphinscheduler
+      - ${DATA_DIR:-./data}/scheduler/logs/worker:/opt/dolphinscheduler/worker-server/logs
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://127.0.0.1:1235/actuator/health >/dev/null']
+      interval: 15s
+      timeout: 5s
+      retries: 40
+      start_period: 60s
+
+  scheduler-alert:
+    <<: *scheduler
+    command: [alert-server]
+    cpus: 1
+    mem_limit: 2g
+    environment:
+      <<: *scheduler-env
+      JAVA_OPTS: -Xms512m -Xmx1g -XX:+UseG1GC -XX:ActiveProcessorCount=1
+    volumes:
+      - ${DATA_DIR:-./data}/scheduler/logs/alert:/opt/dolphinscheduler/alert-server/logs
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://127.0.0.1:50053/actuator/health >/dev/null']
+      interval: 15s
+      timeout: 5s
+      retries: 40
+      start_period: 60s
+
+  engine-init:
+    <<: *scheduler
+    restart: 'no'
+    profiles: [tools]
+    command: [bootstrap]
+    environment:
+      DORIS_ROOT_PASSWORD: ${DORIS_ROOT_PASSWORD:?Run configure.py}
+      DORIS_PASSWORD: ${DORIS_PASSWORD:?Run configure.py}
+      DORIS_WRITER_PASSWORD: ${DORIS_WRITER_PASSWORD:?Run configure.py}
+      DORIS_BE_IP: ${DORIS_BE_IP:-172.29.80.11}
+      DOLPHINSCHEDULER_ADMIN_PASSWORD: ${DOLPHINSCHEDULER_ADMIN_PASSWORD:?Run configure.py}
+    volumes:
+      - ./runtime:/opt/platform/runtime
+    depends_on:
+      doris-be: {condition: service_healthy}
+      scheduler-api: {condition: service_healthy}
+
+  platform:
+    <<: *service
+    image: eclipse-temurin:25-jre
+    user: '10001:10001'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 4
+    mem_limit: 4g
+    tmpfs: ['/tmp:size=256m,mode=1777']
+    working_dir: /opt/platform
+    command: [java, -jar, /opt/platform/litedata.jar]
+    environment:
+      TZ: Asia/Shanghai
+      JAVA_TOOL_OPTIONS: -Xms1g -Xmx2g -XX:+UseG1GC -XX:ActiveProcessorCount=4 -Duser.timezone=Asia/Shanghai
+      SERVER_ADDRESS: 0.0.0.0
+      SPRING_CONFIG_ADDITIONAL_LOCATION: file:/opt/platform/config/application-prod.yml
+      PLATFORM_DB_URL: jdbc:mysql://platform-db:3306/platform?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      PLATFORM_DB_USER: platform_app
+      PLATFORM_DB_PASSWORD: ${PLATFORM_DB_PASSWORD:?Run configure.py}
+      PLATFORM_ENCRYPTION_KEY: ${PLATFORM_ENCRYPTION_KEY:?Run configure.py}
+      PLATFORM_ADMIN_PASSWORD: ${PLATFORM_ADMIN_PASSWORD:?Run configure.py}
+      PLATFORM_INTERNAL_TOKEN: ${PLATFORM_INTERNAL_TOKEN:?Run configure.py}
+      DORIS_JDBC_URL: jdbc:mysql://doris-fe:9030/warehouse
+      DORIS_USER: platform_reader
+      DORIS_PASSWORD: ${DORIS_PASSWORD:?Run configure.py}
+      DORIS_WRITER_USER: platform_writer
+      DORIS_WRITER_PASSWORD: ${DORIS_WRITER_PASSWORD:?Run configure.py}
+      DOLPHINSCHEDULER_URL: http://scheduler-api:12345/dolphinscheduler
+      DOLPHINSCHEDULER_TENANT: default
+      DOLPHINSCHEDULER_PROJECT_CODE: ${DOLPHINSCHEDULER_PROJECT_CODE:-0}
+      DOLPHINSCHEDULER_TOKEN: ${DOLPHINSCHEDULER_TOKEN:-}
+    ports: ['${PLATFORM_BIND:-127.0.0.1}:${PLATFORM_PORT:-8080}:8080']
+    volumes:
+      - ./app/litedata.jar:/opt/platform/litedata.jar:ro
+      - ./config/application-prod.yml:/opt/platform/config/application-prod.yml:ro
+    depends_on:
+      platform-db: {condition: service_healthy}
+      scheduler-api: {condition: service_healthy}
+      scheduler-master: {condition: service_healthy}
+      scheduler-worker: {condition: service_healthy}
+      doris-be: {condition: service_healthy}
+    healthcheck:
+      test: [CMD-SHELL, 'bash -c "exec 3<>/dev/tcp/127.0.0.1/8080; printf ''GET /actuator/health HTTP/1.0\r\nHost: localhost\r\n\r\n'' >&3; cat <&3" | grep -q ''"status":"UP"''']
+      interval: 20s
+      timeout: 5s
+      retries: 20
+      start_period: 90s
+
+networks:
+  backend:
+    driver: bridge
+    ipam:
+      config: [{subnet: '${DOCKER_SUBNET:-172.29.80.0/24}'}]

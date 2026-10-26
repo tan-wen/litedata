@@ -8,6 +8,14 @@
 *.iml
 /deploy/generated/
 /deploy/runtime/
+/deploy/production/.env
+/deploy/production/.env.tmp
+/deploy/production/data/
+/deploy/production/runtime/
+/deploy/production/backups/
+/deploy/production/artifacts/
+/deploy/production/app/
+/deploy/production/images/
 /output/
 ~$*
 *.inspect.ndjson

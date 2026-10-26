@@ -1,0 +1,10 @@
+.env
+.env.*
+data
+validation-data
+runtime
+backups
+images
+app
+*.log
+__pycache__
