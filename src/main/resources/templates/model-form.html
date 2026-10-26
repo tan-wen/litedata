@@ -13,6 +13,16 @@
       <div class="md:col-4"><label class="form-label" for="buckets">HASH 分桶数</label><input class="form-control" type="number" th:field="*{buckets}" required min="1" max="32"><div class="form-text">按全部主键字段分桶。</div></div>
       <div class="col-12"><label class="form-label" for="description">业务说明</label><textarea class="form-control" th:field="*{description}" maxlength="500" rows="2"></textarea><div class="form-text">表名说明及字段注释不支持反斜杠和控制字符。</div></div>
     </div></div></article>
+    <article class="platform-card card mb-5" id="dimension-settings"><div class="card-header">公共维度特性</div><div class="card-body">
+      <p class="fg-2">DIM 维护可跨主题复用的成员及属性，例如企业、产品、园区和日期。以下配置仅对 DIM 生效。</p>
+      <div class="row g-5">
+        <div class="md:col-4"><label class="form-label" for="dimensionKeys">维度业务键</label><input class="form-control" th:field="*{dimensionKeys}" maxlength="649" placeholder="enterprise_id"><div class="form-text">1–10 个字段，逗号分隔；须与主键字段及顺序一致，且不可空。</div></div>
+        <div class="md:col-4"><label class="form-label" for="dimensionLabel">展示名称字段（可选）</label><input class="form-control" th:field="*{dimensionLabel}" maxlength="64" list="dimension-fields" placeholder="enterprise_name"><div class="form-text">选择一个非主键属性，作为成员展示名称；其余非主键字段为维度属性。</div></div>
+        <div class="md:col-4"><label class="form-label" for="dimensionStrategy">更新策略</label><select class="form-control" th:field="*{dimensionStrategy}"><option value="SCD1">SCD1 · 覆盖当前值</option></select><div class="form-text">同一业务键更新属性时覆盖旧值，不保留历史版本。</div></div>
+      </div>
+      <p class="form-text mt-4 mb-0">建表后，在数据加工中配置从 ODS 到 DIM 的 SQL，并让事实加工依赖维度加工。当前不自动生成加工 SQL、历史拉链或删除失效成员；可用停用属性保留成员状态。</p>
+      <datalist id="dimension-fields"></datalist>
+    </div></article>
     <article class="platform-card card mb-5"><div class="card-header d-flex justify-content-between align-items-center"><span>字段定义 <small class="fg-2 fw-normal">最多 100 个字段</small></span><button class="btn-outline theme-primary btn-sm" type="button" id="add-field">添加字段</button></div><div class="card-body">
       <p class="fg-2">主键字段须连续排在前面且不可空。类型支持整数、BOOLEAN、DATE、DATETIME(0–6)、CHAR、VARCHAR、STRING、DECIMAL、FLOAT、DOUBLE；STRING 和浮点类型仅用于非主键字段。</p>
       <div class="table-responsive"><table class="table modeling-fields"><thead><tr><th>字段名</th><th>数据类型</th><th>主键</th><th>可空</th><th>字段注释</th><th>标准备注</th><th>顺序 / 操作</th></tr></thead><tbody id="model-fields">

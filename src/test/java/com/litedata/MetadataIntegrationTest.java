@@ -76,6 +76,21 @@ class MetadataIntegrationTest {
         assertThat(service.require(id).isPresent()).isTrue();
         assertThat(mapper.find("doris","warehouse","broken")).isNull();
     }
+
+    @Test void dimensionMetadataSupportsLayerFilteringAndLineage() throws Exception {
+        when(collector.collect(null)).thenReturn(snapshot("warehouse", "ods_enterprise", "dim_enterprise", "dwd_usage"));
+        service.collect(null, "dev");
+        task("dim_enterprise", "INSERT INTO dim_enterprise SELECT id FROM ods_enterprise");
+        jdbc.update("UPDATE data_model SET layer='DIM', dimension_keys='id', dimension_strategy='SCD1' WHERE table_name='dim_enterprise'");
+        task("dwd_usage", "INSERT INTO dwd_usage SELECT id FROM dim_enterprise");
+        mvc.perform(get("/metadata").param("layer", "DIM").with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(model().attribute("totalCount", 1L))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("dim_enterprise")));
+        long id = mapper.find("doris", "warehouse", "dim_enterprise").getId();
+        var graph = lineage.graph(id, "both", 3);
+        assertThat(graph.edges()).hasSize(2);
+        assertThat(graph.nodes()).extracting(LineageService.Node::table).contains("warehouse.ods_enterprise", "warehouse.dim_enterprise", "warehouse.dwd_usage");
+    }
     @Test void paginatesFiltersAndRendersAllGovernancePages() throws Exception {
         when(collector.collect(null)).thenReturn(snapshot("warehouse","ods_orders","ads_orders","ods_customers")); service.collect(null,"dev");
         long id=mapper.find("doris","warehouse","ods_orders").getId();

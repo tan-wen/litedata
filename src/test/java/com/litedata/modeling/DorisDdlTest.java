@@ -62,6 +62,43 @@ class DorisDdlTest {
         assertThat(DorisDdl.canonicalType("bigint(20)")).isEqualTo("BIGINT");
     }
 
+    @Test void dimensionBusinessKeysEnforceCurrentMemberUniquenessAndNormalizeMetadata() {
+        var model = dimension();
+        model.setDimensionKeys(" TENANT_ID , enterprise_id "); model.setDimensionLabel(" Enterprise_Name ");
+        assertThat(ddl.generate(model)).contains("UNIQUE KEY(`tenant_id`, `enterprise_id`)");
+        assertThat(model.getDimensionKeys()).isEqualTo("tenant_id,enterprise_id");
+        assertThat(model.getDimensionLabel()).isEqualTo("enterprise_name");
+        assertThat(model.getDimensionStrategy()).isEqualTo("SCD1");
+        assertThat(model.dimensionRole(model.getFields().getFirst())).isEqualTo("业务键");
+        assertThat(model.dimensionRole(model.getFields().getLast())).isEqualTo("展示名称");
+        model.setDimensionLabel(""); ddl.generate(model);
+        assertThat(model.dimensionRole(model.getFields().getLast())).isEqualTo("维度属性");
+        model.setLayer("DWD"); ddl.generate(model);
+        assertThat(model.getDimensionKeys()).isEmpty();
+        assertThat(model.getDimensionLabel()).isEmpty();
+        assertThat(model.getDimensionStrategy()).isEmpty();
+    }
+
+    @Test void rejectsInvalidDimensionKeysLabelsAndUnsupportedHistoryStrategy() {
+        for (String keys : List.of("", "tenant_id", "enterprise_id,tenant_id", "tenant_id,tenant_id", "missing", "tenant_id,enterprise_id,", "tenant_id;drop")) {
+            var model = dimension(); model.setDimensionKeys(keys);
+            assertThatIllegalArgumentException().isThrownBy(() -> ddl.generate(model));
+        }
+        for (String label : List.of("missing", "tenant_id", "name;drop")) {
+            var model = dimension(); model.setDimensionLabel(label);
+            assertThatIllegalArgumentException().isThrownBy(() -> ddl.generate(model));
+        }
+        var model = dimension(); model.setDimensionStrategy("SCD2");
+        assertThatIllegalArgumentException().isThrownBy(() -> ddl.generate(model)).withMessageContaining("仅支持 SCD1");
+    }
+
+    private static DataModel dimension() {
+        var model = model(field("tenant_id", "BIGINT", true, false), field("enterprise_id", "BIGINT", true, false),
+                field("enterprise_name", "VARCHAR(128)", false, false));
+        model.setLayer("dim"); model.setDimensionKeys("tenant_id,enterprise_id");
+        return model;
+    }
+
     private static DataModel model(ModelField... fields) {
         var model = new DataModel();
         model.setTableName("ods_orders"); model.setName("订单"); model.setSubjectArea("交易"); model.setLayer("ods");

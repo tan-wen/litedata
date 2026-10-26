@@ -20,6 +20,8 @@ jobs:
         run: docker compose --env-file .env.example config --quiet
       - name: Validate chemical park example
         run: python3 -m unittest discover -s examples/chemical-park -p 'test_*.py'
+      - name: Validate chemical park DIM example
+        run: python3 -m unittest discover -s examples/chemical-park-dim -p 'test_*.py'
       - name: Validate metric lineage interaction
         run: node --test src/test/js/metric-lineage-graph.test.cjs
 

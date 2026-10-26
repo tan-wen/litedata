@@ -24,6 +24,7 @@ public class ModelingController {
     void bind(WebDataBinder binder) {
         binder.setAutoGrowCollectionLimit(100);
         binder.setAllowedFields("tableName", "name", "subjectArea", "layer", "description", "buckets", "version",
+                "dimensionKeys", "dimensionLabel", "dimensionStrategy",
                 "fields[*].name", "fields[*].dataType", "fields[*].keyColumn", "fields[*].nullable", "fields[*].comment", "fields[*].standard");
     }
     @ModelAttribute("activeNav") String activeNav() { return "models"; }
@@ -31,7 +32,7 @@ public class ModelingController {
         return request.isUserInRole("ADMIN") || request.isUserInRole("DEVELOPER");
     }
     @ModelAttribute("canManageUsers") boolean canManageUsers(HttpServletRequest request) { return request.isUserInRole("ADMIN"); }
-    @ModelAttribute("layers") List<String> layers() { return List.of("ODS", "DWD", "DWS", "ADS"); }
+    @ModelAttribute("layers") List<String> layers() { return List.of("ODS", "DIM", "DWD", "DWS", "ADS"); }
 
     @GetMapping String list(@RequestParam(defaultValue="") String keyword, @RequestParam(defaultValue="") String layer,
             @RequestParam Map<String,String> params, Model model) {
@@ -40,10 +41,15 @@ public class ModelingController {
         model.addAttribute("keyword", keyword); model.addAttribute("layer", layer);
         return "models";
     }
-    @GetMapping("/new") String create(Model model) {
+    @GetMapping("/new") String create(@RequestParam(defaultValue="ODS") String layer, Model model) {
         var draft = new DataModel();
         var field = new ModelField(); field.setName("id"); field.setDataType("BIGINT"); field.setKeyColumn(true); field.setComment("业务主键");
         draft.getFields().add(field);
+        if ("DIM".equals(layer)) {
+            draft.setLayer("DIM"); draft.setDimensionKeys("id"); draft.setDimensionLabel("name"); draft.setDimensionStrategy("SCD1");
+            var label = new ModelField(); label.setName("name"); label.setDataType("VARCHAR(128)"); label.setComment("维度名称");
+            draft.getFields().add(label);
+        }
         return form(model, draft, null);
     }
     @GetMapping("/{id}/edit") String edit(@PathVariable long id, Model model) { return form(model, modeling.require(id), id); }

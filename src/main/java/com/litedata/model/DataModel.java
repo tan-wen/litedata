@@ -10,6 +10,9 @@ public class DataModel {
     private String subjectArea;
     private String layer = "ODS";
     private String description = "";
+    private String dimensionKeys = "";
+    private String dimensionLabel = "";
+    private String dimensionStrategy = "";
     private int buckets = 1;
     private int version;
     private Integer physicalVersion;
@@ -28,6 +31,17 @@ public class DataModel {
     public void setLayer(String layer) { this.layer = layer; }
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
+    public String getDimensionKeys() { return dimensionKeys; }
+    public void setDimensionKeys(String dimensionKeys) { this.dimensionKeys = dimensionKeys; }
+    public String getDimensionLabel() { return dimensionLabel; }
+    public void setDimensionLabel(String dimensionLabel) { this.dimensionLabel = dimensionLabel; }
+    public String getDimensionStrategy() { return dimensionStrategy; }
+    public void setDimensionStrategy(String dimensionStrategy) { this.dimensionStrategy = dimensionStrategy; }
+    public String dimensionRole(ModelField field) {
+        if (!"DIM".equals(layer)) return "—";
+        if (field.isKeyColumn()) return "业务键";
+        return field.getName().equals(dimensionLabel) ? "展示名称" : "维度属性";
+    }
     public int getBuckets() { return buckets; }
     public void setBuckets(int buckets) { this.buckets = buckets; }
     public int getVersion() { return version; }

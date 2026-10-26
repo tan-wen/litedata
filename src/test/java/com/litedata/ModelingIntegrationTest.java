@@ -94,6 +94,46 @@ class ModelingIntegrationTest {
         assertThat(mapper.models()).isEmpty();
     }
 
+    @Test void dimensionFeaturesRoundTripThroughFormsAndPersistAcrossEdits() throws Exception {
+        mvc.perform(get("/models/new").param("layer", "DIM").with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("公共维度特性")));
+        mvc.perform(post("/models").with(user("dev").roles("DEVELOPER")).with(csrf())
+                .param("tableName", "dim_enterprise").param("name", "公共企业维度").param("subjectArea", "园区")
+                .param("layer", "DIM").param("dimensionKeys", "ID").param("dimensionLabel", "label").param("dimensionStrategy", "SCD1")
+                .param("fields[0].name", "id").param("fields[0].dataType", "BIGINT").param("fields[0].keyColumn", "true")
+                .param("fields[1].name", "label").param("fields[1].dataType", "VARCHAR(128)"))
+                .andExpect(status().is3xxRedirection());
+        var model = service.require(mapper.models().getFirst().getId());
+        assertThat(model.getDimensionKeys()).isEqualTo("id");
+        assertThat(model.getDimensionLabel()).isEqualTo("label");
+        assertThat(model.getDimensionStrategy()).isEqualTo("SCD1");
+        assertThat(service.preview(model.getId()).ddl()).contains("UNIQUE KEY(`id`)");
+        mvc.perform(get("/models").param("layer", "DIM").with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(model().attribute("totalCount", 1L));
+        for (String path : List.of("/models/" + model.getId(), "/models/" + model.getId() + "/edit"))
+            mvc.perform(get(path).with(user("viewer").roles("VIEWER"))).andExpect(status().isOk());
+        mvc.perform(get("/models/" + model.getId()).with(user("dev").roles("DEVELOPER")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("展示名称")));
+        model.setDimensionLabel(""); service.save(model.getId(), model, "dev");
+        assertThat(service.require(model.getId()).getDimensionLabel()).isEmpty();
+        assertThat(service.require(model.getId()).getDimensionStrategy()).isEqualTo("SCD1");
+        model = service.require(model.getId()); model.setLayer("DWD"); service.save(model.getId(), model, "dev");
+        var converted = service.require(model.getId());
+        assertThat(converted.getDimensionKeys()).isEmpty();
+        assertThat(converted.getDimensionStrategy()).isEmpty();
+    }
+
+    @Test void invalidDimensionPreservesItsConfigurationAndDoesNotSave() throws Exception {
+        mvc.perform(post("/models").with(user("dev").roles("DEVELOPER")).with(csrf())
+                .param("tableName", "dim_invalid").param("name", "错误维度").param("subjectArea", "园区")
+                .param("layer", "DIM").param("dimensionKeys", "missing").param("dimensionLabel", "id")
+                .param("fields[0].name", "id").param("fields[0].dataType", "BIGINT").param("fields[0].keyColumn", "true"))
+                .andExpect(status().isOk()).andExpect(view().name("model-form"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("维度业务键字段不存在")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("value=\"missing\"")));
+        assertThat(mapper.models()).isEmpty();
+    }
+
     @Test void authenticationRolesCsrfAndConfirmationAreEnforced() throws Exception {
         var preview = fixture(); long id = preview.model().getId();
         mvc.perform(get("/models")).andExpect(status().is3xxRedirection());

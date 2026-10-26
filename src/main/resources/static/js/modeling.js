@@ -2,6 +2,22 @@
   const body = document.getElementById('model-fields');
   const add = document.getElementById('add-field');
   if (!body || !add) return;
+  const layer = document.getElementById('layer');
+  const dimensionSettings = document.getElementById('dimension-settings');
+  function updateDimension() {
+    const enabled = layer.value === 'DIM';
+    dimensionSettings.hidden = !enabled;
+    dimensionSettings.querySelectorAll('input, select').forEach(input => { input.disabled = !enabled; });
+    document.getElementById('dimensionKeys').required = enabled;
+    document.getElementById('tableName').placeholder = enabled ? 'dim_enterprise' : 'ods_orders';
+    const suggestions = document.getElementById('dimension-fields');
+    suggestions.replaceChildren(...[...body.querySelectorAll('[data-property="name"]')].filter(input => input.value.trim()
+      && !input.closest('tr').querySelector('[data-property="keyColumn"]').checked).map(input => {
+      const option = document.createElement('option'); option.value = input.value.trim(); return option;
+    }));
+  }
+  layer.addEventListener('change', updateDimension);
+  body.addEventListener('input', updateDimension);
   function renumber() {
     [...body.rows].forEach((row, index) => {
       row.querySelectorAll('[data-property]').forEach(input => {
@@ -10,6 +26,7 @@
       });
     });
     add.disabled = body.rows.length >= 100;
+    updateDimension();
   }
   add.addEventListener('click', () => {
     if (body.rows.length >= 100) return;

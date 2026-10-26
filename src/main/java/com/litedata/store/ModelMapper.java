@@ -20,10 +20,10 @@ public interface ModelMapper {
     DataModel lockModel(long id);
     @Select("SELECT * FROM model_field WHERE model_id=#{id} ORDER BY ordinal_position")
     List<ModelField> fields(long id);
-    @Insert("INSERT INTO data_model(table_name,name,subject_area,layer,description,buckets) VALUES(#{tableName},#{name},#{subjectArea},#{layer},#{description},#{buckets})")
+    @Insert("INSERT INTO data_model(table_name,name,subject_area,layer,description,buckets,dimension_keys,dimension_label,dimension_strategy) VALUES(#{tableName},#{name},#{subjectArea},#{layer},#{description},#{buckets},#{dimensionKeys},#{dimensionLabel},#{dimensionStrategy})")
     @Options(useGeneratedKeys=true,keyProperty="id")
     void insert(DataModel model);
-    @Update("UPDATE data_model SET name=#{name},subject_area=#{subjectArea},layer=#{layer},description=#{description},buckets=#{buckets},version=version+1 WHERE id=#{id}")
+    @Update("UPDATE data_model SET name=#{name},subject_area=#{subjectArea},layer=#{layer},description=#{description},buckets=#{buckets},dimension_keys=#{dimensionKeys},dimension_label=#{dimensionLabel},dimension_strategy=#{dimensionStrategy},version=version+1 WHERE id=#{id}")
     void update(DataModel model);
     @Insert("INSERT INTO model_field(model_id,ordinal_position,name,data_type,key_column,nullable,comment,standard) VALUES(#{id},#{position},#{field.name},#{field.dataType},#{field.keyColumn},#{field.nullable},#{field.comment},#{field.standard})")
     void insertField(@Param("id") long id,@Param("position") int position,@Param("field") ModelField field);

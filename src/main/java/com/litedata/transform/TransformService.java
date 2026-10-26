@@ -45,7 +45,7 @@ public class TransformService {
         if(!SCHEDULES.containsKey(input.getCronExpression())) throw new IllegalArgumentException("请选择支持的调度周期");
         if(input.getModelId()==null) throw new IllegalArgumentException("请选择目标模型");
         var model=models.require(input.getModelId());
-        if("ODS".equals(model.getLayer())) throw new IllegalArgumentException("数据加工目标请选择 DWD、DWS 或 ADS 模型；ODS 使用同步管道接入");
+        if("ODS".equals(model.getLayer())) throw new IllegalArgumentException("数据加工目标请选择 DIM、DWD、DWS 或 ADS 模型；ODS 使用同步管道接入");
         var validated=policy.validate(input.getSqlText(),model.getTableName());
         input.setName(input.getName().trim()); input.setSqlText(validated.sql());
         input.setUpstreamTaskIds(ids(input.getUpstreamTaskIds())); input.setUpstreamPipelineIds(ids(input.getUpstreamPipelineIds()));

@@ -60,7 +60,7 @@ public class MetadataService {
         return value.trim().toLowerCase(Locale.ROOT);
     }
     private static String layer(String value) {
-        if(!List.of("","ODS","DWD","DWS","ADS").contains(value)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"无效分层");
+        if(!List.of("","ODS","DIM","DWD","DWS","ADS").contains(value)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"无效分层");
         return value;
     }
 }

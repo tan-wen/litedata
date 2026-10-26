@@ -86,6 +86,14 @@ class ScenarioTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             build_scenario("bad-prefix", self.as_of)
 
+    def test_original_example_keeps_direct_ods_join_without_dim(self):
+        self.assertEqual(6, len(self.scenario["models"]))
+        self.assertEqual(3, len(self.scenario["transforms"]))
+        self.assertFalse(any(model["layer"] == "DIM" for model in self.scenario["models"]))
+        dwd = next(task for task in self.scenario["transforms"] if task["key"] == "dwd_utility_day")
+        self.assertIn("cp_resin01_ods_enterprise", dwd["sqlText"])
+        self.assertIn("enterprise", dwd["upstreamPipelines"])
+
 
 if __name__ == "__main__":
     unittest.main()

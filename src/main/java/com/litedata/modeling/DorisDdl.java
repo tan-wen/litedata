@@ -59,6 +59,7 @@ public class DorisDdl {
                     + " COMMENT '" + sqlComment(field.getComment()) + "'");
         }
         if (keys.isEmpty()) throw invalid("至少需要一个主键字段");
+        validateDimension(model, keys, seen);
 
         String tableComment = model.getDescription().isBlank() ? model.getName()
                 : model.getName() + " - " + model.getDescription();
@@ -125,8 +126,38 @@ public class DorisDdl {
 
     private static String layer(String value) {
         String normalized = value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
-        if (!Set.of("ODS", "DWD", "DWS", "ADS").contains(normalized)) throw invalid("分层仅支持 ODS、DWD、DWS、ADS");
+        if (!Set.of("ODS", "DIM", "DWD", "DWS", "ADS").contains(normalized)) throw invalid("分层仅支持 ODS、DIM、DWD、DWS、ADS");
         return normalized;
+    }
+
+    private static void validateDimension(DataModel model, List<String> keys, Set<String> fields) {
+        if (!"DIM".equals(model.getLayer())) {
+            model.setDimensionKeys(""); model.setDimensionLabel(""); model.setDimensionStrategy("");
+            return;
+        }
+        String strategy = model.getDimensionStrategy() == null ? "" : model.getDimensionStrategy().trim().toUpperCase(Locale.ROOT);
+        if (strategy.isEmpty()) strategy = "SCD1";
+        if (!strategy.equals("SCD1")) throw invalid("DIM 当前仅支持 SCD1（按业务键覆盖当前值）");
+        String raw = model.getDimensionKeys() == null ? "" : model.getDimensionKeys().trim();
+        String[] parts = raw.split(",", -1);
+        if (raw.isEmpty() || parts.length > 10) throw invalid("DIM 须指定 1 到 10 个业务键字段，以逗号分隔");
+        var businessKeys = new LinkedHashSet<String>();
+        for (String part : parts) {
+            String key = identifier(part, "维度业务键");
+            if (!businessKeys.add(key)) throw invalid("维度业务键不能重复：" + key);
+            if (!fields.contains(key)) throw invalid("维度业务键字段不存在：" + key);
+        }
+        if (!new ArrayList<>(businessKeys).equals(keys))
+            throw invalid("SCD1 业务键须与物理主键字段及顺序一致，确保每个成员只保留当前值");
+        String label = model.getDimensionLabel() == null ? "" : model.getDimensionLabel().trim();
+        if (!label.isEmpty()) {
+            label = identifier(label, "维度展示字段");
+            if (!fields.contains(label)) throw invalid("维度展示字段不存在：" + label);
+            if (businessKeys.contains(label)) throw invalid("维度展示字段须为非业务键属性");
+        }
+        model.setDimensionKeys(String.join(",", businessKeys));
+        model.setDimensionLabel(label);
+        model.setDimensionStrategy(strategy);
     }
 
     private static boolean hasControl(String value) {

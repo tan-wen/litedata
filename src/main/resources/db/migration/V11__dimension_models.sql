@@ -1,0 +1,4 @@
+ALTER TABLE data_model
+ ADD COLUMN dimension_keys VARCHAR(649) NOT NULL DEFAULT '',
+ ADD COLUMN dimension_label VARCHAR(64) NOT NULL DEFAULT '',
+ ADD COLUMN dimension_strategy VARCHAR(20) NOT NULL DEFAULT '';

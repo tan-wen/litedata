@@ -89,6 +89,23 @@ class TransformIntegrationTest {
         assertThat(graph.nodes().getLast().upstreamKeys()).containsExactly("pipeline-"+pipeline.getId());
     }
 
+    @Test void dimensionCanBeProcessedBeforeFactAndOfferedAsATarget() throws Exception {
+        long dimension = task("dim_enterprise", List.of());
+        long fact = task("dwd_usage", List.of(dimension));
+        var edit = tasks.require(fact);
+        edit.setSqlText("INSERT INTO dwd_usage SELECT u.id FROM ods_orders u JOIN dim_enterprise e ON u.id = e.id");
+        tasks.save(fact, edit, "dev");
+        var graph = tasks.graph(fact);
+        assertThat(graph.nodes()).hasSize(2);
+        assertThat(graph.nodes().getFirst().refId()).isEqualTo(dimension);
+        assertThat(graph.nodes().getLast().upstreamKeys()).containsExactly("sql-" + dimension);
+        mvc.perform(get("/transforms/new").with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("DIM / dim_enterprise")));
+        long run = (Long) tasks.claim(dimension, 1, fact, graph.hash()).get("runId");
+        tasks.finish(run, true);
+        assertThat(mapper.run(run).getStatus()).isEqualTo("SUCCESS");
+    }
+
     @Test void claimsAreExclusiveVersionedAndCompletionIsIdempotentWithoutTouchingPipelineWatermarks() {
         long id=task("dwd_orders",List.of()); String hash=tasks.graph(id).hash();
         var claim=tasks.claim(id,1,id,hash); long runId=(Long)claim.get("runId");
@@ -185,7 +202,8 @@ class TransformIntegrationTest {
 
     private long task(String table,List<Long> upstream) {
         var model=new DataModel(); model.setName(table); model.setTableName(table); model.setSubjectArea("测试域");
-        model.setLayer(table.startsWith("ads")?"ADS":table.startsWith("dws")?"DWS":"DWD");
+        model.setLayer(table.startsWith("dim")?"DIM":table.startsWith("ads")?"ADS":table.startsWith("dws")?"DWS":"DWD");
+        if ("DIM".equals(model.getLayer())) model.setDimensionKeys("id");
         var key=new ModelField(); key.setName("id"); key.setDataType("BIGINT"); key.setKeyColumn(true); model.setFields(List.of(key));
         long modelId=models.save(null,model,"dev");
         var task=new SqlTask(); task.setName(table); task.setModelId(modelId); task.setSqlText("INSERT INTO "+table+" SELECT id FROM ods_orders"); task.setUpstreamTaskIds(upstream);

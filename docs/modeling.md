@@ -20,6 +20,8 @@ ODS 数据来自业务库的 DataX 同步；其他分层通过 Doris `INSERT INT
 
 ## 当前边界
 
+- 支持 ODS、DIM、DWD、DWS、ADS；DIM 提供业务键、展示名称字段、维度属性与 SCD1 当前值覆盖语义。操作、质量与历史处理边界见[公共维度建模](dimension-models.md)。
+
 - 生成固定 `ENGINE=OLAP`、`UNIQUE KEY`、按全部主键 HASH 分桶、1–32 桶、单副本和 merge-on-write。
 - 类型支持整数、BOOLEAN、DATE、DATETIME(0–6)、CHAR(1–255)、VARCHAR(1–65533)、STRING、
   DECIMAL(1–38, 0–精度)、FLOAT、DOUBLE。本期禁止 STRING 和浮点类型作为业务主键。

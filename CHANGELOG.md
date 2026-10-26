@@ -2,6 +2,12 @@
 
 ## 0.1.0-SNAPSHOT（开发中）
 
+### 2026-10-26：公共维度建模
+
+- 增加 DIM 分层、公共维度入口、业务键、展示字段与 SCD1 当前值覆盖策略；校验业务键与物理 UNIQUE KEY 一致，详情展示字段维度角色。
+- DIM 接入加工目标、依赖调度、元数据筛选与现有血缘；V11 为模型元数据库增加维度配置，保留既有模型和 Doris 表。
+- 新增独立[化工园区 DIM 完整示例](examples/chemical-park-dim/README.md)，覆盖维度与事实引用质量、SCD1 属性更新、五轮重跑、维度血缘和专属看板；保留原版六模型示例以便对照。能力边界见[公共维度建模](docs/dimension-models.md)。
+
 ### 2026-10-25：多数据库接入、自定义同步周期与数据加工命名
 
 - 数据源新增 PostgreSQL、SQL Server、Oracle 的 JDBC、元数据及 DataX reader 适配，保留 MySQL 兼容；范围与实库验证状态见[接入说明](docs/data-sources.md)。
