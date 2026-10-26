@@ -6,6 +6,8 @@ LiteData 是一个部署简单、易上手的数据中台，围绕多数据库�
 处于首版开发与引擎联调阶段。平台功能已有实现及自动化测试，演示同步及多层 SQL 加工链路已实测跑通，百万行压测和连续七天运行仍待验收。
 详细范围见 [实施及验收计划](docs/implementation-plan.md)，操作与验证边界见 [引擎运行说明](docs/engine-runbook.md)。
 
+图文上手手册：[可搜索网页版](docs/LiteData平台操作手册.html) · [Markdown 版](docs/user-manual.md) · [PDF 版](docs/manual/LiteData平台操作手册.pdf)。包含 39 个操作步骤，每步提供目的、示例、实际界面截图和结果检查。
+
 ## 项目能力
 
 完整示例：[化工园区企业用能与单位产品能耗分析](examples/chemical-park/README.md)，包括模拟源、分层加工、质量纠错、三类指标、字段血缘、受控 API 和可交互看板。
