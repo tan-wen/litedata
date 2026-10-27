@@ -33,7 +33,7 @@ public class DorisDdl {
         model.setDescription(metadata(model.getDescription(), "描述", 500, false));
         model.setModelType(choice(model.getModelType(), Set.of("DUPLICATE", "UNIQUE", "AGGREGATE"), "数据模型仅支持 DUPLICATE、UNIQUE、AGGREGATE"));
         if (model.getReplicationNum() < 1 || model.getReplicationNum() > 10) throw invalid("副本数须在 1 到 10 之间，且不能超过可用 BE 节点数");
-        if (model.getBuckets() < 1 || model.getBuckets() > 32) throw invalid("分桶数须在 1 到 32 之间");
+        if (!model.isAutoBuckets() && (model.getBuckets() < 1 || model.getBuckets() > 32)) throw invalid("分桶数须在 1 到 32 之间");
         if (model.getFields() == null || model.getFields().isEmpty() || model.getFields().size() > 100)
             throw invalid("字段数量须在 1 到 100 之间");
 
@@ -71,7 +71,7 @@ public class DorisDdl {
                 : model.getName() + " - " + model.getDescription();
         return "CREATE TABLE `warehouse`.`" + model.getTableName() + "` (\n"
                 + String.join(",\n", columns) + "\n)\nENGINE=OLAP\n" + model.getModelType() + " KEY(" + quoted(keys) + ")\nCOMMENT '"
-                + sqlComment(tableComment) + "'\n" + partition + "DISTRIBUTED BY HASH(" + quoted(keys) + ") BUCKETS " + model.getBuckets()
+                + sqlComment(tableComment) + "'\n" + partition + "DISTRIBUTED BY HASH(" + quoted(keys) + ") BUCKETS " + (model.isAutoBuckets() ? "AUTO" : model.getBuckets())
                 + "\nPROPERTIES (\n  \"replication_num\" = \"" + model.getReplicationNum() + "\""
                 + ("UNIQUE".equals(model.getModelType()) ? ",\n  \"enable_unique_key_merge_on_write\" = \"true\"" : "") + "\n);";
     }

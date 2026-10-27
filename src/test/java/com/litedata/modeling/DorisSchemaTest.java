@@ -51,6 +51,30 @@ class DorisSchemaTest {
         assertThat(schema.replicationNum()).isEqualTo(1);
     }
 
+    @Test void distinguishesAutoPolicyFromTheActualBucketCountInServerMetadata() {
+        var columns = List.of(new DorisModelGateway.Column("id", "BIGINT", false, ""));
+        String sql = """
+                CREATE TABLE `t` (`id` bigint NOT NULL) ENGINE=OLAP
+                UNIQUE KEY(`id`)
+                DISTRIBUTED BY HASH(`id`) BUCKETS AUTO
+                PROPERTIES (
+                "replication_allocation" = "tag.location.default: 1",
+                "enable_unique_key_merge_on_write" = "true"
+                );
+                """;
+        var model = new DataModel(); model.setTableName("t"); model.setAutoBuckets(true);
+        var id = new ModelField(); id.setName("id"); id.setDataType("BIGINT"); id.setKeyColumn(true);
+        model.setFields(List.of(id));
+        var auto = DorisModelGateway.parseSchema(columns, sql);
+        assertThat(auto.autoBuckets()).isTrue();
+        assertThat(SchemaComparison.compare(model, auto).matches()).isTrue();
+        String numericAuto = sql.replace("BUCKETS AUTO", "BUCKETS 10").replace("PROPERTIES (", "PROPERTIES (\n\"auto_bucket\" = \"true\",");
+        assertThat(SchemaComparison.compare(model, DorisModelGateway.parseSchema(columns, numericAuto)).matches()).isTrue();
+        assertThat(SchemaComparison.compare(model, DorisModelGateway.parseSchema(columns, sql.replace("BUCKETS AUTO", "BUCKETS 10"))).matches()).isFalse();
+        model.setAutoBuckets(false); model.setBuckets(10);
+        assertThat(SchemaComparison.compare(model, auto).matches()).isFalse();
+    }
+
     @Test void comparisonDetectsPhysicalSettingsAndAggregationDrift() {
         var model = new DataModel(); model.setTableName("dws_test"); model.setName("测试"); model.setSubjectArea("测试");
         model.setModelType("AGGREGATE"); model.setPartitionType("AUTO_RANGE"); model.setPartitionColumn("dt");

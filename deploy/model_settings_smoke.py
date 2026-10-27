@@ -35,7 +35,7 @@ def main() -> dict[str, object]:
     for kind, unit in [("UNIQUE", "DAY"), ("DUPLICATE", "YEAR"), ("AGGREGATE", "MONTH")]:
         table = "dws_config_smoke_" + uuid.uuid4().hex[:10]
         fields = {"tableName": table, "name": "物理配置验证 " + kind, "subjectArea": "测试域", "layer": "DWS",
-                  "modelType": kind, "replicationNum": "1", "buckets": "2", "partitionType": "AUTO_RANGE",
+                  "modelType": kind, "replicationNum": "1", "autoBuckets": "true", "buckets": "2", "partitionType": "AUTO_RANGE",
                   "partitionColumn": "dt", "partitionUnit": unit}
         definitions = [("dt", "DATE", True, False, ""), ("id", "BIGINT", True, False, ""),
                        ("amount", "DECIMAL(18,2)", False, False, "SUM"),
@@ -52,6 +52,7 @@ def main() -> dict[str, object]:
         status, page = client.request("GET", "/models/new")
         status, page = post_form(client, page, "/models", fields)
         require(status, page, "逻辑模型已保存")
+        require(status, page, "BUCKETS AUTO")
         match = re.search(r'action="(/models/(\d+)/physicalize)"', page)
         if not match:
             raise SmokeFailure("model detail unavailable")
@@ -60,6 +61,8 @@ def main() -> dict[str, object]:
         require(status, page, "Doris 表已创建")
         status, page = post_form(client, page, detail + "/compare", {})
         require(status, page, "逻辑模型与物理结构一致")
+        if "BUCKETS AUTO" not in doris(f"SHOW CREATE TABLE warehouse.`{table}`;"):
+            raise SmokeFailure("automatic bucket policy did not round trip")
         insert = f"INSERT INTO warehouse.`{table}` VALUES ({', '.join(values)});"
         doris(insert + "\n" + insert)
         data = doris(f"SELECT COUNT(*), SUM(amount) FROM warehouse.`{table}`;")
@@ -84,7 +87,7 @@ def main() -> dict[str, object]:
         status, page = post_form(client, page, detail + "/compare", {})
         require(status, page, "逻辑模型与物理结构一致")
         evidence.append({"modelId": int(match.group(2)), "table": table, "type": kind, "unit": unit})
-    return {"status": "success", "checks": ["three-models", "five-aggregate-functions", "date-auto-partitions",
+    return {"status": "success", "checks": ["three-models", "five-aggregate-functions", "date-auto-partitions", "auto-buckets",
             "real-write-semantics", "compare-before-and-after-ingestion", "edit-persistence", "replica-drift"], "evidence": evidence}
 
 

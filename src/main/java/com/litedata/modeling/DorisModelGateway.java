@@ -13,9 +13,14 @@ public class DorisModelGateway {
     public record Column(String name, String dataType, boolean nullable, String comment) {}
     public record Schema(List<Column> columns, List<String> keyColumns, List<String> hashColumns, int buckets,
                          String modelType, int replicationNum, String partitionType, String partitionColumn,
-                         String partitionUnit, Map<String,String> aggregations, boolean mergeOnWrite) {
+                         String partitionUnit, Map<String,String> aggregations, boolean mergeOnWrite, boolean autoBuckets) {
         public Schema(List<Column> columns, List<String> keys, List<String> hashColumns, int buckets) {
-            this(columns, keys, hashColumns, buckets, "UNIQUE", 1, "NONE", "", "DAY", Map.of(), true);
+            this(columns, keys, hashColumns, buckets, "UNIQUE", 1, "NONE", "", "DAY", Map.of(), true, false);
+        }
+        public Schema(List<Column> columns, List<String> keys, List<String> hashColumns, int buckets,
+                      String modelType, int replicationNum, String partitionType, String partitionColumn,
+                      String partitionUnit, Map<String,String> aggregations, boolean mergeOnWrite) {
+            this(columns, keys, hashColumns, buckets, modelType, replicationNum, partitionType, partitionColumn, partitionUnit, aggregations, mergeOnWrite, false);
         }
     }
     private final PlatformProperties properties;
@@ -65,7 +70,9 @@ public class DorisModelGateway {
         var key = Pattern.compile("(?im)^\\s*(UNIQUE|DUPLICATE|AGGREGATE)\\s+KEY\\s*\\(([^)]+)\\)").matcher(ddl);
         String type = key.find() ? key.group(1).toUpperCase(Locale.ROOT) : "UNKNOWN";
         var keys = type.equals("UNKNOWN") ? List.<String>of() : names(key.group(2));
-        var bucket = Pattern.compile("(?im)^\\s*DISTRIBUTED\\s+BY\\s+HASH\\s*\\([^)]+\\)\\s+BUCKETS\\s+(\\d+)").matcher(ddl);
+        var bucket = Pattern.compile("(?im)^\\s*DISTRIBUTED\\s+BY\\s+HASH\\s*\\([^)]+\\)\\s+BUCKETS\\s+(AUTO|\\d+)\\b").matcher(ddl);
+        String bucketValue = bucket.find() ? bucket.group(1) : "0";
+        boolean autoBuckets = bucketValue.equalsIgnoreCase("AUTO") || "true".equalsIgnoreCase(property(ddl, "auto_bucket"));
         var auto = Pattern.compile("(?im)^\\s*AUTO\\s+PARTITION\\s+BY\\s+RANGE\\s*\\(\\s*date_trunc\\s*\\(\\s*`?([A-Za-z_][A-Za-z0-9_]*)`?\\s*,\\s*['\"](day|month|year)['\"]\\s*\\)\\s*\\)").matcher(ddl);
         String partitionType = Pattern.compile("(?im)^\\s*(?:AUTO\\s+)?PARTITION\\s+BY\\b").matcher(ddl).find() ? "OTHER" : "NONE";
         String partitionColumn = "", partitionUnit = "DAY";
@@ -92,8 +99,8 @@ public class DorisModelGateway {
             if (function.find()) aggregations.put(column.name().toLowerCase(Locale.ROOT), function.group(1).toUpperCase(Locale.ROOT));
         }
         return new Schema(columns, keys, columnsIn(ddl, "^\\s*DISTRIBUTED\\s+BY\\s+HASH"),
-                bucket.find() ? Integer.parseInt(bucket.group(1)) : 0, type, replicas, partitionType, partitionColumn,
-                partitionUnit, Map.copyOf(aggregations), "true".equalsIgnoreCase(property(ddl, "enable_unique_key_merge_on_write")));
+                bucketValue.equalsIgnoreCase("AUTO") ? 0 : Integer.parseInt(bucketValue), type, replicas, partitionType, partitionColumn,
+                partitionUnit, Map.copyOf(aggregations), "true".equalsIgnoreCase(property(ddl, "enable_unique_key_merge_on_write")), autoBuckets);
     }
 
     private static String property(String ddl, String name) {

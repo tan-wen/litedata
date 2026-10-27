@@ -16,7 +16,8 @@ public record SchemaComparison(boolean matches, List<Difference> differences) {
         add(differences, "数据模型", model.getModelType(), schema.modelType());
         add(differences, "键列", String.join(", ", keys), String.join(", ", schema.keyColumns()));
         add(differences, "HASH 分桶字段", String.join(", ", keys), String.join(", ", schema.hashColumns()));
-        add(differences, "分桶数", Integer.toString(model.getBuckets()), Integer.toString(schema.buckets()));
+        add(differences, "分桶方式", model.isAutoBuckets() ? "AUTO" : "固定", schema.autoBuckets() ? "AUTO" : "固定");
+        if (!model.isAutoBuckets()) add(differences, "分桶数", Integer.toString(model.getBuckets()), Integer.toString(schema.buckets()));
         add(differences, "默认副本数", Integer.toString(model.getReplicationNum()), Integer.toString(schema.replicationNum()));
         add(differences, "分区方式", model.getPartitionType(), schema.partitionType());
         if ("AUTO_RANGE".equals(model.getPartitionType())) {

@@ -153,6 +153,41 @@ class ModelingIntegrationTest {
         assertThat(mapper.models()).isEmpty();
     }
 
+    @Test void newFormsDefaultToAutoWhileLegacyEditsRetainTheirFixedBucketDefinition() throws Exception {
+        mvc.perform(get("/models/new").param("layer", "DWS").with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(model().attribute("draft", org.hamcrest.Matchers.hasProperty("autoBuckets", org.hamcrest.Matchers.is(true))))
+                .andExpect(model().attribute("draft", org.hamcrest.Matchers.hasProperty("layer", org.hamcrest.Matchers.is("DWS"))));
+        var legacy = service.require(fixture().model().getId());
+        legacy.setBuckets(4); service.save(legacy.getId(), legacy, "dev");
+        assertThat(service.require(legacy.getId()).isAutoBuckets()).isFalse();
+        assertThat(service.preview(legacy.getId()).ddl()).contains("BUCKETS 4");
+        mvc.perform(get("/models/" + legacy.getId() + "/edit").with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(model().attribute("draft", org.hamcrest.Matchers.hasProperty("autoBuckets", org.hamcrest.Matchers.is(false))))
+                .andExpect(model().attribute("draft", org.hamcrest.Matchers.hasProperty("buckets", org.hamcrest.Matchers.is(4))));
+        mvc.perform(post("/models").with(user("dev").roles("DEVELOPER")).with(csrf())
+                .param("tableName", "dwd_auto").param("name", "自动分桶").param("subjectArea", "测试")
+                .param("layer", "DWD").param("autoBuckets", "true")
+                .param("fields[0].name", "id").param("fields[0].dataType", "BIGINT").param("fields[0].keyColumn", "true"))
+                .andExpect(status().is3xxRedirection());
+        var automatic = mapper.modelByTable("dwd_auto");
+        assertThat(automatic.isAutoBuckets()).isTrue();
+        assertThat(service.preview(automatic.getId()).ddl()).contains("BUCKETS AUTO");
+        mvc.perform(get("/models/" + automatic.getId()).with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("HASH 自动分桶")));
+    }
+
+    @Test void validationReturnsToTheStepContainingTheInvalidInput() throws Exception {
+        mvc.perform(post("/models").with(user("dev").roles("DEVELOPER")).with(csrf())
+                .param("tableName", "bad_steps").param("name", "测试").param("subjectArea", "测试")
+                .param("fields[0].name", "id").param("fields[0].dataType", "STRING").param("fields[0].keyColumn", "true"))
+                .andExpect(status().isOk()).andExpect(model().attribute("errorStep", 2));
+        mvc.perform(post("/models").with(user("dev").roles("DEVELOPER")).with(csrf())
+                .param("tableName", "bad_steps").param("name", "测试").param("subjectArea", "测试")
+                .param("replicationNum", "11").param("fields[0].name", "id").param("fields[0].dataType", "BIGINT").param("fields[0].keyColumn", "true"))
+                .andExpect(status().isOk()).andExpect(model().attribute("errorStep", 3));
+        assertThat(mapper.models()).isEmpty();
+    }
+
     @Test void dimensionFeaturesRoundTripThroughFormsAndPersistAcrossEdits() throws Exception {
         mvc.perform(get("/models/new").param("layer", "DIM").with(user("dev").roles("DEVELOPER")))
                 .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("公共维度特性")));

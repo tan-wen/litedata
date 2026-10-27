@@ -24,7 +24,7 @@ public class ModelingController {
     @InitBinder("draft")
     void bind(WebDataBinder binder) {
         binder.setAutoGrowCollectionLimit(100);
-        binder.setAllowedFields("tableName", "name", "subjectArea", "layer", "description", "buckets", "version",
+        binder.setAllowedFields("tableName", "name", "subjectArea", "layer", "description", "buckets", "autoBuckets", "version",
                 "dimensionKeys", "dimensionLabel", "dimensionStrategy", "modelType", "replicationNum", "partitionType", "partitionColumn", "partitionUnit",
                 "fields[*].name", "fields[*].dataType", "fields[*].keyColumn", "fields[*].nullable", "fields[*].comment", "fields[*].standard", "fields[*].aggregation");
     }
@@ -45,6 +45,8 @@ public class ModelingController {
     }
     @GetMapping("/new") String create(@RequestParam(defaultValue="ODS") String layer, Model model) {
         var draft = new DataModel();
+        draft.setAutoBuckets(true);
+        if (List.of("ODS", "DIM", "DWD", "DWS", "ADS").contains(layer)) draft.setLayer(layer);
         var field = new ModelField(); field.setName("id"); field.setDataType("BIGINT"); field.setKeyColumn(true); field.setComment("业务主键");
         draft.getFields().add(field);
         if ("DIM".equals(layer)) {
@@ -70,15 +72,21 @@ public class ModelingController {
     }
     private String save(Long id, DataModel draft, BindingResult errors, Model model, Principal principal, RedirectAttributes redirect) {
         try {
-            if (errors.hasErrors()) throw new IllegalArgumentException("字段格式有误，请检查副本数、分桶数、版本和字段定义");
+            if (errors.hasErrors()) {
+                String field = errors.getFieldErrors().isEmpty() ? "" : errors.getFieldErrors().getFirst().getField();
+                model.addAttribute("errorStep", field.startsWith("fields[") ? 2 : isPhysicalField(field) ? 3 : 1);
+                throw new IllegalArgumentException("字段格式有误，请检查副本数、分桶数、版本和字段定义");
+            }
             long saved = modeling.save(id, draft, principal.getName());
             redirect.addFlashAttribute("success", "逻辑模型已保存，请预览 DDL 并核对物理结构");
             return "redirect:/models/" + saved;
         } catch (IllegalArgumentException exception) {
             model.addAttribute("error", exception.getMessage());
+            if (!model.containsAttribute("errorStep")) model.addAttribute("errorStep", errorStep(exception.getMessage()));
             return form(model, draft, id);
         } catch (org.springframework.dao.DuplicateKeyException exception) {
             model.addAttribute("error", "表名已被模型使用（含已归档模型），请选择其他表名");
+            model.addAttribute("errorStep", 1);
             return form(model, draft, id);
         }
     }
@@ -103,5 +111,18 @@ public class ModelingController {
     private String form(Model model, DataModel draft, Long id) {
         model.addAttribute("draft", draft); model.addAttribute("modelId", id);
         return "model-form";
+    }
+
+    private static boolean isPhysicalField(String field) {
+        return List.of("modelType", "replicationNum", "buckets", "autoBuckets", "partitionType", "partitionColumn", "partitionUnit").contains(field);
+    }
+
+    private static int errorStep(String message) {
+        if (message == null) return 1;
+        if (message.contains("分区") || message.contains("副本") || message.contains("分桶") || message.contains("AGGREGATE")
+                || message.contains("数据模型") || message.contains("聚合函数") || message.contains("SUM") || message.contains("REPLACE_IF_NOT_NULL")
+                || message.contains("DIM/SCD1")) return 3;
+        if (message.contains("表名") || message.contains("模型中文名") || message.contains("主题域") || message.contains("分层") || message.contains("描述")) return 1;
+        return 2;
     }
 }

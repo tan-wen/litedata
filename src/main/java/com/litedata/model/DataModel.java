@@ -14,6 +14,7 @@ public class DataModel {
     private String dimensionLabel = "";
     private String dimensionStrategy = "";
     private int buckets = 1;
+    private boolean autoBuckets;
     private String modelType = "UNIQUE";
     private int replicationNum = 1;
     private String partitionType = "NONE";
@@ -49,6 +50,8 @@ public class DataModel {
     }
     public int getBuckets() { return buckets; }
     public void setBuckets(int buckets) { this.buckets = buckets; }
+    public boolean isAutoBuckets() { return autoBuckets; }
+    public void setAutoBuckets(boolean autoBuckets) { this.autoBuckets = autoBuckets; }
     public String getModelType() { return modelType; }
     public void setModelType(String modelType) { this.modelType = modelType; }
     public int getReplicationNum() { return replicationNum; }

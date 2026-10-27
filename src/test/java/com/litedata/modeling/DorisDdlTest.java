@@ -77,6 +77,19 @@ class DorisDdlTest {
                 .doesNotContain("enable_unique_key_merge_on_write");
     }
 
+    @Test void autoBucketingSupportsAllModelsWithoutChangingLegacyFixedBuckets() {
+        for (String kind : List.of("UNIQUE", "DUPLICATE", "AGGREGATE")) {
+            var model = model(field("dt", "DATE", true, false), field("total", "INT", false, false));
+            model.setModelType(kind); model.setAutoBuckets(true);
+            if (kind.equals("AGGREGATE")) model.getFields().getLast().setAggregation("SUM");
+            assertThat(ddl.generate(model)).contains("BUCKETS AUTO");
+            model.setPartitionType("AUTO_RANGE"); model.setPartitionColumn("dt");
+            assertThat(ddl.generate(model)).contains("AUTO PARTITION BY RANGE", "BUCKETS AUTO");
+            model.setAutoBuckets(false); model.setBuckets(4);
+            assertThat(ddl.generate(model)).contains("BUCKETS 4").doesNotContain("BUCKETS AUTO");
+        }
+    }
+
     @Test void generatesStructuredDatePartitionsAndRejectsInvalidDefinitions() {
         for (String unit : List.of("DAY", "MONTH", "YEAR")) {
             var model = model(field("biz_date", "DATE", true, false), field("id", "BIGINT", true, false));

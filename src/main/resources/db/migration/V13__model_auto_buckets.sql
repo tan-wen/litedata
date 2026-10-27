@@ -1,0 +1,2 @@
+ALTER TABLE data_model
+ ADD COLUMN auto_buckets BOOLEAN NOT NULL DEFAULT FALSE;
