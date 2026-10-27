@@ -12,7 +12,16 @@
   <article class="platform-card card mb-5"><div class="card-header">字段定义</div><div class="card-body p-0"><div class="table-responsive"><table class="table mb-0"><thead><tr><th>字段名</th><th>类型</th><th>主键</th><th>可空</th><th>注释</th><th>标准备注</th><th th:if="${definition.layer == 'DIM'}">维度角色</th></tr></thead><tbody><tr th:each="field : ${definition.fields}"><td th:text="${field.name}"></td><td th:text="${field.dataType}"></td><td th:text="${field.keyColumn ? '是' : '否'}"></td><td th:text="${field.nullable ? '是' : '否'}"></td><td th:text="${field.comment}"></td><td th:text="${field.standard}"></td><td th:if="${definition.layer == 'DIM'}" th:text="${definition.dimensionRole(field)}"></td></tr></tbody></table></div></div></article>
   <div class="row g-5 mb-5"><div class="xl:col-8"><article class="platform-card card h-100"><div class="card-header">Doris DDL 预览</div><div class="card-body"><pre class="code-preview mb-0" th:text="${ddl}"></pre></div></article></div><div class="xl:col-4"><article class="platform-card card h-100"><div class="card-header">物理化与核对</div><div class="card-body">
     <p>确认下方操作会在 Doris 创建 <strong th:text="${'warehouse.' + definition.tableName}"></strong>。已有表请先比对结构。</p>
-    <form th:if="${canEdit}" th:action="@{/models/{id}/physicalize(id=${definition.id})}" method="post" class="mb-7"><input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"><input type="hidden" name="version" th:value="${definition.version}"><input type="hidden" name="ddlHash" th:value="${ddlHash}"><div class="mb-5"><input class="check" type="checkbox" name="confirmed" value="true" id="confirmed" required><label for="confirmed">已检查 DDL，确认在目标库新建表</label></div><button class="btn-solid theme-primary" type="submit">执行建表</button></form>
+    <form th:if="${canEdit}" th:action="@{/models/{id}/physicalize(id=${definition.id})}" method="post" class="mb-7">
+      <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+      <input type="hidden" name="version" th:value="${definition.version}">
+      <input type="hidden" name="ddlHash" th:value="${ddlHash}">
+      <label for="confirmed" class="d-flex align-items-center gap-3 mb-5">
+        <input class="check m-0" type="checkbox" name="confirmed" value="true" id="confirmed" required>
+        <span>已检查 DDL，确认在目标库新建表</span>
+      </label>
+      <button class="btn-solid theme-primary" type="submit">执行建表</button>
+    </form>
     <form th:if="${canEdit}" th:action="@{/models/{id}/compare(id=${definition.id})}" method="post"><input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"><input type="hidden" name="version" th:value="${definition.version}"><button class="btn-outline theme-primary" type="submit">结构比对</button></form>
     <p class="fg-2 small mt-5 mb-0">比对字段类型、顺序、可空、注释、UNIQUE KEY 及 HASH 分桶。模型变更后请重新核对；结构调整由管理员在仓库端处理。</p>
   </div></article></div></div>
