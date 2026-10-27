@@ -62,6 +62,70 @@ class DorisDdlTest {
         assertThat(DorisDdl.canonicalType("bigint(20)")).isEqualTo("BIGINT");
     }
 
+    @Test void generatesDuplicateAndAggregateModelsWithConfigurableReplicas() {
+        var duplicate = model(field("id", "BIGINT", true, false), field("label", "VARCHAR(20)", false, true));
+        duplicate.setModelType(" duplicate "); duplicate.setReplicationNum(3);
+        assertThat(ddl.generate(duplicate)).contains("DUPLICATE KEY(`id`)", "\"replication_num\" = \"3\"")
+                .doesNotContain("enable_unique_key_merge_on_write");
+        var aggregate = model(field("day", "DATE", true, false),
+                aggregate("amount", "DECIMAL(18,2)", "SUM", false),
+                aggregate("low", "VARCHAR(20)", "MIN", true), aggregate("high", "BIGINT", "MAX", false),
+                aggregate("name", "STRING", "REPLACE", true), aggregate("status", "VARCHAR(20)", "REPLACE_IF_NOT_NULL", true));
+        aggregate.setModelType("AGGREGATE");
+        assertThat(ddl.generate(aggregate)).contains("AGGREGATE KEY(`day`)", "DECIMAL(18,2) SUM NOT NULL",
+                "VARCHAR(20) MIN NULL", "BIGINT MAX NOT NULL", "STRING REPLACE NULL", "VARCHAR(20) REPLACE_IF_NOT_NULL NULL")
+                .doesNotContain("enable_unique_key_merge_on_write");
+    }
+
+    @Test void generatesStructuredDatePartitionsAndRejectsInvalidDefinitions() {
+        for (String unit : List.of("DAY", "MONTH", "YEAR")) {
+            var model = model(field("biz_date", "DATE", true, false), field("id", "BIGINT", true, false));
+            model.setPartitionType("AUTO_RANGE"); model.setPartitionColumn(" BIZ_DATE "); model.setPartitionUnit(unit);
+            assertThat(ddl.generate(model)).contains("AUTO PARTITION BY RANGE(date_trunc(`biz_date`, '" + unit.toLowerCase() + "')) ()");
+            assertThat(model.getPartitionColumn()).isEqualTo("biz_date");
+        }
+        for (String column : List.of("id", "missing", "biz_date); DROP TABLE x")) {
+            var model = model(field("id", "BIGINT", true, false), field("biz_date", "DATE", false, false));
+            model.setPartitionType("AUTO_RANGE"); model.setPartitionColumn(column);
+            assertThatIllegalArgumentException().isThrownBy(() -> ddl.generate(model));
+        }
+        var model = model(field("biz_date", "DATE", true, false));
+        model.setPartitionType("AUTO_RANGE"); model.setPartitionColumn("biz_date"); model.setPartitionUnit("day'); DROP");
+        assertThatIllegalArgumentException().isThrownBy(() -> ddl.generate(model));
+        model.setPartitionType("LIST");
+        assertThatIllegalArgumentException().isThrownBy(() -> ddl.generate(model));
+        model.setPartitionType("NONE");
+        assertThat(ddl.generate(model)).doesNotContain("PARTITION BY");
+        assertThat(model.getPartitionColumn()).isEmpty();
+    }
+
+    @Test void validatesModelsReplicasAggregationsAndDimensionSemantics() {
+        for (int replicas : List.of(0, 11)) {
+            var model = model(field("id", "BIGINT", true, false)); model.setReplicationNum(replicas);
+            assertThatIllegalArgumentException().isThrownBy(() -> ddl.generate(model));
+        }
+        var unknown = model(field("id", "BIGINT", true, false)); unknown.setModelType("UNIQUE); DROP");
+        assertThatIllegalArgumentException().isThrownBy(() -> ddl.generate(unknown));
+        for (ModelField value : List.of(field("v", "INT", false, false), aggregate("v", "STRING", "SUM", true),
+                aggregate("v", "INT", "REPLACE_IF_NOT_NULL", false), aggregate("v", "INT", "COUNT", true))) {
+            var model = model(field("id", "BIGINT", true, false), value); model.setModelType("AGGREGATE");
+            assertThatIllegalArgumentException().isThrownBy(() -> ddl.generate(model));
+        }
+        var key = aggregate("id", "BIGINT", "SUM", false); key.setKeyColumn(true);
+        var invalidKey = model(key); invalidKey.setModelType("AGGREGATE");
+        assertThatIllegalArgumentException().isThrownBy(() -> ddl.generate(invalidKey));
+        var ordinary = model(field("id", "BIGINT", true, false), aggregate("v", "INT", "SUM", true));
+        assertThatIllegalArgumentException().isThrownBy(() -> ddl.generate(ordinary));
+        var dimension = dimension(); dimension.setModelType("DUPLICATE");
+        assertThatIllegalArgumentException().isThrownBy(() -> ddl.generate(dimension)).withMessageContaining("DIM/SCD1");
+        dimension.setModelType("UNIQUE"); dimension.setPartitionType("AUTO_RANGE");
+        assertThatIllegalArgumentException().isThrownBy(() -> ddl.generate(dimension)).withMessageContaining("DIM/SCD1");
+    }
+
+    private static ModelField aggregate(String name, String type, String function, boolean nullable) {
+        var field = field(name, type, false, nullable); field.setAggregation(function); return field;
+    }
+
     @Test void dimensionBusinessKeysEnforceCurrentMemberUniquenessAndNormalizeMetadata() {
         var model = dimension();
         model.setDimensionKeys(" TENANT_ID , enterprise_id "); model.setDimensionLabel(" Enterprise_Name ");

@@ -89,6 +89,16 @@ class TransformIntegrationTest {
         assertThat(graph.nodes().getLast().upstreamKeys()).containsExactly("pipeline-"+pipeline.getId());
     }
 
+    @Test void rejectsNonUniqueTargetsOnSaveAndRechecksAfterModelChanges() {
+        long id = task("dws_duplicate_guard", List.of());
+        var task = tasks.require(id);
+        var model = models.require(task.getModelId());
+        model.setModelType("DUPLICATE"); models.save(model.getId(), model, "dev");
+        assertThatIllegalArgumentException().isThrownBy(() -> tasks.save(id, task, "dev")).withMessageContaining("UNIQUE");
+        assertThatIllegalArgumentException().isThrownBy(() -> tasks.preflight(tasks.graph(id))).withMessageContaining("UNIQUE");
+        assertThat(mapper.runs(id)).isEmpty();
+    }
+
     @Test void dimensionCanBeProcessedBeforeFactAndOfferedAsATarget() throws Exception {
         long dimension = task("dim_enterprise", List.of());
         long fact = task("dwd_usage", List.of(dimension));

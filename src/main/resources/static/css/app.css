@@ -124,8 +124,15 @@ a.lineage-node:hover rect, a.lineage-node:focus rect { stroke: var(--platform-pr
 .lineage-node-source, .lineage-node-status { fill: var(--platform-muted); font-size: 11px; }
 .lineage-node-table { fill: var(--platform-text); font-size: 13px; font-weight: 600; }
 .modeling-fields { min-width: 1100px; }
-.modeling-fields td:first-child, .modeling-fields td:nth-child(2) { min-width: 160px; }
-.modeling-fields td:nth-child(5), .modeling-fields td:nth-child(6) { min-width: 180px; }
+.modeling-fields td:first-child { min-width: 160px; }
+.modeling-fields td:nth-child(2) { min-width: 300px; white-space: normal; }
+.model-field-type { min-width: 270px; }
+.model-type-parameters { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .45rem; }
+.model-type-parameters label { display: grid; grid-template-columns: auto 5.5rem; align-items: center; gap: .3rem; color: var(--platform-muted); font-size: .7rem; white-space: nowrap; }
+.model-type-parameters label[hidden] { display: none; }
+.model-type-parameters .form-control { min-width: 0; }
+.modeling-fields td:nth-child(5) { min-width: 155px; }
+.modeling-fields td:nth-child(6), .modeling-fields td:nth-child(7) { min-width: 180px; }
 .table td.modeling-diff { white-space: normal; overflow-wrap: anywhere; min-width: 180px; max-width: 600px; }
 .navigation-dialog { position: fixed; inset: 0 auto 0 0; width: min(19rem, calc(100vw - 2rem)); max-width: none; max-height: none; height: 100dvh; margin: 0; padding: 1rem; border: 0; border-right: 1px solid var(--platform-line); background: var(--platform-sidebar); color: var(--platform-text); }
 .navigation-dialog::backdrop { background: rgb(5 12 24 / .55); backdrop-filter: blur(2px); }

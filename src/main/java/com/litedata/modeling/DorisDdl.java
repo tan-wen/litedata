@@ -12,12 +12,12 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 
-/** Generates the deliberately small, fixed Doris DDL surface used by data models. */
+/** Generates a validated, structured Doris CREATE TABLE; no raw DDL fragments are accepted. */
 @Component
 public class DorisDdl {
-    public static final List<String> TYPE_HINTS = List.of(
+    public static final List<String> TYPE_OPTIONS = List.of(
             "TINYINT", "SMALLINT", "INT", "BIGINT", "LARGEINT", "BOOLEAN", "DATE", "DATETIME",
-            "CHAR(n)", "VARCHAR(n)", "STRING", "DECIMAL(p,s)", "FLOAT", "DOUBLE");
+            "CHAR(1)", "VARCHAR(128)", "STRING", "DECIMAL(18,2)", "FLOAT", "DOUBLE");
     private static final Pattern SIMPLE = Pattern.compile("^(TINYINT|SMALLINT|INT|BIGINT|LARGEINT|BOOLEAN|DATE|STRING|FLOAT|DOUBLE)$");
     private static final Pattern INTEGER_WIDTH = Pattern.compile("^(TINYINT|SMALLINT|INT|BIGINT|LARGEINT)\\s*\\(\\s*\\d+\\s*\\)$");
     private static final Pattern DATETIME = Pattern.compile("^(?:DATETIME|DATETIMEV2)(?:\\s*\\(\\s*([0-6])\\s*\\))?$");
@@ -31,6 +31,8 @@ public class DorisDdl {
         model.setSubjectArea(metadata(model.getSubjectArea(), "主题域", 100, true));
         model.setLayer(layer(model.getLayer()));
         model.setDescription(metadata(model.getDescription(), "描述", 500, false));
+        model.setModelType(choice(model.getModelType(), Set.of("DUPLICATE", "UNIQUE", "AGGREGATE"), "数据模型仅支持 DUPLICATE、UNIQUE、AGGREGATE"));
+        if (model.getReplicationNum() < 1 || model.getReplicationNum() > 10) throw invalid("副本数须在 1 到 10 之间，且不能超过可用 BE 节点数");
         if (model.getBuckets() < 1 || model.getBuckets() > 32) throw invalid("分桶数须在 1 到 32 之间");
         if (model.getFields() == null || model.getFields().isEmpty() || model.getFields().size() > 100)
             throw invalid("字段数量须在 1 到 100 之间");
@@ -48,25 +50,70 @@ public class DorisDdl {
             field.setDataType(type);
             field.setComment(metadata(field.getComment(), "字段注释", 500, false));
             field.setStandard(metadata(field.getStandard(), "数据标准", 100, false));
+            String aggregation = aggregation(model, field, type);
             if (field.isKeyColumn()) {
-                if (encounteredNonKey) throw invalid("主键字段必须位于字段列表前缀：" + name);
-                if (field.isNullable()) throw invalid("主键字段不能为可空：" + name);
+                if (encounteredNonKey) throw invalid("键列必须连续位于字段列表前缀：" + name);
+                if (field.isNullable()) throw invalid("键列不能为可空：" + name);
                 if (Set.of("FLOAT", "DOUBLE", "STRING").contains(type))
-                    throw invalid("主键字段不支持 " + type + "：" + name);
+                    throw invalid("键列不支持 " + type + "：" + name);
                 keys.add(name);
             } else encounteredNonKey = true;
-            columns.add("  `" + name + "` " + type + (field.isNullable() ? " NULL" : " NOT NULL")
+            columns.add("  `" + name + "` " + type + (aggregation.isEmpty() ? "" : " " + aggregation) + (field.isNullable() ? " NULL" : " NOT NULL")
                     + " COMMENT '" + sqlComment(field.getComment()) + "'");
         }
-        if (keys.isEmpty()) throw invalid("至少需要一个主键字段");
+        if (keys.isEmpty()) throw invalid("至少需要一个键列");
+        if ("AGGREGATE".equals(model.getModelType()) && keys.size() == model.getFields().size())
+            throw invalid("AGGREGATE 模型至少需要一个非键聚合字段");
         validateDimension(model, keys, seen);
+        String partition = partition(model, keys);
 
         String tableComment = model.getDescription().isBlank() ? model.getName()
                 : model.getName() + " - " + model.getDescription();
         return "CREATE TABLE `warehouse`.`" + model.getTableName() + "` (\n"
-                + String.join(",\n", columns) + "\n)\nENGINE=OLAP\nUNIQUE KEY(" + quoted(keys) + ")\nCOMMENT '"
-                + sqlComment(tableComment) + "'\nDISTRIBUTED BY HASH(" + quoted(keys) + ") BUCKETS " + model.getBuckets()
-                + "\nPROPERTIES (\n  \"replication_num\" = \"1\",\n  \"enable_unique_key_merge_on_write\" = \"true\"\n);";
+                + String.join(",\n", columns) + "\n)\nENGINE=OLAP\n" + model.getModelType() + " KEY(" + quoted(keys) + ")\nCOMMENT '"
+                + sqlComment(tableComment) + "'\n" + partition + "DISTRIBUTED BY HASH(" + quoted(keys) + ") BUCKETS " + model.getBuckets()
+                + "\nPROPERTIES (\n  \"replication_num\" = \"" + model.getReplicationNum() + "\""
+                + ("UNIQUE".equals(model.getModelType()) ? ",\n  \"enable_unique_key_merge_on_write\" = \"true\"" : "") + "\n);";
+    }
+
+    private static String aggregation(DataModel model, ModelField field, String type) {
+        String function = field.getAggregation() == null ? "" : field.getAggregation().trim().toUpperCase(Locale.ROOT);
+        if (!"AGGREGATE".equals(model.getModelType()) || field.isKeyColumn()) {
+            if (!function.isEmpty()) throw invalid("仅 AGGREGATE 的非键字段可设置聚合函数：" + field.getName());
+        } else {
+            if (!Set.of("SUM", "MIN", "MAX", "REPLACE", "REPLACE_IF_NOT_NULL").contains(function))
+                throw invalid("AGGREGATE 的每个非键字段须选择 SUM、MIN、MAX、REPLACE 或 REPLACE_IF_NOT_NULL：" + field.getName());
+            if (function.equals("SUM") && !(Set.of("TINYINT", "SMALLINT", "INT", "BIGINT", "LARGEINT", "FLOAT", "DOUBLE").contains(type)
+                    || type.startsWith("DECIMAL("))) throw invalid("SUM 仅支持数值类型：" + field.getName());
+            if (function.equals("REPLACE_IF_NOT_NULL") && !field.isNullable())
+                throw invalid("REPLACE_IF_NOT_NULL 字段须允许 NULL：" + field.getName());
+        }
+        field.setAggregation(function);
+        return function;
+    }
+
+    private static String partition(DataModel model, List<String> keys) {
+        String kind = choice(model.getPartitionType(), Set.of("NONE", "AUTO_RANGE"), "分区方式仅支持 NONE 或 AUTO_RANGE");
+        model.setPartitionType(kind);
+        if (kind.equals("NONE")) {
+            model.setPartitionColumn(""); model.setPartitionUnit("DAY");
+            return "";
+        }
+        if ("DIM".equals(model.getLayer())) throw invalid("DIM/SCD1 当前仅支持不分区，确保按业务键维护唯一当前值");
+        String column = identifier(model.getPartitionColumn(), "分区字段");
+        if (!keys.contains(column)) throw invalid("日期自动分区字段须是键列中的 DATE 或 DATETIME 字段");
+        var field = model.getFields().stream().filter(item -> item.getName().equals(column)).findFirst().orElseThrow();
+        if (!(field.getDataType().equals("DATE") || field.getDataType().startsWith("DATETIME")))
+            throw invalid("日期自动分区仅支持 DATE 或 DATETIME 字段");
+        String unit = choice(model.getPartitionUnit(), Set.of("DAY", "MONTH", "YEAR"), "分区粒度仅支持 DAY、MONTH、YEAR");
+        model.setPartitionColumn(column); model.setPartitionUnit(unit);
+        return "AUTO PARTITION BY RANGE(date_trunc(`" + column + "`, '" + unit.toLowerCase(Locale.ROOT) + "')) ()\n";
+    }
+
+    private static String choice(String value, Set<String> supported, String message) {
+        String normalized = value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
+        if (!supported.contains(normalized)) throw invalid(message);
+        return normalized;
     }
 
     /** Canonical form is also used for comparing Doris metadata aliases. */
@@ -135,6 +182,7 @@ public class DorisDdl {
             model.setDimensionKeys(""); model.setDimensionLabel(""); model.setDimensionStrategy("");
             return;
         }
+        if (!"UNIQUE".equals(model.getModelType())) throw invalid("DIM/SCD1 仅支持 UNIQUE 主键模型");
         String strategy = model.getDimensionStrategy() == null ? "" : model.getDimensionStrategy().trim().toUpperCase(Locale.ROOT);
         if (strategy.isEmpty()) strategy = "SCD1";
         if (!strategy.equals("SCD1")) throw invalid("DIM 当前仅支持 SCD1（按业务键覆盖当前值）");

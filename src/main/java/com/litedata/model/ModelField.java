@@ -7,6 +7,7 @@ public class ModelField {
     private boolean nullable;
     private String comment = "";
     private String standard = "";
+    private String aggregation = "";
 
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
@@ -20,4 +21,6 @@ public class ModelField {
     public void setComment(String comment) { this.comment = comment; }
     public String getStandard() { return standard; }
     public void setStandard(String standard) { this.standard = standard; }
+    public String getAggregation() { return aggregation; }
+    public void setAggregation(String aggregation) { this.aggregation = aggregation; }
 }

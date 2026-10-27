@@ -46,6 +46,7 @@ public class TransformService {
         if(input.getModelId()==null) throw new IllegalArgumentException("请选择目标模型");
         var model=models.require(input.getModelId());
         if("ODS".equals(model.getLayer())) throw new IllegalArgumentException("数据加工目标请选择 DIM、DWD、DWS 或 ADS 模型；ODS 使用同步管道接入");
+        requireReplaySafe(model);
         var validated=policy.validate(input.getSqlText(),model.getTableName());
         input.setName(input.getName().trim()); input.setSqlText(validated.sql());
         input.setUpstreamTaskIds(ids(input.getUpstreamTaskIds())); input.setUpstreamPipelineIds(ids(input.getUpstreamPipelineIds()));
@@ -136,11 +137,17 @@ public class TransformService {
     }
     private DataModel verifiedModel(long modelId) {
         var model=models.preview(modelId).model();
+        requireReplaySafe(model);
         try {
             if(!SchemaComparison.compare(model,gateway.inspect(model.getTableName())).matches())
                 throw new IllegalArgumentException("目标模型尚未建表或结构不一致，请先核对："+model.getTableName());
         } catch(java.sql.SQLException e) { throw new IllegalArgumentException("无法读取 Doris 目标表结构，请检查连接和权限"); }
         return model;
+    }
+
+    private static void requireReplaySafe(DataModel model) {
+        if (!"UNIQUE".equals(model.getModelType()))
+            throw new IllegalArgumentException("当前数据加工使用可重试的 INSERT SELECT，目标须为 UNIQUE；DUPLICATE / AGGREGATE 请使用独立的写入与重算策略");
     }
 
     @Transactional

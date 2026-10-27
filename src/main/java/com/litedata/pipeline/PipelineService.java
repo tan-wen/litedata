@@ -5,6 +5,7 @@ import com.litedata.data.*;
 import com.litedata.model.*;
 import com.litedata.scheduling.SchedulePreview;
 import com.litedata.store.PlatformMapper;
+import com.litedata.store.ModelMapper;
 import java.sql.*;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -18,8 +19,9 @@ import org.springframework.web.server.ResponseStatusException;
 public class PipelineService {
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSS");
     private final PlatformMapper mapper; private final SourceService sources; private final PlatformProperties properties;
-    public PipelineService(PlatformMapper mapper, SourceService sources, PlatformProperties properties) {
-        this.mapper=mapper; this.sources=sources; this.properties=properties;
+    private final ModelMapper models;
+    public PipelineService(PlatformMapper mapper, SourceService sources, PlatformProperties properties, ModelMapper models) {
+        this.mapper=mapper; this.sources=sources; this.properties=properties; this.models=models;
     }
     public Pipeline require(long id) {
         Pipeline pipeline=mapper.pipeline(id);
@@ -47,6 +49,7 @@ public class PipelineService {
     }
     private Pipeline definition(String name,long sourceId,String table,String column,String target,String transform,String cron) {
         sources.require(sourceId);
+        requireReplaySafeTarget(JdbcConnections.identifier(target));
         if(name==null || name.isBlank() || name.length()>100) throw new IllegalArgumentException("任务名称不能为空，最长100字符");
         cron=SchedulePreview.validate(cron);
         transform=transform==null?"":transform.trim();
@@ -58,6 +61,7 @@ public class PipelineService {
                 var parsed=net.sf.jsqlparser.parser.CCJSqlParserUtil.parse(transform);
                 if(!(parsed instanceof net.sf.jsqlparser.statement.insert.Insert insert) || insert.getSelect()==null)
                     throw new IllegalArgumentException("加工 SQL 必须为 INSERT INTO ... SELECT");
+                requireReplaySafeTarget(insert.getTable().getName().replace("`", ""));
                 for(String referenced:new net.sf.jsqlparser.util.TablesNamesFinder<Void>().getTables(parsed)) {
                     if(!referenced.replace("`", "").matches("(?i)(warehouse\\.)?[A-Za-z_][A-Za-z0-9_]{0,63}"))
                         throw new IllegalArgumentException("加工 SQL 仅允许访问 warehouse 库");
@@ -75,6 +79,15 @@ public class PipelineService {
         Pipeline pipeline=mapper.lockPipeline(id);
         if(pipeline==null) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"任务不存在");
         if(pipeline.getActiveRunId()!=null) throw new ResponseStatusException(HttpStatus.CONFLICT,"已有实例运行；确认执行节点停止后再恢复");
+        // Recheck registered models at execution time, including edits made after pipeline creation.
+        requireReplaySafeTarget(pipeline.getTargetTable());
+        if (!pipeline.getTransformSql().isBlank()) {
+            try {
+                var insert = (net.sf.jsqlparser.statement.insert.Insert) net.sf.jsqlparser.parser.CCJSqlParserUtil.parse(pipeline.getTransformSql());
+                requireReplaySafeTarget(insert.getTable().getName().replace("`", ""));
+            } catch (IllegalArgumentException exception) { throw exception; }
+            catch (Exception exception) { throw new IllegalArgumentException("加工 SQL 解析失败"); }
+        }
         DataSource source=sources.require(pipeline.getSourceId());
         SourceTable sourceTable;
         try(Connection connection=sources.connect(source)) {
@@ -106,6 +119,12 @@ public class PipelineService {
         mapper.finishRun(runId,success?"SUCCESS":"FAILED",safeMessage);
         if(success) mapper.advanceWatermark(pipeline.getId(),run.getUpperBound());
         else mapper.failPipeline(pipeline.getId(),safeMessage);
+    }
+
+    private void requireReplaySafeTarget(String table) {
+        var model = models.modelByTable(table.toLowerCase(Locale.ROOT));
+        if (model != null && !"UNIQUE".equals(model.getModelType()))
+            throw new IllegalArgumentException("同步回放及重试的写入目标须为 UNIQUE：" + table);
     }
 }
 

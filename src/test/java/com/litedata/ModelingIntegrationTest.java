@@ -94,6 +94,65 @@ class ModelingIntegrationTest {
         assertThat(mapper.models()).isEmpty();
     }
 
+    @Test void rendersTypeDropdownsAndPreservesParameterizedFieldTypesOnEdit() throws Exception {
+        var model = service.require(fixture().model().getId());
+        for (String type : List.of("CHAR(255)", "VARCHAR(65533)", "DECIMAL(38,38)", "DATETIME(6)")) {
+            var field = new ModelField(); field.setName("field_" + model.getFields().size()); field.setDataType(type);
+            model.getFields().add(field);
+        }
+        service.save(model.getId(), model, "dev");
+        String html = mvc.perform(get("/models/" + model.getId() + "/edit").with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(html).contains("<select", "data-property=\"dataType\"", "CHAR(255)", "VARCHAR(65533)", "DECIMAL(38,38)", "DATETIME(6)",
+                        "data-type-kind=\"BIGINT\"", "data-type-kind=\"DATE\"", "data-type-kind=\"VARCHAR\"", ">DATETIME</option>")
+                .doesNotContain("list=\"field-types\"", "id=\"field-types\"");
+        assertThat(java.util.regex.Pattern.compile("<input\\b[^>]*data-property=\"dataType\"").matcher(html).find()).isFalse();
+        assertThat(java.util.regex.Pattern.compile("<select\\b[^>]*data-property=\"dataType\"").matcher(html).results().count())
+                .isEqualTo(model.getFields().size() + 1L); // Includes the dynamic new-row template.
+    }
+
+    @Test void persistsPhysicalSettingsAggregationsAndEditableFormValues() throws Exception {
+        mvc.perform(post("/models").with(user("dev").roles("DEVELOPER")).with(csrf())
+                .param("tableName", "dws_configured").param("name", "按月指标").param("subjectArea", "交易")
+                .param("layer", "DWS").param("modelType", "AGGREGATE").param("replicationNum", "3").param("buckets", "4")
+                .param("partitionType", "AUTO_RANGE").param("partitionColumn", "dt").param("partitionUnit", "MONTH")
+                .param("fields[0].name", "dt").param("fields[0].dataType", "DATE").param("fields[0].keyColumn", "true")
+                .param("fields[1].name", "total").param("fields[1].dataType", "DECIMAL(18,2)").param("fields[1].aggregation", "SUM"))
+                .andExpect(status().is3xxRedirection());
+        var saved = service.require(mapper.models().getFirst().getId());
+        assertThat(saved.getModelType()).isEqualTo("AGGREGATE");
+        assertThat(saved.getReplicationNum()).isEqualTo(3);
+        assertThat(saved.getPartitionType()).isEqualTo("AUTO_RANGE");
+        assertThat(saved.getPartitionColumn()).isEqualTo("dt");
+        assertThat(saved.getPartitionUnit()).isEqualTo("MONTH");
+        assertThat(saved.getFields().get(1).getAggregation()).isEqualTo("SUM");
+        mvc.perform(get("/models/" + saved.getId() + "/edit").with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("value=\"3\"")));
+        mvc.perform(get("/models/" + saved.getId()).with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("AGGREGATE KEY")));
+        var oldHash = service.preview(saved.getId()).hash();
+        saved.setReplicationNum(2); saved.setPartitionUnit("DAY");
+        service.save(saved.getId(), saved, "dev");
+        var edited = service.require(saved.getId());
+        assertThat(edited.getReplicationNum()).isEqualTo(2);
+        assertThat(edited.getPartitionUnit()).isEqualTo("DAY");
+        assertThat(edited.getVersion()).isEqualTo(2);
+        assertThat(service.preview(saved.getId()).hash()).isNotEqualTo(oldHash);
+        assertThatIllegalArgumentException().isThrownBy(() -> service.physicalize(edited.getId(), 1, oldHash, "dev"));
+        verifyNoInteractions(gateway);
+    }
+
+    @Test void invalidPhysicalSettingsPreserveUserInputWithoutSaving() throws Exception {
+        mvc.perform(post("/models").with(user("dev").roles("DEVELOPER")).with(csrf())
+                .param("tableName", "bad_config").param("name", "测试").param("subjectArea", "测试")
+                .param("modelType", "DUPLICATE").param("replicationNum", "11")
+                .param("fields[0].name", "id").param("fields[0].dataType", "BIGINT").param("fields[0].keyColumn", "true"))
+                .andExpect(status().isOk()).andExpect(view().name("model-form"))
+                .andExpect(model().attributeExists("error"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("value=\"11\"")));
+        assertThat(mapper.models()).isEmpty();
+    }
+
     @Test void dimensionFeaturesRoundTripThroughFormsAndPersistAcrossEdits() throws Exception {
         mvc.perform(get("/models/new").param("layer", "DIM").with(user("dev").roles("DEVELOPER")))
                 .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("公共维度特性")));

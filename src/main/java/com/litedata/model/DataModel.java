@@ -14,6 +14,11 @@ public class DataModel {
     private String dimensionLabel = "";
     private String dimensionStrategy = "";
     private int buckets = 1;
+    private String modelType = "UNIQUE";
+    private int replicationNum = 1;
+    private String partitionType = "NONE";
+    private String partitionColumn = "";
+    private String partitionUnit = "DAY";
     private int version;
     private Integer physicalVersion;
     private boolean archived;
@@ -44,6 +49,16 @@ public class DataModel {
     }
     public int getBuckets() { return buckets; }
     public void setBuckets(int buckets) { this.buckets = buckets; }
+    public String getModelType() { return modelType; }
+    public void setModelType(String modelType) { this.modelType = modelType; }
+    public int getReplicationNum() { return replicationNum; }
+    public void setReplicationNum(int replicationNum) { this.replicationNum = replicationNum; }
+    public String getPartitionType() { return partitionType; }
+    public void setPartitionType(String partitionType) { this.partitionType = partitionType; }
+    public String getPartitionColumn() { return partitionColumn; }
+    public void setPartitionColumn(String partitionColumn) { this.partitionColumn = partitionColumn; }
+    public String getPartitionUnit() { return partitionUnit; }
+    public void setPartitionUnit(String partitionUnit) { this.partitionUnit = partitionUnit; }
     public int getVersion() { return version; }
     public void setVersion(int version) { this.version = version; }
     public Integer getPhysicalVersion() { return physicalVersion; }

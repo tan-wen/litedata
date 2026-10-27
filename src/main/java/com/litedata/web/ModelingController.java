@@ -3,6 +3,7 @@ package com.litedata.web;
 import com.litedata.model.DataModel;
 import com.litedata.model.ModelField;
 import com.litedata.modeling.ModelingService;
+import com.litedata.modeling.DorisDdl;
 import jakarta.servlet.http.HttpServletRequest;
 import java.security.Principal;
 import java.util.List;
@@ -24,8 +25,8 @@ public class ModelingController {
     void bind(WebDataBinder binder) {
         binder.setAutoGrowCollectionLimit(100);
         binder.setAllowedFields("tableName", "name", "subjectArea", "layer", "description", "buckets", "version",
-                "dimensionKeys", "dimensionLabel", "dimensionStrategy",
-                "fields[*].name", "fields[*].dataType", "fields[*].keyColumn", "fields[*].nullable", "fields[*].comment", "fields[*].standard");
+                "dimensionKeys", "dimensionLabel", "dimensionStrategy", "modelType", "replicationNum", "partitionType", "partitionColumn", "partitionUnit",
+                "fields[*].name", "fields[*].dataType", "fields[*].keyColumn", "fields[*].nullable", "fields[*].comment", "fields[*].standard", "fields[*].aggregation");
     }
     @ModelAttribute("activeNav") String activeNav() { return "models"; }
     @ModelAttribute("canEdit") boolean canEdit(HttpServletRequest request) {
@@ -33,6 +34,7 @@ public class ModelingController {
     }
     @ModelAttribute("canManageUsers") boolean canManageUsers(HttpServletRequest request) { return request.isUserInRole("ADMIN"); }
     @ModelAttribute("layers") List<String> layers() { return List.of("ODS", "DIM", "DWD", "DWS", "ADS"); }
+    @ModelAttribute("fieldDataTypes") List<String> fieldDataTypes() { return DorisDdl.TYPE_OPTIONS; }
 
     @GetMapping String list(@RequestParam(defaultValue="") String keyword, @RequestParam(defaultValue="") String layer,
             @RequestParam Map<String,String> params, Model model) {
@@ -68,7 +70,7 @@ public class ModelingController {
     }
     private String save(Long id, DataModel draft, BindingResult errors, Model model, Principal principal, RedirectAttributes redirect) {
         try {
-            if (errors.hasErrors()) throw new IllegalArgumentException("字段格式有误，请检查分桶数、版本和字段定义");
+            if (errors.hasErrors()) throw new IllegalArgumentException("字段格式有误，请检查副本数、分桶数、版本和字段定义");
             long saved = modeling.save(id, draft, principal.getName());
             redirect.addFlashAttribute("success", "逻辑模型已保存，请预览 DDL 并核对物理结构");
             return "redirect:/models/" + saved;

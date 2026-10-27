@@ -151,7 +151,8 @@
 
 **操作**：
 
-1. 在“字段定义”点击“添加字段”，录入字段名、类型、注释和标准备注。
+1. 在“字段定义”点击“添加字段”，录入字段名、注释和标准备注，通过下拉框选择数据类型。
+   CHAR/VARCHAR 单独填写长度，DECIMAL 设置总位数和小数位，DATETIME 选择时间精度；无需手写类型表达式。
 2. 勾选业务主键，确保所有主键连续位于字段最前且不可空。
 3. 按源表补齐字段后点击“保存并预览 DDL”。
 
@@ -173,13 +174,15 @@
 
 1. 打开已保存模型详情。
 2. 查看“Doris DDL 预览”。
-3. 核对 warehouse 库、UNIQUE KEY、HASH 字段、分桶数和单副本配置。
+3. 核对 warehouse 库、数据模型（UNIQUE / DUPLICATE / AGGREGATE）、键列、HASH 分桶、默认副本及可选日期自动分区。
+4. AGGREGATE 逐一核对非键字段的聚合函数。新建/编辑页的“Doris 物理设置”可调整这些配置；截图示例沿用 UNIQUE 单副本。
 
 **示例**：既有样例：cpdim_resin261026b_ods_utility；主键 record_id；水位 updated_at DATETIME(6)。
 
 **结果检查**：DDL 与模型字段一致，目标表名、主键和桶数符合预期。
 
 **操作提醒**：截图使用已经建好的园区演示模型。DDL 由服务端生成，页面不接受任意 DDL 脚本。
+当前同步回放和自动重试加工目标仍须 UNIQUE；DUPLICATE / AGGREGATE 需独立管理写入与重算，具体见[数据建模](modeling.md)。
 
 ![步骤 08：检查 Doris DDL 预览](manual/screenshots/08.png)
 

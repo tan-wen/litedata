@@ -11,7 +11,13 @@ import org.springframework.stereotype.Component;
 @Component
 public class DorisModelGateway {
     public record Column(String name, String dataType, boolean nullable, String comment) {}
-    public record Schema(List<Column> columns, List<String> uniqueKeys, List<String> hashColumns, int buckets) {}
+    public record Schema(List<Column> columns, List<String> keyColumns, List<String> hashColumns, int buckets,
+                         String modelType, int replicationNum, String partitionType, String partitionColumn,
+                         String partitionUnit, Map<String,String> aggregations, boolean mergeOnWrite) {
+        public Schema(List<Column> columns, List<String> keys, List<String> hashColumns, int buckets) {
+            this(columns, keys, hashColumns, buckets, "UNIQUE", 1, "NONE", "", "DAY", Map.of(), true);
+        }
+    }
     private final PlatformProperties properties;
     private final ModelingProperties modeling;
     private final JdbcConnections connections;
@@ -49,19 +55,60 @@ public class DorisModelGateway {
                 statement.setQueryTimeout(15);
                 try (var result = statement.executeQuery("SHOW CREATE TABLE `warehouse`.`" + tableName + "`")) {
                     if (!result.next()) throw new SQLException("No table definition returned");
-                    String ddl = result.getString(2);
-                    var bucketMatcher = Pattern.compile("(?i)\\bBUCKETS\\s+(\\d+)").matcher(ddl);
-                    return new Schema(columns, columnsIn(ddl, "UNIQUE\\s+KEY"),
-                            columnsIn(ddl, "DISTRIBUTED\\s+BY\\s+HASH"), bucketMatcher.find() ? Integer.parseInt(bucketMatcher.group(1)) : 0);
+                    return parseSchema(columns, result.getString(2));
                 }
             }
         }
     }
 
+    static Schema parseSchema(List<Column> columns, String ddl) {
+        var key = Pattern.compile("(?im)^\\s*(UNIQUE|DUPLICATE|AGGREGATE)\\s+KEY\\s*\\(([^)]+)\\)").matcher(ddl);
+        String type = key.find() ? key.group(1).toUpperCase(Locale.ROOT) : "UNKNOWN";
+        var keys = type.equals("UNKNOWN") ? List.<String>of() : names(key.group(2));
+        var bucket = Pattern.compile("(?im)^\\s*DISTRIBUTED\\s+BY\\s+HASH\\s*\\([^)]+\\)\\s+BUCKETS\\s+(\\d+)").matcher(ddl);
+        var auto = Pattern.compile("(?im)^\\s*AUTO\\s+PARTITION\\s+BY\\s+RANGE\\s*\\(\\s*date_trunc\\s*\\(\\s*`?([A-Za-z_][A-Za-z0-9_]*)`?\\s*,\\s*['\"](day|month|year)['\"]\\s*\\)\\s*\\)").matcher(ddl);
+        String partitionType = Pattern.compile("(?im)^\\s*(?:AUTO\\s+)?PARTITION\\s+BY\\b").matcher(ddl).find() ? "OTHER" : "NONE";
+        String partitionColumn = "", partitionUnit = "DAY";
+        if (auto.find()) {
+            partitionType = "AUTO_RANGE"; partitionColumn = auto.group(1).toLowerCase(Locale.ROOT);
+            partitionUnit = auto.group(2).toUpperCase(Locale.ROOT);
+        }
+        int replicas = 0;
+        String allocation = property(ddl, "replication_allocation");
+        if (!allocation.isEmpty()) {
+            for (String tag : allocation.split(",")) {
+                var value = Pattern.compile("\\s*tag\\.location\\.[A-Za-z0-9_-]+\\s*:\\s*(\\d+)\\s*").matcher(tag);
+                if (!value.matches()) { replicas = 0; break; }
+                replicas += Integer.parseInt(value.group(1));
+            }
+        } else {
+            String value = property(ddl, "replication_num");
+            if (value.matches("\\d+")) replicas = Integer.parseInt(value);
+        }
+        var aggregations = new LinkedHashMap<String,String>();
+        for (Column column : columns) {
+            var function = Pattern.compile("(?im)^\\s*`" + Pattern.quote(column.name())
+                    + "`\\s+[A-Za-z0-9_]+(?:\\s*\\([^)]*\\))?\\s+(SUM|MIN|MAX|REPLACE_IF_NOT_NULL|REPLACE)\\b").matcher(ddl);
+            if (function.find()) aggregations.put(column.name().toLowerCase(Locale.ROOT), function.group(1).toUpperCase(Locale.ROOT));
+        }
+        return new Schema(columns, keys, columnsIn(ddl, "^\\s*DISTRIBUTED\\s+BY\\s+HASH"),
+                bucket.find() ? Integer.parseInt(bucket.group(1)) : 0, type, replicas, partitionType, partitionColumn,
+                partitionUnit, Map.copyOf(aggregations), "true".equalsIgnoreCase(property(ddl, "enable_unique_key_merge_on_write")));
+    }
+
+    private static String property(String ddl, String name) {
+        var matcher = Pattern.compile("(?im)^\\s*\"" + Pattern.quote(name) + "\"\\s*=\\s*\"([^\"]*)\"").matcher(ddl);
+        return matcher.find() ? matcher.group(1) : "";
+    }
+
     private static List<String> columnsIn(String ddl, String prefix) {
-        var matcher = Pattern.compile("(?i)" + prefix + "\\s*\\(([^)]+)\\)").matcher(ddl);
+        var matcher = Pattern.compile("(?im)" + prefix + "\\s*\\(([^)]+)\\)").matcher(ddl);
         if (!matcher.find()) return List.of();
-        return Arrays.stream(matcher.group(1).split(","))
+        return names(matcher.group(1));
+    }
+
+    private static List<String> names(String values) {
+        return Arrays.stream(values.split(","))
                 .map(value -> value.replace("`", "").trim().toLowerCase(Locale.ROOT)).toList();
     }
 }

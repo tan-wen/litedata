@@ -1,36 +1,68 @@
-# 数据建模首版
+# 数据建模
 
 本模块维护逻辑结构，并向当前单机 Doris 4.1.3 的 `warehouse` 建表。
 新增 Flyway `V2__data_modeling.sql`，应用启动时自动升级平台元数据库，保留原有管道与服务数据。
 
 ## 使用流程
 
-1. 进入“数据建模”，新增物理表名、中文名称、主题域、数仓分层和分桶数。
-2. 维护字段名、类型、主键、可空、注释和标准备注；主键须连续位于字段列表前面且不可空。
+1. 进入“数据建模”，填写物理表名、中文名称、主题域、数仓分层，再配置 Doris 表模型、副本、分桶和分区。
+2. 维护字段名、类型、键列、可空、注释和标准备注；键列须连续位于字段列表前面且不可空。
+   数据类型使用下拉选择；CHAR / VARCHAR 单独设置长度，DECIMAL 设置总位数与小数位，DATETIME 设置 0–6 位时间精度。
+   编辑已有模型时保留原字段的长度和精度；新增、移动或删除字段不会改变其他字段的类型参数。
+   AGGREGATE 的每个非键列须选择聚合函数。
    可添加、移除和上下移动字段；最多 100 个。表名保存后固定，模型修改会增加版本。
 3. 保存并预览生成的 DDL，确认目标为 `warehouse` 后勾选确认、执行建表。
 4. 检查执行结果，或对已有表执行“结构比对”。核对成功后状态为“已核对”，编辑后为“模型已变更”。
-5. 在“同步管道”配置数据写入。模型归档仅移除目录展示，保留物理表、模型字段与执行历史。
+5. UNIQUE 模型可在“同步管道”或“数据加工”配置幂等写入；DUPLICATE / AGGREGATE 的写入与重算由独立作业管理。
+   模型归档仅移除目录展示，保留物理表、模型字段与执行历史。
    已归档的表名仍占用，历史目前保留在元数据库中。
 
-ODS 数据来自业务库的 DataX 同步；其他分层通过 Doris `INSERT INTO ... SELECT` 写入。
+UNIQUE 模型的 ODS 数据来自业务库的 DataX 同步；其他分层通过 Doris `INSERT INTO ... SELECT` 写入。
 现有管道保留同步后执行一条加工 SQL，例如 ODS → ADS；独立 数据加工与多层依赖编排已提供，
 见 [数据加工](sql-transforms.md)。按日期重算与分区替换尚未提供。UNIQUE KEY 保证相同业务主键覆盖写入，但不会自动删除
 因源数据删除或维度变化而失效的旧汇总行，后续加工任务需明确重跑和覆盖语义。
+
+## 物理设置与选型
+
+分层是业务组织方式，表模型取决于写入语义，平台不按 ODS/DWD/DWS/ADS 自动替用户切换模型。
+
+| 表模型 | 键列含义 | 写入行为 | 常见用途 |
+| --- | --- | --- | --- |
+| DUPLICATE | 排序键 | 保留每次写入的明细，包括重复键 | 不需覆盖的原始事件、追加日志 |
+| UNIQUE | 业务唯一键 | 同键覆盖，固定启用 merge-on-write | 增量同步、去重明细、可重复计算的汇总快照 |
+| AGGREGATE | 分组键 | 同键的非键字段按指定函数合并 | 确定增量口径的汇总指标 |
+
+AGGREGATE 支持 `SUM`、`MIN`、`MAX`、`REPLACE`、`REPLACE_IF_NOT_NULL`。`SUM` 仅用于数值类型；
+`REPLACE_IF_NOT_NULL` 字段必须允许 NULL，输入 NULL 不会清空已有值。聚合模型不提供原始明细追溯；
+重复导入一批 `SUM` 数据会再次累加。当前自动同步回放、任务重试与全量 `INSERT SELECT` 仍要求 UNIQUE 目标，
+保存和执行时均检查登记模型类型。外部未登记的同步目标继续由管理员保证 UNIQUE 及业务键幂等性。
+
+副本数可设为 1–10，分桶数为 1–32；副本数不能超过可用的 Doris BE 节点数，当前单 BE 开发环境应使用 1。
+副本负责冗余存储，桶负责数据分片；HASH 使用全部键列。
+
+分区可选“不分区”或“日期自动范围分区”：选择 DATE / DATETIME 键列及日、月、年粒度，生成
+`AUTO PARTITION BY RANGE(date_trunc(...)) ()`。Doris 在写入时按日期值创建相应分区，不预建空日期分区，
+也不自动删除历史分区。当前配置面不包含手工 RANGE、LIST、动态分区过期策略或自由分区 SQL。
+UNIQUE 的唯一性包含分区字段；应选择不可变业务日期，不能把可能变动的更新时间作为分区键后仍期待仅按订单 ID 覆盖。
+DIM/SCD1 保持 UNIQUE 且不分区，以维护业务键的唯一当前值。
+
+新增 Flyway `V12__model_physical_settings.sql`，已有模型升级后仍是 UNIQUE、单副本、不分区，原分桶数不变。
+修改逻辑配置只生成新的 DDL 预览与核对项，不会更改已有 Doris 表。
 
 ## 当前边界
 
 - 支持 ODS、DIM、DWD、DWS、ADS；DIM 提供业务键、展示名称字段、维度属性与 SCD1 当前值覆盖语义。操作、质量与历史处理边界见[公共维度建模](dimension-models.md)。
 
-- 生成固定 `ENGINE=OLAP`、`UNIQUE KEY`、按全部主键 HASH 分桶、1–32 桶、单副本和 merge-on-write。
+- 生成固定 `ENGINE=OLAP`，按上述结构化设置选择表模型、副本与日期分区；仅 UNIQUE 输出 merge-on-write 属性。
 - 类型支持整数、BOOLEAN、DATE、DATETIME(0–6)、CHAR(1–255)、VARCHAR(1–65533)、STRING、
   DECIMAL(1–38, 0–精度)、FLOAT、DOUBLE。本期禁止 STRING 和浮点类型作为业务主键。
 - 表中文名、业务说明和字段注释不接受反斜杠及控制字符：实测 Doris 4.1.3 的 COMMENT 会丢弃
   反斜杠。单引号采用 Doris 字面量转义，建表连接固定会话 sql_mode，保证解析一致。
 - 只执行服务端生成的单条 CREATE TABLE，不接受用户提交任意 DDL。已有表创建会失败并留记录；
-  核对已有表请用“结构比对”。没有自动 ALTER、DROP、结构回滚、分区配置或 Doris 逆向导入。
+  核对已有表请用“结构比对”。没有自动 ALTER、DROP、结构回滚或 Doris 逆向导入。
 - 比对信息来自 `information_schema.COLUMNS` 和 `SHOW CREATE TABLE`，覆盖字段名/类型/顺序/
-  可空/注释、UNIQUE KEY、HASH 字段与桶数；不比较表说明、业务分层/主题、标准备注、分区或其他引擎属性。
+  可空/注释、模型类型、键列、字段聚合函数、HASH 字段与桶数、默认副本数、日期自动分区规则及 UNIQUE merge-on-write。
+  不比较表说明、业务分层/主题、标准备注、已创建分区列表及各分区单独覆盖的副本/桶属性或其他引擎属性。
 - 标准备注当前为自由文本元数据，没有独立数据标准字典及强制映射。
 - ADMIN / DEVELOPER 可修改、建表、比对及归档，VIEWER 可查看。页面写操作要求 CSRF。
   物理化前检查模型版本及预览摘要；保存、建表、比对和归档写审计，建表/比对保留版本、操作人、
@@ -63,6 +95,7 @@ $env:JAVA_HOME='C:\Java\jdk-25.0.3'
 .\mvnw.cmd --batch-mode --no-transfer-progress verify
 docker compose --env-file .env.example config --quiet
 python deploy/modeling_smoke.py
+python deploy/model_settings_smoke.py
 ```
 
 Maven 使用 Testcontainers MySQL 验证迁移、模型和字段持久化、页面/表单、角色与 CSRF、版本冲突、
@@ -76,6 +109,19 @@ Compose 配置解析通过。当前真实 Doris 4.1.3 冒烟通过保存、DDL �
 往返、结构一致、重复建表失败留痕、模型更新、过期预览拦截和结构差异识别。
 成功样例为模型 ID 3、`warehouse.ods_model_smoke_33f49292c1`，保留 v1 成功和 v2 注释变更差异作为证据。
 这些验证覆盖模型结构，不代表加工数据正确性、容量或连续运行验收。
+
+2026-10-27：物理设置扩展后，全量 Maven verify 152 项通过；浏览器 24 组桌面/窄屏、浅深色与四配色检查通过，
+包含条件字段、聚合列对齐、字段增删排序、DIM 约束、保存编辑及校验失败回显。
+真实 Doris 4.1.3 冒烟通过三种表模型、五种聚合函数、日/月/年自动分区、重复写入语义、写入前后结构比对及副本漂移。
+保留模型 ID 35 / 36 / 38 及对应 `dws_config_smoke_*` 表作为验证证据。
+
+字段类型下拉升级后，建模相关 Maven 回归 24 项通过，补充页面选项名称和自定义参数回显断言后的页面回归 12 项通过。
+浏览器验证 14 种类型、参数上下限、字段增删排序、保存编辑、校验失败回显及 24 组主题/窄屏布局通过；
+原物理设置的 24 组布局与条件字段交互回归也通过。
+
+`model_settings_smoke.py` 针对本地 Compose 环境，使用平台表单和 Doris root 本地测试连接，
+验证三种模型、聚合函数、日/月/年自动分区、重复写入语义、写入前后的结构比对、编辑持久化和副本差异识别。
+脚本只写入自身创建的 `dws_config_smoke_*` 表及对应模型并保留证据，不访问业务数据。
 
 官方语法依据：[Doris 4.x CREATE TABLE](https://doris.apache.org/docs/4.x/sql-manual/sql-statements/table-and-view/table/CREATE-TABLE/)、
 [COLUMNS 元数据](https://doris.apache.org/docs/4.x/admin-manual/system-tables/information_schema/columns/)。

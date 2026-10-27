@@ -105,7 +105,7 @@ public class ModelingService {
             }
             mapper.physicalVersion(id, model.getVersion());
             record(model, "CREATE", preview.ddl(), actor, "SUCCESS", "已建表并核对结构");
-            return new ExecutionResult(true, "Doris 表已创建，字段、主键和分桶核对通过");
+            return new ExecutionResult(true, "Doris 表已创建，字段、数据模型、副本、分区和分桶核对通过");
         } catch (SQLException | IllegalStateException exception) {
             String message = safeFailure(exception);
             record(model, "CREATE", preview.ddl(), actor, "FAILED", message);
@@ -122,7 +122,7 @@ public class ModelingService {
             var comparison = SchemaComparison.compare(model, gateway.inspect(model.getTableName()));
             mapper.physicalVersion(id, comparison.matches() ? model.getVersion() : null);
             record(model, "COMPARE", generated, actor, comparison.matches() ? "SUCCESS" : "DIFF",
-                    comparison.matches() ? "字段、顺序、可空、注释、主键和分桶一致" : "存在结构差异，请查看比对结果");
+                    comparison.matches() ? "字段、键列、聚合函数、数据模型、默认副本、分区和分桶一致" : "存在结构差异，请查看比对结果");
             return comparison;
         } catch (SQLException | IllegalStateException exception) {
             String message = safeFailure(exception);
