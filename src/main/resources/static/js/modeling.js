@@ -108,7 +108,19 @@
     partitionColumn.setCustomValidity(partitionType.value === 'AUTO_RANGE' && !valid ? '请选择 DATE/DATETIME 且不可空的键列作为分区字段。' : '');
     const autoRange = partitionType.querySelector('option[value="AUTO_RANGE"]'); autoRange.disabled = layer.value === 'DIM' || candidates.length === 0;
     document.querySelector('[data-partition-help]').textContent = candidates.length ? '仅显示 DATE/DATETIME 且不可空的键列。' : '没有可用分区字段：请返回第二步，新增 DATE/DATETIME 的不可空键列。';
-    document.querySelector('[data-partition-availability]').textContent = layer.value === 'DIM' ? 'DIM/SCD1 不分区，按业务键保留唯一当前值。' : candidates.length ? `可从 ${candidates.length} 个日期键列中选择分区字段。` : '无 DATE/DATETIME 非空键列，无法启用日期分区；可返回第二步补充。';
+    const dateFields = all.filter(field => ['DATE', 'DATETIME'].includes(parseType(field.dataType)?.kind));
+    const missingKeys = dateFields.filter(field => !field.key);
+    const names = list => list.slice(0, 3).map(field => `${field.name}（${field.dataType}）`).join('、') + (list.length > 3 ? ` 等 ${list.length} 个字段` : '');
+    let availability;
+    if (layer.value === 'DIM') availability = 'DIM/SCD1 不分区，按业务键保留唯一当前值。';
+    else if (candidates.length) availability = `可从 ${candidates.length} 个日期键列中选择分区字段。`;
+    else if (missingKeys.length) availability = `已添加日期字段 ${names(missingKeys)}，但尚未勾选“键列”，因此无法启用日期分区。确认字段属于业务键后，请在第二步勾选“键列”，并移到所有非键字段前面。`;
+    else if (dateFields.length) availability = `日期字段 ${names(dateFields)} 必须是不可空的键列，才能启用日期分区。`;
+    else availability = '尚无 DATE/DATETIME 日期字段。请在第二步维护日期字段；分区字段须属于键列、不可空，且键列须连续排在前面。';
+    if (layer.value !== 'DIM' && modelType.value === 'UNIQUE' && missingKeys.length && !candidates.length)
+      availability += ' UNIQUE KEY 加入时间键会改变记录唯一性，请使用稳定的业务日期，避免仅为分区加入可变的更新时间。';
+    document.querySelector('[data-partition-availability]').textContent = availability;
+    document.querySelector('[data-partition-fields-action]').hidden = layer.value === 'DIM' || candidates.length > 0;
   }
   function updateDimension(changed) {
     const enabled = layer.value === 'DIM'; dimensionSettings.hidden = !enabled;
@@ -169,7 +181,7 @@
       names.add(field.name.toLowerCase()); const parsed = parseType(field.dataType);
       if (!isValidType(parsed)) { setNotice(`字段“${field.name}”的数据类型无效。`); focusInvalid(field.row.querySelector('[data-property="dataType"]')); return false; }
       if (!field.key) afterNonKey = true;
-      if (field.key && afterNonKey) { setNotice('键列必须连续排在字段列表前面。'); focusInvalid(field.row.querySelector('[data-property="keyColumn"]')); return false; }
+      if (field.key && afterNonKey) { setNotice(`字段“${field.name}”已设为键列，但位于非键字段之后；请用“上移字段”移到所有非键字段前面。`); focusInvalid(field.row.querySelector('[data-property="keyColumn"]')); return false; }
       if (field.key && field.nullable) { setNotice(`键列“${field.name}”不能设置为可空。`); focusInvalid(field.row.querySelector('[data-property="nullable"]')); return false; }
       if (field.key && ['FLOAT', 'DOUBLE', 'STRING'].includes(parsed?.kind)) { setNotice(`键列“${field.name}”不支持 ${parsed.kind} 类型。`); focusInvalid(field.row.querySelector('[data-property="dataType"]')); return false; }
     } return true;
@@ -194,6 +206,11 @@
   }
 
   layer.addEventListener('change', () => { updateDimension(true); updatePhysicalSettings(); updateWizardSummary(); }); modelType.addEventListener('change', updatePhysicalSettings); partitionType.addEventListener('change', updatePhysicalSettings); partitionColumn.addEventListener('change', () => partitionColumn.setCustomValidity(''));
+  document.getElementById('partition-fields-action').addEventListener('click', () => {
+    attemptStep(2);
+    const target = fields().find(field => ['DATE', 'DATETIME'].includes(parseType(field.dataType)?.kind) && !field.key);
+    focusInvalid(target ? target.row.querySelector('[data-property="keyColumn"]') : add);
+  });
   aggregationRules.addEventListener('change', event => { const index = Number(event.target.dataset.aggregateIndex); if (!Number.isInteger(index)) return; const hidden = body.rows[index]?.querySelector('[data-property="aggregation"]'); if (hidden) hidden.value = event.target.value; });
   body.addEventListener('input', event => { const picker = event.target.closest('[data-type-picker]'); if (picker && event.target.matches('[data-type-length], [data-type-precision], [data-type-scale], [data-type-datetime-precision]')) synchronizeType(picker); updatePhysicalSettings(); });
   body.addEventListener('change', event => { const picker = event.target.closest('[data-type-picker]'); if (picker && event.target.matches('[data-type-select]')) selectType(picker); if (picker && event.target.matches('[data-type-length], [data-type-precision], [data-type-scale], [data-type-datetime-precision]')) synchronizeType(picker); updatePhysicalSettings(); });
