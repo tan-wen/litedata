@@ -261,10 +261,8 @@ public class MetricLineageService {
                 String href = "/pipelines?pageNum=" + ((pipelines.size() - index - 1) / 20 + 1) + "#pipeline-" + pipeline.getId();
                 var writer = new Writer(pipeline.getName(), href, "", pipeline);
                 writers.computeIfAbsent(pipeline.getTargetTable(), t -> new ArrayList<>()).add(writer);
-                if (pipeline.getTransformSql() != null && !pipeline.getTransformSql().isBlank()) try {
-                    String target = LineageSql.parse(pipeline.getTransformSql()).target();
-                    writers.computeIfAbsent(target, t -> new ArrayList<>()).add(new Writer(pipeline.getName() + "（管道加工）", writer.href(), pipeline.getTransformSql(), null));
-                } catch (IllegalArgumentException ignored) { warn("有管道加工 SQL 无法解析，相关字段链路可能不完整。"); }
+                if (pipeline.getTransformSql() != null && !pipeline.getTransformSql().isBlank())
+                    warn("有旧管道加工 SQL 待迁移，未作为有效加工字段来源展开。");
             }
         }
         void boundary(String key, String status) {

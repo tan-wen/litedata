@@ -21,7 +21,9 @@ import tools.jackson.databind.json.JsonMapper;
 public class DolphinSchedulerClient {
     private final PlatformMapper mapper; private final PlatformProperties.DolphinScheduler config;
     private final RestClient client; private final JsonMapper json=JsonMapper.builder().build();
-    public DolphinSchedulerClient(PlatformMapper mapper,PlatformProperties properties) {
+    private final PipelineService pipelines;
+    public DolphinSchedulerClient(PlatformMapper mapper,PlatformProperties properties,PipelineService pipelines) {
+        this.pipelines=pipelines;
         this.mapper=mapper; config=properties.dolphinscheduler();
         var factory=new JdkClientHttpRequestFactory(HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build());
         factory.setReadTimeout(Duration.ofSeconds(20));
@@ -65,6 +67,7 @@ public class DolphinSchedulerClient {
         Pipeline pipeline=mapper.lockPipeline(id);
         if(pipeline==null) throw new IllegalArgumentException("任务不存在");
         if(pipeline.getActiveRunId()!=null) throw new IllegalArgumentException("任务已有执行中的实例");
+        pipelines.validateExecutable(pipeline);
         return pipeline;
     }
     private long definition(Pipeline pipeline) {
@@ -73,7 +76,7 @@ public class DolphinSchedulerClient {
             Object generated=get("获取任务编号","/task-definition/gen-task-codes?genNum=1");
             long taskCode=taskCode(generated);
             Map<String,Object> task=new LinkedHashMap<>();
-            task.put("code",taskCode); task.put("name","同步与加工"); task.put("version",1); task.put("description","平台固定执行链路");
+            task.put("code",taskCode); task.put("name","ODS 贴源同步"); task.put("version",1); task.put("description","DataX 增量同步至 ODS");
             task.put("taskType","SHELL"); task.put("taskParams",Map.of("resourceList",List.of(),"localParams",List.of(),
                     "rawScript","python3 /opt/platform/bin/run_pipeline.py --pipeline-id "+pipeline.getId()));
             task.put("flag","YES"); task.put("taskPriority","MEDIUM"); task.put("workerGroup","default"); task.put("environmentCode",-1);

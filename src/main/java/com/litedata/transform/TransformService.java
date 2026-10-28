@@ -3,6 +3,7 @@ package com.litedata.transform;
 import com.litedata.model.*;
 import com.litedata.modeling.*;
 import com.litedata.store.*;
+import com.litedata.pipeline.PipelineService;
 import com.litedata.service.QueryPage;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -24,9 +25,11 @@ public class TransformService {
     private final ModelingService models;
     private final TransformSqlPolicy policy;
     private final DorisModelGateway gateway;
+    private final PipelineService pipelines;
 
-    public TransformService(SqlTaskMapper mapper,PlatformMapper platform,ModelingService models,TransformSqlPolicy policy,DorisModelGateway gateway) {
+    public TransformService(SqlTaskMapper mapper,PlatformMapper platform,ModelingService models,TransformSqlPolicy policy,DorisModelGateway gateway,PipelineService pipelines) {
         this.mapper=mapper; this.platform=platform; this.models=models; this.policy=policy; this.gateway=gateway;
+        this.pipelines=pipelines;
     }
     public List<SqlTask> list() { return mapper.tasks(); }
     public long count() { return mapper.countTasks(); }
@@ -40,6 +43,11 @@ public class TransformService {
     @Transactional
     public long save(Long id,SqlTask input,String actor) {
         mapper.lockGraph();
+        // Callers inside a transaction may pass a MyBatis-cached task. Graph validation
+        // reloads its dependency lists, so keep the requested edits in a separate object.
+        var definition=new SqlTask();
+        org.springframework.beans.BeanUtils.copyProperties(input,definition);
+        input=definition;
         if(input.getName()==null || input.getName().isBlank() || input.getName().trim().length()>100)
             throw new IllegalArgumentException("任务名称不能为空，最长100字符");
         if(!SCHEDULES.containsKey(input.getCronExpression())) throw new IllegalArgumentException("请选择支持的调度周期");
@@ -93,9 +101,9 @@ public class TransformService {
             if(!nodes.containsKey(key)) {
                 if(nodes.size()>=100) throw new IllegalArgumentException("单条加工链最多100个节点");
                 nodes.put(key,new PlannedNode(key,pipeline.getName(),"同步",pipelineId,0,List.of(),pipeline.getTargetTable()));
-                fingerprint.append("P:").append(pipelineId).append(':').append(pipeline.getSourceId()).append(':')
+                fingerprint.append("ODS_SYNC_V2:").append(pipelineId).append(':').append(pipeline.getSourceId()).append(':')
                         .append(pipeline.getSourceTable()).append(':').append(pipeline.getTargetTable()).append(':')
-                        .append(pipeline.getWatermarkColumn()).append(':').append(pipeline.getTransformSql()).append('\n');
+                        .append(pipeline.getWatermarkColumn()).append('\n');
             }
             upstreamKeys.add(key);
         }
@@ -131,8 +139,11 @@ public class TransformService {
                 var task=require(node.refId());
                 if(task.getActiveRunId()!=null) throw new IllegalArgumentException("加工链已有运行中的任务："+task.getName());
                 verifiedModel(task.getModelId());
-            } else if(platform.pipeline(node.refId()).getActiveRunId()!=null)
-                throw new IllegalArgumentException("上游同步管道正在运行，请等待完成");
+            } else {
+                var pipeline=platform.pipeline(node.refId());
+                pipelines.validateExecutable(pipeline);
+                if(pipeline.getActiveRunId()!=null) throw new IllegalArgumentException("上游同步管道正在运行，请等待完成");
+            }
         }
     }
     private DataModel verifiedModel(long modelId) {
@@ -146,6 +157,8 @@ public class TransformService {
     }
 
     private static void requireReplaySafe(DataModel model) {
+        if("ODS".equals(model.getLayer()))
+            throw new IllegalArgumentException("数据加工目标请选择 DIM、DWD、DWS 或 ADS 模型；ODS 使用同步管道接入");
         if (!"UNIQUE".equals(model.getModelType()))
             throw new IllegalArgumentException("当前数据加工使用可重试的 INSERT SELECT，目标须为 UNIQUE；DUPLICATE / AGGREGATE 请使用独立的写入与重算策略");
     }

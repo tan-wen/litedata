@@ -92,6 +92,8 @@ class PlatformIntegrationTest {
         jdbc.update("DELETE FROM audit_event");
         jdbc.update("DELETE FROM pipeline_run");
         jdbc.update("DELETE FROM pipeline");
+        jdbc.update("DELETE FROM data_model");
+        jdbc.update("INSERT INTO data_model(name,table_name,subject_area,layer) VALUES('订单ODS','ods_orders','测试','ODS')");
         jdbc.update("DELETE FROM data_service");
         jdbc.update("DELETE FROM data_source");
         jdbc.update("DELETE FROM warehouse.api_fixture");
@@ -393,6 +395,7 @@ class PlatformIntegrationTest {
         LocalDateTime originalWatermark = mapper.pipeline(pipeline.getId()).getWatermark();
 
         Map<String, Object> firstClaim = pipelineService.claim(pipeline.getId());
+        assertThat(firstClaim).doesNotContainKey("transformSql");
         long firstRunId = (Long) firstClaim.get("runId");
         ResponseStatusException conflict = catchThrowableOfType(
                 () -> pipelineService.claim(pipeline.getId()), ResponseStatusException.class);
@@ -576,7 +579,7 @@ class PlatformIntegrationTest {
         try {
             for(String path:java.util.List.of("/sources","/pipelines","/services","/models","/transforms")) {
                 mvc.perform(get(path).with(user("admin").roles("ADMIN")))
-                        .andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("totalCount",0L));
+                        .andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("totalCount",path.equals("/models")?1L:0L));
             }
             for(int i=1;i<=3;i++) {
                 sourceService.create("paged-source-"+i,MYSQL.getJdbcUrl(),MYSQL.getUsername(),MYSQL.getPassword());
@@ -622,7 +625,7 @@ class PlatformIntegrationTest {
             jdbc.update("UPDATE data_model SET archived=TRUE WHERE table_name='page_model_3'");
             for(String path:java.util.List.of("/models","/transforms"))
                 mvc.perform(get(path).with(user("admin").roles("ADMIN")))
-                        .andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("totalCount",2L));
+                        .andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("totalCount",path.equals("/models")?3L:2L));
             mvc.perform(get("/pipelines/new").with(user("developer").roles("DEVELOPER")))
                     .andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("sources",org.hamcrest.Matchers.hasSize(3)));
         } finally {
@@ -643,7 +646,7 @@ class PlatformIntegrationTest {
         sourceService.create("source-for-pipeline", MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
         DataSource source = mapper.sources().getFirst();
         pipelineService.create("orders-hourly", source.getId(), "source_orders", "updated_at", "ods_orders",
-                "INSERT INTO ods_orders SELECT * FROM source_orders", "0 0 * * * ?");
+                "", "0 0 * * * ?");
         return mapper.pipelines().getFirst();
     }
 }

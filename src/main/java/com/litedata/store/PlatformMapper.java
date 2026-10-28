@@ -41,9 +41,9 @@ public interface PlatformMapper {
     @Select("SELECT * FROM pipeline WHERE id=#{id} FOR UPDATE") Pipeline lockPipeline(long id);
     @Insert("INSERT INTO pipeline(name,source_id,source_table,watermark_column,target_table,transform_sql,cron_expression) VALUES(#{name},#{sourceId},#{sourceTable},#{watermarkColumn},#{targetTable},#{transformSql},#{cronExpression})")
     @Options(useGeneratedKeys=true,keyProperty="id") void insertPipeline(Pipeline pipeline);
-    @Update("UPDATE pipeline SET name=#{name},transform_sql=#{transformSql} WHERE id=#{id}")
+    @Update("UPDATE pipeline SET name=#{name} WHERE id=#{id}")
     void updatePipeline(Pipeline pipeline);
-    @Update("UPDATE pipeline SET name=#{name},transform_sql=#{transformSql},cron_expression=#{cronExpression},definition_code=NULL,schedule_id=NULL WHERE id=#{id}")
+    @Update("UPDATE pipeline SET name=#{name},cron_expression=#{cronExpression},definition_code=NULL,schedule_id=NULL WHERE id=#{id}")
     void updatePipelineFrequency(Pipeline pipeline);
     @Update("UPDATE pipeline SET definition_code=#{code} WHERE id=#{id}")
     void definition(@Param("id") long id,@Param("code") long code);

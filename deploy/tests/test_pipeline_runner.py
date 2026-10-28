@@ -52,6 +52,21 @@ class PipelineRunnerTests(unittest.TestCase):
             with self.subTest(field=field), self.assertRaises(ValueError):
                 self.runner.build_datax_job(claim)
 
+    def test_completion_depends_only_on_datax_and_does_not_execute_legacy_sql(self):
+        claim = self.claim("MYSQL", "jdbc:mysql://host/sales")
+        claim.update(runId=7, transformSql="INSERT INTO ads_orders SELECT * FROM ods_orders")
+        for code in (0, 1):
+            with self.subTest(datax_exit=code), \
+                 patch.object(sys, "argv", ["run_pipeline.py", "--pipeline-id", "1"]), \
+                 patch.object(self.runner, "platform_request", return_value=(200, claim)), \
+                 patch.object(self.runner, "execute_datax", return_value=code), \
+                 patch.object(self.runner, "finish", return_value=True) as finish, \
+                 patch.object(self.runner.pymysql, "connect", create=True) as connect, \
+                 patch.object(self.runner, "redact_datax_tail", return_value="DataX failed"):
+                self.assertEqual(0 if code == 0 else 1, self.runner.main())
+                self.assertEqual((7, code == 0), finish.call_args.args[:2])
+                connect.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -169,24 +169,6 @@ def build_datax_job(claim):
     }
 
 
-def run_transform(claim):
-    statement = claim.get("transformSql")
-    if not statement:
-        return
-    normalized = statement.strip()
-    if not re.match(r"^INSERT\s+INTO\s+", normalized, re.IGNORECASE) or ";" in normalized.rstrip(";"):
-        raise ValueError("transformSql must be one INSERT INTO ... SELECT statement")
-    jdbc_url = os.environ.get("DORIS_WRITER_JDBC_URL", "jdbc:mysql://doris:9030/warehouse")
-    host, port, database = parse_mysql_jdbc(jdbc_url)
-    connection = pymysql.connect(host=host, port=port, user=os.environ["DORIS_WRITER_USER"], password=os.environ["DORIS_WRITER_PASSWORD"], database=database, connect_timeout=TIMEOUT_SECONDS, read_timeout=TIMEOUT_SECONDS)
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute(normalized)
-        connection.commit()
-    finally:
-        connection.close()
-
-
 def finish(run_id, success, message):
     for attempt in range(3):
         try:
@@ -261,8 +243,7 @@ def main():
         if return_code:
             print(redact_datax_tail(datax_log_path, claim), file=sys.stderr)
             raise RuntimeError(f"DataX exited with code {return_code}")
-        run_transform(claim)
-        if not finish(run_id, True, "DataX transfer and transform completed"):
+        if not finish(run_id, True, "DataX ODS transfer completed"):
             return 1
         return 0
     except subprocess.TimeoutExpired as error:

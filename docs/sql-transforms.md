@@ -15,7 +15,7 @@ DolphinScheduler 3.4.0 负责 DAG 依赖、调度和失败重试，worker 使用
 5. 在末端任务启用定时调度，支持每 5 分钟、每小时整点、每日 02:00，均为北京时间。
    停用会下线 DS 调度，不会终止已经提交的实例。
 
-例如先配置纯 ODS 同步管道（旧加工 SQL 留空），再建立：
+例如先选择已登记的 ODS UNIQUE 模型配置同步管道，再建立：
 
 ```text
 同步 orders → ods_orders
@@ -31,8 +31,9 @@ FROM dwd_orders
 GROUP BY customer_name
 ```
 
-旧同步管道中的单条加工 SQL 继续兼容，现已改为可选。若该管道还配置了旧加工 SQL，作为 DAG
-上游时也会执行它；拆分链路时应避免重复配置同一逻辑。
+同步管道不再新增或编辑内嵌 SQL。含旧 SQL 的管道会被拒绝运行和启用定时；在编辑页迁移时，系统要求先暂停相关定时且没有运行实例，随后创建或复用同目标、同 SQL 的独立任务，自动重接原下游依赖。原管道的运行记录和 SQL 归档保留。若旧 SQL 的目标不是已登记的非 ODS UNIQUE 模型，或目标存在冲突，系统会提示人工处理。
+
+迁移不会自动启用调度。新加工任务沿用受支持的原周期；原管道使用其他自定义 Cron 时，新任务先采用每小时周期，请核对后再启用。旧管道的 Cron 仍保留。复用任务仅忽略 SQL 的语法空白及关键字大小写差异，不自动合并不同表达式或目标写法。
 
 ## 执行、版本与并发
 
@@ -48,8 +49,7 @@ GROUP BY customer_name
   建议仅在末端调度，避免多条链重复刷新共享上游；此处不保证所有共享源表的跨节点快照隔离。
 - 任务、依赖和模型版本都影响工作流摘要。过期 SQL 节点的 claim 返回 409，执行节点拒绝旧快照。
   SQL 任务编辑前需停用引用它的所有末端调度；修改模型也会使已有快照失效，须重新发布。
-- 同步节点保持现有“同步与旧加工均成功后推进源水位”的语义；后续独立 SQL 失败不会回退已完成的
-  同步水位。重跑时同步管道按自身水位增量读取，各 SQL 层按其定义重算。
+- 同步节点仅在 DataX 成功写入已登记的 ODS UNIQUE 模型后推进源水位；后续独立 SQL 失败不会回退已完成的同步水位。重跑时同步管道按自身水位增量读取，各 SQL 层按其定义重算。
 - 请求被 DS 接受仅表示已提交，实际结果以 SQL 节点回调与 DS 实例为准。平台保留 SQL、任务版本、
   发起末端、开始/结束时间和结果；详情显示本链及本任务最近 100 条 SQL 记录，同步记录在“同步管道”。
 - 停用后可编辑并再次启用。摘要变化时创建新 DS 工作流、下线旧调度；旧定义及实例保留作历史。
@@ -65,7 +65,7 @@ UNIQUE KEY 覆盖相同主键不等于完整重算替换。源端硬删除、分
 
 ## 升级与验证
 
-升级应用和 worker，两者必须同时更新；平台启动自动执行 V3：
+升级应用和 worker，两者必须同时更新；平台启动自动执行尚未应用的迁移，V16 新增旧管道 SQL 归档表。V16 不自动清空 SQL 或启用任务；旧管道通过编辑页迁移入口处理。
 
 ```sh
 docker compose up -d --build --no-deps dolphinscheduler platform
@@ -74,7 +74,7 @@ docker compose up -d --build --no-deps dolphinscheduler platform
 ```powershell
 $env:JAVA_HOME='C:\Java\jdk-25.0.3'
 .\mvnw.cmd --batch-mode --no-transfer-progress verify
-python -m unittest deploy/tests/test_sql_task_runner.py -v
+python -m unittest discover -s deploy/tests -v
 docker compose --env-file .env.example config --quiet
 python deploy/transform_smoke.py
 ```
@@ -99,6 +99,8 @@ FAILED，DWS/ADS 未新增执行记录；已恢复正常 SQL，测试定时保�
 保留的演示末端为任务 ID 3，表为 `dwd_flow_853e15ec`、`dws_flow_853e15ec`、`ads_flow_853e15ec`。
 期间修复了冒烟表单解析器把未勾选复选框也提交的问题，故障段使用修正后的解析器单独续跑通过。
 这些验证不代替百万行容量或连续七天运行验收。
+
+2026-10-28 收敛验证：Maven 全量 189 项通过，最终迁移专项 17 项通过，Python 执行器 10 项通过。真实环境两条旧管道迁移为独立任务 18，原 SQL 分别归档、原有 7 条运行记录保留；迁移后的两个同步节点和加工节点在 DS 实例 31 成功。新建的 ODS → 独立 ADS 加工 → API 链路通过。故意使 SQL 失败后，DataX / ODS 仍为 SUCCESS，水位等于同步批次上界且未回退，运行锁释放；已恢复测试 SQL，未启用新定时。
 
 ## 中断恢复
 

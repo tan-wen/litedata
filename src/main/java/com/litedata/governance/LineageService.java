@@ -48,7 +48,7 @@ public class LineageService {
                 add(refs,edges,from,to,pipeline.getName(),"同步",pipelineHref);
             }
             if(pipeline.getTransformSql()!=null && !pipeline.getTransformSql().isBlank())
-                parse(refs,edges,warnings,pipeline.getTransformSql(),pipeline.getName(),"管道加工",pipelineHref);
+                warnings.add("管道“"+pipeline.getName()+"”的旧加工 SQL 待迁移，未作为有效加工血缘展开");
         }
         for(var task:tasks) parse(refs,edges,warnings,task.getSqlText(),task.getName(),"数据加工","/transforms/"+task.getId());
         var levels=new LinkedHashMap<String,Integer>(); levels.put(focus.key(),0);

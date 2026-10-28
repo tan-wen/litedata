@@ -188,7 +188,7 @@ class DolphinSchedulerClientTest {
 
     private DolphinSchedulerClient client() {
         return new DolphinSchedulerClient(mapper,new PlatformProperties("key","password","internal",
-                new PlatformProperties.DolphinScheduler("http://localhost:"+server.getAddress().getPort(),"safe-token",9,"tenant"),null));
+                new PlatformProperties.DolphinScheduler("http://localhost:"+server.getAddress().getPort(),"safe-token",9,"tenant"),null),mock(PipelineService.class));
     }
 
     private Pipeline pipeline(Long definitionCode) {

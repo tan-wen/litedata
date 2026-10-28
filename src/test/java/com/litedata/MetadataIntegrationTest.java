@@ -125,7 +125,8 @@ class MetadataIntegrationTest {
         long source=jdbc.queryForObject("SELECT id FROM data_source",Long.class);
         when(collector.collect(null)).thenReturn(snapshot("warehouse","ods_orders","dwd_orders","ads_orders","isolated")); service.collect(null,"dev");
         when(collector.collect(source)).thenReturn(snapshot("business","ods_orders")); service.collect(source,"dev");
-        jdbc.update("INSERT INTO pipeline(name,source_id,source_table,watermark_column,target_table,transform_sql,cron_expression) VALUES('订单同步',?,'ods_orders','updated_at','ods_orders','INSERT INTO dwd_orders SELECT id FROM ods_orders','0 0 * * * ?')",source);
+        jdbc.update("INSERT INTO pipeline(name,source_id,source_table,watermark_column,target_table,transform_sql,cron_expression) VALUES('订单同步',?,'ods_orders','updated_at','ods_orders','','0 0 * * * ?')",source);
+        task("dwd_orders","INSERT INTO dwd_orders SELECT id FROM ods_orders");
         task("ads_orders","INSERT INTO ads_orders WITH chosen AS (SELECT id FROM dwd_orders) SELECT id FROM chosen");
         long root=mapper.find("doris","warehouse","dwd_orders").getId();
         var graph=lineage.graph(root,"both",3);

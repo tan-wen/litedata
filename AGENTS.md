@@ -27,7 +27,7 @@ Linux/macOS 对应使用 `./mvnw verify`。完整部署通过 `deploy/start.ps1`
 数据流程是：MySQL 源表 → DataX 时间水位增量 → Doris ODS（UNIQUE KEY）→ `INSERT SELECT` 加工 → Doris ADS → 只读数据 API。DolphinScheduler 调度和重试同步/加工任务，worker 向平台回调结果。平台 MySQL 与 DolphinScheduler MySQL 元数据库相互独立。
 
 - 源表水位必须是非空、有前导索引的 `DATETIME`/`TIMESTAMP`；每批取源库上界，读取 `[最近成功水位 - 5 分钟, 上界)`，首批从 1970-01-01 开始。
-- runner 对管道实行运行互斥并固定上下界；同步和加工均成功才推进水位。重跑依赖 Doris 目标表及加工目标的业务主键幂等写入。
+- runner 对管道实行运行互斥并固定上下界；DataX 成功写入已登记的 ODS UNIQUE 目标后才推进水位。独立 SQL 加工失败不会回退同步水位；重跑依赖各自目标表的业务主键幂等写入。
 - 时间水位不能完整捕获硬删除、超出重放窗口的迟到和历史水位回写；这些情形需要对账和显式补数。不要把它描述为 CDC 语义。
 - 平台密钥和内部令牌从环境变量或本地 `.env` 注入：不得提交 `.env`、令牌、密钥、真实业务数据、含密码日志或 `deploy/runtime/` 内容。页面登记的数据源密码以密文存储，主密钥由环境提供；API Key 仅保存摘要，Doris 读写账号和内部 worker 令牌必须职责分离。具体披露方式见 [SECURITY.md](SECURITY.md)。
 

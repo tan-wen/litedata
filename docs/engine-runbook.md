@@ -64,8 +64,8 @@ worker 启动时把内部执行凭证写入 root-only 的 `/run/litedata-worker.
 使 DS 经 `sudo -i` 切换执行身份时仍可读取；源库凭据不会写入工作流定义。
 
 runner claim 取得不可变上下界，409 时不执行。DataX 读取 `[lowerBound, upperBound)`，
-最多 45 分钟，成功后执行单条 warehouse 内的 INSERT SELECT。
-两步都成功才回调推进水位；失败或超时回调失败，回调会重试。
+最多 45 分钟并写入已登记的 ODS UNIQUE 模型。
+DataX 成功后回调推进水位；失败或超时回调失败，回调会重试。清洗、关联和汇总通过独立 SQL 任务执行，失败不会回退同步水位。
 重复完成请求幂等。超出五分钟的迟到和硬删除不属于时间水位可完整捕获的范围。
 
 DataX 使用独立 Java 8；DS 保留镜像运行时；平台使用 Java 25。

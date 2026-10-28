@@ -87,20 +87,17 @@ sh deploy/start.sh
    - URL：`jdbc:mysql://demo-mysql:3306/demo_source?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC`
    - 用户：`demo_reader`，密码：`demo_reader_password`
 
-2. 在“同步管道”创建任务：
+2. 在“数据建模”登记 `ods_orders`（ODS）和 `ads_orders`（ADS），均为 UNIQUE、HASH(id)、固定 1 桶、1 副本；字段结构见 `deploy/dolphinscheduler/bootstrap-doris.sql`。演示物理表已初始化时，执行“结构比对”确认一致。
+
+3. 在“同步管道”创建任务：
 
    - 来源表：`orders`，水位字段：`updated_at`
-   - 目标表：`ods_orders`
+   - 目标模型：已登记的 ODS UNIQUE 模型 `ods_orders`
    - 调度：`0 0 * * * ?`
-   - 加工 SQL：
+4. 在“数据加工”创建独立 SQL 任务，目标选择已建 ADS 模型，填写 `INSERT INTO ads_orders SELECT id, customer_name, amount, updated_at FROM ods_orders`，并声明该同步管道为上游依赖。
 
-   ```sql
-   INSERT INTO ads_orders
-   SELECT id, customer_name, amount, updated_at FROM ods_orders
-   ```
-
-3. 点击“立即运行”，等待真实实例成功，再启用所配置的定时调度。首批会读取从 1970-01-01 起的全部数据。
-4. 在“数据服务”创建 `orders`，查询：
+5. 从 SQL 任务运行整条依赖链，等待真实实例成功；定时建议只在末端 SQL 任务启用。首批同步会读取从 1970-01-01 起的全部数据。
+6. 在“数据服务”创建 `orders`，查询：
 
    ```sql
    SELECT id, customer_name, amount, updated_at
@@ -109,7 +106,7 @@ sh deploy/start.sh
 
    发布服务并生成一次性显示的凭证；每次重新生成会吊销旧凭证。
 
-5. 调用：
+7. 调用：
 
    ```sh
    curl -H 'X-API-Key: <生成的凭证>' 'http://localhost:8080/api/data/orders?id=1&pageNum=1&pageSize=100'
@@ -142,7 +139,7 @@ UNIQUE 模型的 ODS 数据由同步管道通过 DataX 从业务库接入；DIM/
 通过独立“数据加工”的 `INSERT INTO ... SELECT` 清洗、关联或汇总写入。声明直接上游 SQL 任务
 或同步管道后，系统展开完整依赖链，交由 DolphinScheduler 按上游成功后执行下游；可手动整链运行，
 或在末端启用每 5 分钟、每小时、每日的定时调度。保存逻辑模型不会自动产生数据。
-同步管道保留同步后加工 SQL 作为可选项，仅同步 ODS 时留空。使用及实际验收见 [数据加工](docs/sql-transforms.md)。
+同步管道只允许写入已登记的 ODS UNIQUE 模型，不再新增或编辑同步后 SQL。清洗、关联、汇总均由独立“数据加工”任务完成；建议只在末端任务启用定时。旧管道 SQL 必须先迁移为独立任务，迁移期间保留归档和运行记录。使用及实际验收见 [数据加工](docs/sql-transforms.md)。
 汇总重算涉及删除/失效的结果时需另行设计覆盖或分区替换策略，单靠主键 UPSERT 不能清理旧结果。
 
 建表使用 `DORIS_WRITER_USER` / `DORIS_WRITER_PASSWORD`，初始化脚本在 `warehouse.*` 授予
@@ -207,8 +204,8 @@ AGENTS.md                   项目上下文和代理协作约定
 ## 数据语义
 
 - 源表需有非空、带前导索引的 DATETIME/TIMESTAMP 水位字段；新增和更新必须更新该字段。
-- 每批按源库时间获取上界，回读最近成功水位之前 5 分钟；同步和加工都成功才推进水位。
-- ODS 与加工目标表均须使用幂等主键写入。示例 Doris 表使用 UNIQUE KEY。
+- 每批按源库时间获取上界，回读最近成功水位之前 5 分钟；DataX 成功写入 ODS 后才推进水位，独立 SQL 失败不回退它。
+- 同步目标必须是已登记的 ODS UNIQUE 模型；加工目标也应使用适合其幂等写入语义的业务主键。
 - 时间水位覆盖有限迟到。硬删除和超出重放窗口的历史变更需要单独对账及补数。
 - 意外中断导致实例仍为 RUNNING 时，应先在 DS 确认任务及子进程停止，再按运行说明恢复。
 - 百万行每小时是验收目标，需完成真实同步、加工及对账压测后才能确认。

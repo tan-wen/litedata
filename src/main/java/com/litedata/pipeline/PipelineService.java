@@ -36,6 +36,8 @@ public class PipelineService {
         var existing=mapper.lockPipeline(id);
         if(existing==null) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"同步任务不存在");
         if(existing.getActiveRunId()!=null) throw new IllegalArgumentException("任务已有执行中的实例，请等待完成后编辑");
+        if(existing.getTransformSql()!=null && !existing.getTransformSql().isBlank())
+            throw new IllegalArgumentException("请先将旧加工 SQL 迁移到数据加工，再编辑同步管道");
         if(existing.getSourceId()!=sourceId || !Objects.equals(existing.getSourceTable(),table) ||
                 !Objects.equals(existing.getWatermarkColumn(),column) || !Objects.equals(existing.getTargetTable(),target))
             throw new IllegalArgumentException("同步边界创建后固定，调整时请新建管道以避免复用旧水位");
@@ -49,26 +51,11 @@ public class PipelineService {
     }
     private Pipeline definition(String name,long sourceId,String table,String column,String target,String transform,String cron) {
         sources.require(sourceId);
-        requireReplaySafeTarget(JdbcConnections.identifier(target));
+        requireOdsTarget(JdbcConnections.identifier(target));
         if(name==null || name.isBlank() || name.length()>100) throw new IllegalArgumentException("任务名称不能为空，最长100字符");
         cron=SchedulePreview.validate(cron);
         transform=transform==null?"":transform.trim();
-        if(!transform.isEmpty()) {
-            if(transform.length()>20000 ||
-               !transform.stripLeading().toUpperCase(Locale.ROOT).startsWith("INSERT INTO ") || transform.contains(";"))
-                throw new IllegalArgumentException("加工 SQL 必须为单条 INSERT INTO ... SELECT，写入幂等目标表");
-            try {
-                var parsed=net.sf.jsqlparser.parser.CCJSqlParserUtil.parse(transform);
-                if(!(parsed instanceof net.sf.jsqlparser.statement.insert.Insert insert) || insert.getSelect()==null)
-                    throw new IllegalArgumentException("加工 SQL 必须为 INSERT INTO ... SELECT");
-                requireReplaySafeTarget(insert.getTable().getName().replace("`", ""));
-                for(String referenced:new net.sf.jsqlparser.util.TablesNamesFinder<Void>().getTables(parsed)) {
-                    if(!referenced.replace("`", "").matches("(?i)(warehouse\\.)?[A-Za-z_][A-Za-z0-9_]{0,63}"))
-                        throw new IllegalArgumentException("加工 SQL 仅允许访问 warehouse 库");
-                }
-            } catch(IllegalArgumentException exception) { throw exception; }
-            catch(Exception exception) { throw new IllegalArgumentException("加工 SQL 解析失败"); }
-        }
+        if(!transform.isEmpty()) throw new IllegalArgumentException("同步管道仅负责 ODS 贴源同步，加工 SQL 请在数据加工中配置");
         Pipeline pipeline=new Pipeline(); pipeline.setName(name.trim()); pipeline.setSourceId(sourceId);
         pipeline.setSourceTable(JdbcConnections.identifier(table)); pipeline.setWatermarkColumn(JdbcConnections.identifier(column));
         pipeline.setTargetTable(JdbcConnections.identifier(target)); pipeline.setTransformSql(transform); pipeline.setCronExpression(cron);
@@ -80,14 +67,7 @@ public class PipelineService {
         if(pipeline==null) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"任务不存在");
         if(pipeline.getActiveRunId()!=null) throw new ResponseStatusException(HttpStatus.CONFLICT,"已有实例运行；确认执行节点停止后再恢复");
         // Recheck registered models at execution time, including edits made after pipeline creation.
-        requireReplaySafeTarget(pipeline.getTargetTable());
-        if (!pipeline.getTransformSql().isBlank()) {
-            try {
-                var insert = (net.sf.jsqlparser.statement.insert.Insert) net.sf.jsqlparser.parser.CCJSqlParserUtil.parse(pipeline.getTransformSql());
-                requireReplaySafeTarget(insert.getTable().getName().replace("`", ""));
-            } catch (IllegalArgumentException exception) { throw exception; }
-            catch (Exception exception) { throw new IllegalArgumentException("加工 SQL 解析失败"); }
-        }
+        validateExecutable(pipeline);
         DataSource source=sources.require(pipeline.getSourceId());
         SourceTable sourceTable;
         try(Connection connection=sources.connect(source)) {
@@ -104,7 +84,7 @@ public class PipelineService {
         return Map.of("runId",run.getId(),"source",Map.of("jdbcUrl",source.getJdbcUrl(),"username",source.getUsername(),"password",sources.password(source),
                         "databaseType",source.getDatabaseType().name(),"schema",Objects.toString(sourceTable.schema(),""),"columns",sourceTable.columns(),"timestampColumns",sourceTable.timestampColumns()),
                 "sourceTable",pipeline.getSourceTable(),"watermarkColumn",pipeline.getWatermarkColumn(),"targetTable",pipeline.getTargetTable(),
-                "lowerBound",TIME.format(lower),"upperBound",TIME.format(upper),"transformSql",pipeline.getTransformSql(),
+                "lowerBound",TIME.format(lower),"upperBound",TIME.format(upper),
                 "doris",Map.of("jdbcUrl",properties.doris().jdbcUrl(),"username",properties.doris().username(),"password",properties.doris().password()));
     }
     @Transactional
@@ -115,16 +95,24 @@ public class PipelineService {
         run=mapper.lockRun(runId);
         if(!"RUNNING".equals(run.getStatus())) return; // A lost HTTP acknowledgement may be retried safely.
         if(!Objects.equals(pipeline.getActiveRunId(),runId)) throw new ResponseStatusException(HttpStatus.CONFLICT,"实例已失去执行权");
-        String safeMessage=success?"同步与加工完成":"同步或加工失败，请查看执行节点受限日志";
+        String safeMessage=success?"ODS 同步完成":"ODS 同步失败，请查看执行节点受限日志";
         mapper.finishRun(runId,success?"SUCCESS":"FAILED",safeMessage);
         if(success) mapper.advanceWatermark(pipeline.getId(),run.getUpperBound());
         else mapper.failPipeline(pipeline.getId(),safeMessage);
     }
 
-    private void requireReplaySafeTarget(String table) {
+    public void validateExecutable(Pipeline pipeline) {
+        requireOdsTarget(pipeline.getTargetTable());
+        if(pipeline.getTransformSql()!=null && !pipeline.getTransformSql().isBlank())
+            throw new IllegalArgumentException("旧加工 SQL 尚未迁移，请先在同步管道编辑页迁移到数据加工");
+    }
+
+    public void requireOdsTarget(String table) {
         var model = models.modelByTable(table.toLowerCase(Locale.ROOT));
-        if (model != null && !"UNIQUE".equals(model.getModelType()))
-            throw new IllegalArgumentException("同步回放及重试的写入目标须为 UNIQUE：" + table);
+        if(model==null || !"ODS".equals(model.getLayer()))
+            throw new IllegalArgumentException("同步目标须为已登记的 ODS 模型，请先在数据建模中配置："+table);
+        if (!"UNIQUE".equals(model.getModelType()))
+            throw new IllegalArgumentException("ODS 同步回放及重试的写入目标须为 UNIQUE：" + table);
     }
 }
 

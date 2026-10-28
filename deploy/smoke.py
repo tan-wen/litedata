@@ -149,6 +149,42 @@ def generated_key(html: str) -> str:
     raise SmokeFailure("credential rotation did not return a one-time key")
 
 
+def resource_id(page: str, prefix: str, suffix: str) -> str:
+    for form in parse(page).forms:
+        match = re.fullmatch(re.escape(prefix) + r"/(\d+)/" + re.escape(suffix), str(form["action"]))
+        if match:
+            return match.group(1)
+    raise SmokeFailure("created resource detail was absent")
+
+
+def create_model(client: Client, table: str, layer: str, fields: list[tuple[str, str, bool]]) -> str:
+    status, page = client.request("GET", "/models/new")
+    if status != 200:
+        raise SmokeFailure("model create page is unavailable")
+    values = {"tableName": table, "name": table, "subjectArea": "冒烟验证", "layer": layer, "buckets": "1",
+        "modelType": "UNIQUE", "replicationNum": "1", "distributionType": "HASH", "autoBuckets": "false",
+        "distributionColumns": ",".join(name for name, _, key in fields if key), "partitionType": "NONE"}
+    for index, (name, data_type, key) in enumerate(fields):
+        for prop, value in {"name": name, "dataType": data_type, "keyColumn": str(key).lower(), "nullable": "false", "comment": "", "standard": ""}.items():
+            values[f"fields[{index}].{prop}"] = value
+    status, page = post_form(client, page, "/models", values)
+    require_success(status, page, "逻辑模型已保存")
+    model_id = resource_id(page, "/models", "physicalize")
+    status, page = post_form(client, page, f"/models/{model_id}/physicalize", {"confirmed": "true"})
+    require_success(status, page, "Doris 表已创建")
+    return model_id
+
+
+def create_transform(client: Client, name: str, model_id: str, sql: str, pipeline_id: str) -> str:
+    status, page = client.request("GET", "/transforms/new")
+    if status != 200:
+        raise SmokeFailure("transform create page is unavailable")
+    status, page = post_form(client, page, "/transforms", {"name": name, "modelId": model_id, "sqlText": sql,
+        "cronExpression": "0 0 * * * ?", "upstreamPipelineIds": pipeline_id})
+    require_success(status, page, "数据加工已保存")
+    return resource_id(page, "/transforms", "run")
+
+
 def api_query(client: Client, slug: str, token: str) -> tuple[int, str]:
     return client.request("GET", f"/api/data/{slug}?customerId=1&pageNum=1&pageSize=100", headers={"X-API-Key": token})
 
@@ -162,7 +198,10 @@ def main() -> dict[str, object]:
     unique = uuid.uuid4().hex[:12]
     source_name = f"smoke-source-{unique}"
     pipeline_name = f"smoke-pipeline-{unique}"
+    transform_name = f"smoke-transform-{unique}"
     slug = f"smoke-orders-{unique}"
+    ods_table = f"ods_smoke_{unique}"
+    ads_table = f"ads_smoke_{unique}"
 
     status, login = client.request("GET", "/login")
     if status != 200:
@@ -170,6 +209,11 @@ def main() -> dict[str, object]:
     status, dashboard = post_form(client, login, "/login", {"username": "admin", "password": password})
     if status != 200 or "数据中台" not in dashboard:
         raise SmokeFailure("login was not accepted")
+
+    order_fields = [("id", "BIGINT", True), ("customer_name", "VARCHAR(128)", False),
+        ("amount", "DECIMAL(18,2)", False), ("updated_at", "DATETIME(6)", False)]
+    ods_model_id = create_model(client, ods_table, "ODS", order_fields)
+    ads_model_id = create_model(client, ads_table, "ADS", order_fields)
 
     status, sources = client.request("GET", "/sources")
     if status != 200 or 'href="/sources/new"' not in sources:
@@ -196,25 +240,30 @@ def main() -> dict[str, object]:
         raise SmokeFailure("pipeline create page is unavailable")
     status, pipelines = post_form(client, pipeline_form, "/pipelines", {
         "name": pipeline_name, "sourceId": source_id, "sourceTable": "orders", "watermarkColumn": "updated_at",
-        "targetTable": "ods_orders", "transformSql": "INSERT INTO ads_orders SELECT id,customer_name,amount,updated_at FROM ods_orders",
+        "targetTable": ods_table,
         "cronExpression": "0 0 * * * ?",
     })
-    require_success(status, pipelines, "任务已保存")
+    require_success(status, pipelines, "ODS 同步管道已保存")
     pipeline_id = id_from_row(pipelines, pipeline_name, "/run")
-    status, pipelines = post_form(client, pipelines, f"/pipelines/{pipeline_id}/run", {})
-    require_success(status, pipelines, "DolphinScheduler 已接受执行请求")
+    transform_id = create_transform(client, transform_name, ads_model_id,
+        f"INSERT INTO {ads_table} SELECT id,customer_name,amount,updated_at FROM {ods_table}", pipeline_id)
+    status, transform_page = client.request("GET", f"/transforms/{transform_id}")
+    if status != 200:
+        raise SmokeFailure("transform detail page is unavailable")
+    status, pipelines = post_form(client, transform_page, f"/transforms/{transform_id}/run", {})
+    require_success(status, pipelines, "DolphinScheduler 已接受整条依赖链")
 
     deadline = time.monotonic() + POLL_TIMEOUT_SECONDS
     run_succeeded = False
     while time.monotonic() < deadline:
-        status, pipelines = client.request("GET", "/pipelines")
+        status, pipelines = client.request("GET", f"/transforms/{transform_id}")
         if status != 200:
-            raise SmokeFailure("pipeline status page became unavailable")
+            raise SmokeFailure("transform status page became unavailable")
         for row in parse(pipelines).rows:
             cells = " ".join(map(str, row["cells"]))
-            if pipeline_name in cells and ("FAILED" in cells or "失败" in cells):
+            if transform_name in cells and ("FAILED" in cells or "失败" in cells):
                 raise SmokeFailure("DolphinScheduler run reported failure")
-            if pipeline_name in cells and ("SUCCESS" in cells or "成功" in cells):
+            if transform_name in cells and ("SUCCESS" in cells or "成功" in cells):
                 run_succeeded = True
                 break
         if run_succeeded:
@@ -231,7 +280,7 @@ def main() -> dict[str, object]:
         raise SmokeFailure("service create page is unavailable")
     status, services = post_form(client, service_form, "/services", {
         "name": f"Smoke orders {unique}", "slug": slug,
-        "querySql": "SELECT id, customer_name, amount, updated_at FROM ads_orders WHERE id = :customerId ORDER BY id",
+        "querySql": f"SELECT id, customer_name, amount, updated_at FROM {ads_table} WHERE id = :customerId ORDER BY id",
     })
     require_success(status, services, "服务草稿已保存")
     service_id = id_from_row(services, slug, "/publish")
@@ -255,7 +304,8 @@ def main() -> dict[str, object]:
     status, result = api_query(client, slug, second_key)
     if status != 200 or json.loads(result).get("data", [{}])[0].get("customer_name") != "Ada":
         raise SmokeFailure("rotated credential cannot query the published API")
-    return {"status": "success", "counts": {"sources": 1, "pipelines": 1, "services": 1, "apiRows": 1}}
+    return {"status": "success", "counts": {"models": 2, "sources": 1, "pipelines": 1, "transforms": 1, "services": 1, "apiRows": 1},
+            "resources": {"odsModelId": int(ods_model_id), "adsModelId": int(ads_model_id), "pipelineId": int(pipeline_id), "transformId": int(transform_id)}}
 
 
 if __name__ == "__main__":

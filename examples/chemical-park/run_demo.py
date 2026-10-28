@@ -162,6 +162,8 @@ class Demo:
     def model(self, definition):
         _, page = self.client.request("GET", "/models/new")
         fields = {k: definition[k] for k in ("tableName", "name", "subjectArea", "layer", "buckets")}
+        fields.update(modelType="UNIQUE", replicationNum="1", distributionType="HASH", autoBuckets="false",
+            distributionColumns=",".join(field["name"] for field in definition["fields"] if field.get("keyColumn")), partitionType="NONE")
         fields["name"] = self.args.prefix + " " + fields["name"]
         for index, field in enumerate(definition["fields"]):
             for key in ("name", "dataType", "keyColumn", "nullable", "comment", "standard"):
@@ -400,8 +402,8 @@ class Demo:
             _, page = self.client.request("GET", "/pipelines/new")
             target = next(m["tableName"] for m in self.manifest["models"] if m["key"] == pipeline["targetModel"])
             fields = {k: pipeline[k] for k in ("sourceTable", "watermarkColumn", "cronExpression")}
-            fields.update(name=self.args.prefix + " " + pipeline["name"], sourceId=source_id, targetTable=target, transformSql="")
-            page = checked(self.client.post(page, "/pipelines", fields), "任务已保存")
+            fields.update(name=self.args.prefix + " " + pipeline["name"], sourceId=source_id, targetTable=target)
+            page = checked(self.client.post(page, "/pipelines", fields), "ODS 同步管道已保存")
             self.report["resources"]["pipelines"][pipeline["key"]] = identifier(page, fields["name"], "pipelines", "run")
         for task in self.manifest["transforms"]:
             _, page = self.client.request("GET", "/transforms/new")

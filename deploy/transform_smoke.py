@@ -28,7 +28,9 @@ def resource_id(page, prefix, suffix):
 
 def model(client, table, layer, definitions):
     _, page = client.request("GET", "/models/new")
-    fields = {"tableName": table, "name": table, "subjectArea": "加工验证域", "layer": layer, "buckets": "1"}
+    fields = {"tableName": table, "name": table, "subjectArea": "加工验证域", "layer": layer, "buckets": "1",
+        "modelType": "UNIQUE", "replicationNum": "1", "distributionType": "HASH", "autoBuckets": "false",
+        "distributionColumns": ",".join(name for name, _, key in definitions if key), "partitionType": "NONE"}
     for i, (name, data_type, key) in enumerate(definitions):
         for prop, value in {"name": name, "dataType": data_type, "keyColumn": str(key).lower(), "nullable": "false", "comment": "", "standard": ""}.items():
             fields[f"fields[{i}].{prop}"] = value
@@ -120,11 +122,13 @@ def main():
     if status != 200:
         raise SmokeFailure("pipeline create page is unavailable")
     pipeline_name = "flow-sync-" + suffix
+    ods = "ods_flow_" + suffix
+    ods_model = model(client, ods, "ODS", [("id", "BIGINT", True), ("customer_name", "VARCHAR(128)", False), ("amount", "DECIMAL(18,2)", False), ("updated_at", "DATETIME(6)", False)])
     status, page = post_form(client, page, "/pipelines", {"name": pipeline_name, "sourceId": source_id,
-        "sourceTable": "orders", "watermarkColumn": "updated_at", "targetTable": "ods_orders", "transformSql": "", "cronExpression": "0 0 * * * ?"})
-    checked(status, page, "任务已保存")
+        "sourceTable": "orders", "watermarkColumn": "updated_at", "targetTable": ods, "cronExpression": "0 0 * * * ?"})
+    checked(status, page, "ODS 同步管道已保存")
     pipeline_id = id_from_row(page, pipeline_name, "/run")
-    dwd_sql = f"INSERT INTO {dwd} SELECT id,customer_name,amount,updated_at FROM ods_orders WHERE id IN (1,2)"
+    dwd_sql = f"INSERT INTO {dwd} SELECT id,customer_name,amount,updated_at FROM {ods} WHERE id IN (1,2)"
     dwd_id = task(client, dwd, dwd_model, dwd_sql, pipeline=pipeline_id)
     dws_id = task(client, dws, dws_model, f"INSERT INTO {dws} SELECT customer_name,SUM(amount),COUNT(*) FROM {dwd} GROUP BY customer_name", upstream=dwd_id)
     root = task(client, ads, ads_model, f"INSERT INTO {ads} SELECT customer_name,total_amount,order_count FROM {dws}", upstream=dws_id)

@@ -24,8 +24,12 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 public class PageController {
     private final PlatformMapper mapper; private final SourceService sources; private final PipelineService pipelines;
     private final DolphinSchedulerClient scheduler; private final DataApiService services; private final PlatformProperties properties;
-    public PageController(PlatformMapper mapper,SourceService sources,PipelineService pipelines,DolphinSchedulerClient scheduler,DataApiService services,PlatformProperties properties) {
+    private final com.litedata.store.ModelMapper models;
+    private final PipelineTransformMigration migration;
+    public PageController(PlatformMapper mapper,SourceService sources,PipelineService pipelines,DolphinSchedulerClient scheduler,DataApiService services,PlatformProperties properties,
+            com.litedata.store.ModelMapper models,PipelineTransformMigration migration) {
         this.mapper=mapper; this.sources=sources; this.pipelines=pipelines; this.scheduler=scheduler; this.services=services; this.properties=properties;
+        this.models=models; this.migration=migration;
     }
     @GetMapping("/login") String login() { return "login"; }
     @InitBinder("draft") void bind(WebDataBinder binder) {
@@ -100,6 +104,7 @@ public class PageController {
     @GetMapping("/pipelines/new") String newPipeline(Model model) { return form(model,new PipelineDraft(),null,"pipelines"); }
     @GetMapping("/pipelines/{id}/edit") String editPipeline(@PathVariable long id,Model model) {
         var draft=new PipelineDraft(); BeanUtils.copyProperties(pipeline(id),draft);
+        draft.setTransformSql("");
         return form(model,draft,id,"pipelines");
     }
     @PostMapping("/pipelines") String createPipeline(@ModelAttribute("draft") PipelineDraft draft,BindingResult errors,
@@ -118,7 +123,7 @@ public class PageController {
             else pipelines.update(id,draft.getName(),draft.getSourceId(),draft.getSourceTable(),draft.getWatermarkColumn(),
                     draft.getTargetTable(),draft.getTransformSql(),draft.getCronExpression());
             audit(principal,id==null?"PIPELINE_CREATE":"PIPELINE_UPDATE",draft.getName());
-            redirect.addFlashAttribute("success","任务已保存；确认目标表为 UNIQUE KEY 并完成建表后可执行");
+            redirect.addFlashAttribute("success","ODS 同步管道已保存；完成目标模型建表后可执行，加工请在数据加工中配置");
             return "redirect:/pipelines";
         } catch(IllegalArgumentException exception) { model.addAttribute("error",exception.getMessage()); }
         catch(DuplicateKeyException exception) { model.addAttribute("error","管道名称已存在，请使用其他名称"); }
@@ -136,6 +141,11 @@ public class PageController {
     @PostMapping("/pipelines/{id}/pause") String pause(@PathVariable long id,RedirectAttributes redirect,Principal principal) {
         scheduler.pause(id); audit(principal,"PIPELINE_PAUSE",Long.toString(id));
         redirect.addFlashAttribute("success","定时调度已停用，已提交的实例继续执行"); return "redirect:/pipelines";
+    }
+    @PostMapping("/pipelines/{id}/migrate-transform") String migrateTransform(@PathVariable long id,RedirectAttributes redirect,Principal principal) {
+        long taskId=migration.migrate(id,principal.getName());
+        redirect.addFlashAttribute("success","旧加工 SQL 已迁移并重接依赖；历史记录与 SQL 已保留，请核对 SQL、依赖和调度周期后运行或启用末端调度");
+        return "redirect:/transforms/"+taskId;
     }
     @GetMapping("/services") String services(@RequestParam Map<String,String> params,Model model) {
         var page=ListPagination.prepare(model,"/services",params,mapper.serviceCount());
@@ -188,7 +198,12 @@ public class PageController {
     private String form(Model model,Object draft,Long id,String resource) {
         model.addAttribute("draft",draft); model.addAttribute("resourceId",id);
         model.addAttribute("formAction","/"+resource+(id==null?"":"/"+id));
-        if("pipelines".equals(resource)) model.addAttribute("sources",sources.list());
+        if("pipelines".equals(resource)) {
+            model.addAttribute("sources",sources.list());
+            model.addAttribute("odsModels",models.models().stream().filter(m->"ODS".equals(m.getLayer()) && "UNIQUE".equals(m.getModelType())).toList());
+            model.addAttribute("legacyTransformSql",id==null?"":pipeline(id).getTransformSql());
+            model.addAttribute("migratedTaskId",id==null?null:migration.migratedTaskId(id));
+        }
         return switch(resource) {
             case "sources" -> "source-form";
             case "pipelines" -> "pipeline-form";
