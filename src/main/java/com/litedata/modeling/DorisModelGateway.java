@@ -7,9 +7,12 @@ import java.sql.*;
 import java.util.*;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 
 @Component
 public class DorisModelGateway {
+    public record BackendCapacity(int total, int available) {}
     public record Column(String name, String dataType, boolean nullable, String comment) {}
     public record Schema(List<Column> columns, List<String> keyColumns, List<String> hashColumns, int buckets,
                          String modelType, int replicationNum, String partitionType, String partitionColumn,
@@ -26,14 +29,55 @@ public class DorisModelGateway {
     private final PlatformProperties properties;
     private final ModelingProperties modeling;
     private final JdbcConnections connections;
+    private final JsonMapper json = JsonMapper.builder().build();
 
     public DorisModelGateway(PlatformProperties properties, ModelingProperties modeling, JdbcConnections connections) {
         this.properties = properties; this.modeling = modeling; this.connections = connections;
     }
 
-    public void create(String ddl) throws SQLException {
+    /** The generated replication_num uses the default location tag and requires storage-capable BEs. */
+    public BackendCapacity backendCapacity() throws SQLException {
+        requireWriter();
+        try (var connection = connections.open(properties.doris().jdbcUrl(), modeling.username(), modeling.password());
+             var statement = connection.createStatement()) {
+            statement.setQueryTimeout(5);
+            try (var result = statement.executeQuery("SHOW BACKENDS")) {
+                int total = 0, available = 0;
+                while (result.next()) {
+                    total++;
+                    if (flag(result.getString("Alive"), true)
+                            && flag(result.getString("SystemDecommissioned"), false)
+                            && "mix".equalsIgnoreCase(result.getString("NodeRole"))
+                            && defaultLocation(result.getString("Tag"))) available++;
+                }
+                return new BackendCapacity(total, available);
+            }
+        }
+    }
+
+    private boolean defaultLocation(String tag) throws SQLException {
+        try {
+            var value = json.readTree(tag);
+            if (value == null || !value.isObject() || !value.path("location").isString())
+                throw new SQLException("Invalid Doris backend tag metadata");
+            return "default".equals(value.path("location").asString());
+        } catch (JacksonException | IllegalArgumentException exception) {
+            throw new SQLException("Invalid Doris backend tag metadata");
+        }
+    }
+
+    private static boolean flag(String value, boolean expected) {
+        return expected ? "true".equalsIgnoreCase(value) || "1".equals(value)
+                : "false".equalsIgnoreCase(value) || "0".equals(value);
+    }
+
+    private void requireWriter() {
         if (modeling.username() == null || modeling.username().isBlank())
             throw new IllegalStateException("未配置 Doris 建表账号，请配置 DORIS_WRITER_USER / DORIS_WRITER_PASSWORD");
+    }
+
+    public void create(String ddl) throws SQLException {
+        requireWriter();
         try (var connection = connections.open(properties.doris().jdbcUrl(), modeling.username(), modeling.password());
              var statement = connection.createStatement()) {
             statement.setQueryTimeout(30);

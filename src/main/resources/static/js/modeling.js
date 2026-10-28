@@ -166,7 +166,7 @@
     body.querySelectorAll('[data-type-picker]').forEach(initializeTypePicker); add.disabled = body.rows.length >= 100; updatePhysicalSettings(); updateWizardSummary();
   }
   function setNotice(message) { wizardNotice.textContent = message || ''; wizardNotice.hidden = !message; }
-  function focusInvalid(element) { element.focus(); element.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+  function focusInvalid(element) { element.focus({ preventScroll: true }); element.scrollIntoView({ block: 'nearest', behavior: 'instant' }); }
   function validateControls(step) {
     const inputs = [...form.querySelectorAll(`[data-wizard-step="${step}"] input, [data-wizard-step="${step}"] select, [data-wizard-step="${step}"] textarea`)].filter(control => !control.disabled && control.type !== 'hidden'); const invalid = inputs.find(control => !control.checkValidity());
     if (!invalid) return true; invalid.reportValidity(); focusInvalid(invalid); return false;
@@ -197,12 +197,17 @@
     activeStep = step; wizardPanels.forEach(panel => { panel.hidden = Number(panel.dataset.wizardStep) !== step; }); wizardSteps.forEach(button => { const target = Number(button.dataset.wizardTarget); button.setAttribute('aria-current', target === step ? 'step' : 'false'); button.classList.toggle('is-complete', target < step); }); form.querySelectorAll('[data-wizard-current]').forEach(element => { element.hidden = Number(element.dataset.wizardCurrent) !== step; }); setNotice('');
   }
   function attemptStep(target) {
+    if (target === activeStep) return;
     if (target > activeStep) { for (let step = activeStep; step < target; step += 1) { showStep(step); if (!validateStep(step)) return; } }
     showStep(target);
     const panel = wizardPanels.find(item => Number(item.dataset.wizardStep) === target);
     panel.tabIndex = -1;
     panel.setAttribute('aria-label', ['', '第一步：模型信息', '第二步：字段定义', '第三步：Doris 物理设置'][target]);
-    panel.focus({ preventScroll: true }); panel.scrollIntoView({ block: 'start' });
+    panel.focus({ preventScroll: true });
+    const panelTop = panel.getBoundingClientRect().top;
+    const topbarBottom = document.querySelector('.topbar')?.getBoundingClientRect().bottom || 0;
+    // Keep the viewport steady when using the visible step tabs. Bottom controls may need to reveal the new panel.
+    if (panelTop < topbarBottom || panelTop >= window.innerHeight) panel.scrollIntoView({ block: 'start', behavior: 'instant' });
   }
 
   layer.addEventListener('change', () => { updateDimension(true); updatePhysicalSettings(); updateWizardSummary(); }); modelType.addEventListener('change', updatePhysicalSettings); partitionType.addEventListener('change', updatePhysicalSettings); partitionColumn.addEventListener('change', () => partitionColumn.setCustomValidity(''));

@@ -110,6 +110,7 @@ public class ModelingController {
     }
     private String form(Model model, DataModel draft, Long id) {
         model.addAttribute("draft", draft); model.addAttribute("modelId", id);
+        model.addAttribute("backendStatus", modeling.backendStatus());
         return "model-form";
     }
 

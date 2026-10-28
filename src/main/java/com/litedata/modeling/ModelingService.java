@@ -19,6 +19,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class ModelingService {
     public record Preview(DataModel model, String ddl, String hash) {}
     public record ExecutionResult(boolean success, String message) {}
+    public record BackendStatus(boolean known, int total, int available) {
+        public int replicationLimit() { return known ? Math.min(10, available) : 10; }
+        public String hint() {
+            if (!known) return "未获取到当前 BE 数量，请检查 Doris 连接和查询权限。可保存模型，建表时由 Doris 校验。";
+            String counts = "当前可用 BE：" + available + " / 共 " + total + " 个；";
+            return counts + (available == 0 ? "暂无可用节点，无法建表。" : "副本数上限：" + replicationLimit() + "。");
+        }
+    }
     private final ModelMapper mapper;
     private final PlatformMapper platform;
     private final DorisDdl ddl;
@@ -50,9 +58,21 @@ public class ModelingService {
         return withFields(requireModel(mapper.model(id)));
     }
 
+    public BackendStatus backendStatus() {
+        try {
+            var capacity = gateway.backendCapacity();
+            if (capacity != null) return new BackendStatus(true, capacity.total(), capacity.available());
+        } catch (SQLException | IllegalStateException | IllegalArgumentException ignored) {
+            // Offline modeling remains available; never turn an unknown count into a fabricated single BE.
+        }
+        return new BackendStatus(false, 0, 0);
+    }
+
     @Transactional
     public long save(Long id, DataModel input, String actor) {
         ddl.generate(input);
+        String replicaError = replicationError(input);
+        if (replicaError != null) throw new IllegalArgumentException(replicaError);
         if (id == null) {
             input.setId(null);
             mapper.insert(input);
@@ -95,6 +115,11 @@ public class ModelingService {
         checkVersion(model, version);
         var preview = preview(model);
         if (!preview.hash().equals(previewHash)) throw new IllegalArgumentException("DDL 预览已变化，请刷新页面重新确认");
+        String replicaError = replicationError(model);
+        if (replicaError != null) {
+            record(model, "CREATE", preview.ddl(), actor, "FAILED", replicaError);
+            return new ExecutionResult(false, replicaError);
+        }
         try {
             gateway.create(preview.ddl());
             var comparison = SchemaComparison.compare(model, gateway.inspect(model.getTableName()));
@@ -145,6 +170,12 @@ public class ModelingService {
                     .digest((model.getId() + ":" + model.getVersion() + ":" + generated).getBytes(StandardCharsets.UTF_8)));
             return new Preview(model, generated, hash);
         } catch (java.security.NoSuchAlgorithmException e) { throw new IllegalStateException("SHA-256 unavailable", e); }
+    }
+    private String replicationError(DataModel model) {
+        var status = backendStatus();
+        if (status.known() && model.getReplicationNum() > status.available())
+            return "副本数不能超过当前可用 BE 节点数（" + status.available() + " 个），请调整副本数或检查 Doris 节点状态";
+        return null;
     }
     private DataModel withFields(DataModel model) { model.setFields(mapper.fields(model.getId())); return model; }
     private static String query(String keyword) { return keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT); }

@@ -181,12 +181,15 @@ a.lineage-node:hover rect, a.lineage-node:focus rect { stroke: var(--platform-pr
 .metric-lineage-arrow-active { fill: var(--platform-primary); }
 .metric-lineage-selection { border: 1px solid var(--platform-line); border-radius: .6rem; padding: 1rem; background: var(--platform-surface); }
 .metric-lineage-selection dd { overflow-wrap: anywhere; }
-.model-wizard-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; padding: 0; margin: 0 0 1.5rem; list-style: none; }
-.model-wizard-steps button { width: 100%; display: grid; grid-template-columns: auto 1fr; gap: .25rem .55rem; align-items: center; padding: .75rem; text-align: left; border: 1px solid var(--platform-line); border-radius: .55rem; color: var(--platform-muted); background: var(--platform-surface); }
+html:has(.model-wizard-enhanced) { scrollbar-gutter: stable; }
+.model-wizard-enhanced { overflow-anchor: none; }
+.model-wizard-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: .75rem; padding: 0; margin: 0 0 1.5rem; list-style: none; }
+.model-wizard-steps > li { min-width: 0; }
+.model-wizard-steps button { width: 100%; height: 100%; display: grid; grid-template-columns: auto 1fr; gap: .25rem .55rem; align-items: center; padding: .75rem; text-align: left; border: 1px solid var(--platform-line); border-radius: .55rem; color: var(--platform-muted); background: var(--platform-surface); }
 .model-wizard-steps button span { display: grid; place-items: center; width: 1.45rem; height: 1.45rem; border-radius: 50%; color: var(--platform-surface); background: var(--platform-muted); font-size: .75rem; }
 .model-wizard-steps button[aria-current="step"] { border-color: var(--platform-primary); color: var(--platform-text); }
 .model-wizard-steps button[aria-current="step"] span, .model-wizard-steps button.is-complete span { background: var(--platform-primary); }
-.model-wizard-steps small { grid-column: 2; color: var(--platform-muted); font-size: .72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-wizard-steps small { grid-column: 2; min-block-size: 1.4em; line-height: 1.4; color: var(--platform-muted); font-size: .72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wizard-controls { display: none; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
 .wizard-notice { margin-bottom: 1rem; }
 .static-form-value { display: flex; align-items: center; background: var(--bs-bg-1); color: var(--platform-text); }

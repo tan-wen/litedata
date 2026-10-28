@@ -18,7 +18,9 @@
    确认该字段属于业务键后，需将它移到全部非键字段前面。不要仅为开启分区把会变化的更新时间加入 UNIQUE KEY；
    这会改变记录唯一性，应结合幂等更新需求选择稳定业务日期或不分区。
    AGGREGATE 的非键字段在本步骤选择聚合函数，SUM 只用于数值，REPLACE_IF_NOT_NULL 只用于可空字段。
-   新增表默认自动分桶，无需填写桶数。前两步完成后显示摘要，可返回修改；切换步骤只保留表单草稿，不写入数据库。
+   新增表默认自动分桶，无需填写桶数。前两步完成后显示摘要，第三步显示当前可用 BE 与总数，三个步骤卡片保持等高。
+   点击可见步骤时保留当前浏览位置；从长表单底部切换时，仅在新步骤标题离开可视区域时定位内容。
+   可返回修改；切换步骤只保留表单草稿，不写入数据库。
 4. 保存并预览生成的 DDL，确认目标为 `warehouse` 后勾选确认、执行建表。
 5. 检查执行结果，或对已有表执行“结构比对”。核对成功后状态为“已核对”，编辑后为“模型已变更”。
 6. UNIQUE 模型可在“同步管道”或“数据加工”配置幂等写入；DUPLICATE / AGGREGATE 的写入与重算由独立作业管理。
@@ -45,7 +47,13 @@ AGGREGATE 支持 `SUM`、`MIN`、`MAX`、`REPLACE`、`REPLACE_IF_NOT_NULL`。`SU
 重复导入一批 `SUM` 数据会再次累加。当前自动同步回放、任务重试与全量 `INSERT SELECT` 仍要求 UNIQUE 目标，
 保存和执行时均检查登记模型类型。外部未登记的同步目标继续由管理员保证 UNIQUE 及业务键幂等性。
 
-副本数可设为 1–10，不能超过可用的 Doris BE 节点数，当前单 BE 开发环境应使用 1。
+副本数可设为 1–10。新增、编辑及校验失败回显时，通过当前 Doris 建表连接执行 `SHOW BACKENDS`，显示可用 BE 数与总数，并动态限制输入上限。
+可用数仅包含在线（Alive）、未退役（SystemDecommissioned=false）、支持存储（NodeRole=mix）且 location=default 的 BE，
+与当前生成的 `replication_num` 默认标签分配一致；不包含宕机、退役、纯计算或其他标签节点。刷新页面会重新获取，保存和建表前也重新查询，
+若副本数超过当前可用数（包括可用数为 0）则拒绝保存或建表。平台仍保留最多 10 副本的配置范围。
+查询失败或建表账号未配置时，页面明确提示未获取到数量，不推测为单 BE；逻辑模型仍可保存，实际建表由 Doris 最终校验。
+查询使用现有 writer 身份，不额外授予集群管理权限。当前 4.1.3 环境已实测原有 writer 可读取节点状态。
+计数用于副本数量预检，磁盘容量及放置条件仍由 Doris 建表时检查。
 副本负责冗余存储，桶负责数据分片；HASH 使用全部键列。
 
 新版新增页默认生成 `BUCKETS AUTO`，隐藏手动桶数配置。Doris 在建表或创建新分区时推断桶数，
@@ -142,8 +150,18 @@ Compose 配置解析通过。当前真实 Doris 4.1.3 冒烟通过保存、DDL �
 以及三模型、五种聚合函数、重复写入语义、写入前后结构核对与副本差异识别；保留模型 ID 44 / 45 / 46 / 47 作为证据。
 
 `model_settings_smoke.py` 针对本地 Compose 环境，使用平台表单和 Doris root 本地测试连接，
-验证三种模型、聚合函数、日/月/年自动分区、重复写入语义、写入前后的结构比对、编辑持久化和副本差异识别。
+验证三种模型、聚合函数、日/月/年自动分区、重复写入语义、写入前后的结构比对、编辑持久化、BE 副本数预检和注释差异识别。
 脚本只写入自身创建的 `dws_config_smoke_*` 表及对应模型并保留证据，不访问业务数据。
 
+2026-10-28：动态 BE 数量查询的建模相关 Maven verify 36 项通过，覆盖节点状态与标签筛选、空节点列表、
+连接/权限失败脱敏、页面动态上限、节点下线后的保存及建表预检、未知状态下的逻辑模型保存。
+本地 Doris 4.1.3 实测为共 1 个 BE、可用 1 个；浏览器确认副本上限为 1，填写 2 会超限。
+真实 Doris 三模型冒烟通过，包含超额副本保存被拒绝与正常建表、写入、结构核对；保留模型 ID 50 / 51 / 52 作为证据。
+
+步骤导航交互调整后，全量 Maven verify 165 项通过。浏览器验证桌面及 390 / 320 像素窄屏的步骤切换、
+重复点击当前步骤、卡片等高、无横向溢出、长表单底部前进/返回及错误字段定位；可见步骤切换不强制滚动，
+第三步摘要显示当前 BE 状态。验证只编辑浏览器草稿，未保存对既有模型的修改。
+
 官方语法依据：[Doris 4.x CREATE TABLE](https://doris.apache.org/docs/4.x/sql-manual/sql-statements/table-and-view/table/CREATE-TABLE/)、
-[COLUMNS 元数据](https://doris.apache.org/docs/4.x/admin-manual/system-tables/information_schema/columns/)。
+[COLUMNS 元数据](https://doris.apache.org/docs/4.x/admin-manual/system-tables/information_schema/columns/)、
+[SHOW BACKENDS 节点状态](https://doris.apache.org/docs/4.x/sql-manual/sql-statements/cluster-management/instance-management/SHOW-BACKENDS/)。

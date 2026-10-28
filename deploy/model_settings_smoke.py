@@ -77,18 +77,22 @@ def main() -> dict[str, object]:
         fields["version"] = "1"
         fields["replicationNum"] = "2"
         status, page = post_form(client, page, detail, fields)
+        require(status, page, "副本数不能超过当前可用 BE 节点数（1 个）")
+        fields["replicationNum"] = "1"
+        fields["fields[2].comment"] = "更新指标注释"
+        status, page = post_form(client, page, detail, fields)
         require(status, page, "逻辑模型已保存")
         status, page = post_form(client, page, detail + "/compare", {})
         require(status, page, "核对未通过")
         fields["version"] = "2"
-        fields["replicationNum"] = "1"
+        fields["fields[2].comment"] = ""
         status, page = client.request("GET", detail + "/edit")
         status, page = post_form(client, page, detail, fields)
         status, page = post_form(client, page, detail + "/compare", {})
         require(status, page, "逻辑模型与物理结构一致")
         evidence.append({"modelId": int(match.group(2)), "table": table, "type": kind, "unit": unit})
     return {"status": "success", "checks": ["three-models", "five-aggregate-functions", "date-auto-partitions", "auto-buckets",
-            "real-write-semantics", "compare-before-and-after-ingestion", "edit-persistence", "replica-drift"], "evidence": evidence}
+            "real-write-semantics", "compare-before-and-after-ingestion", "edit-persistence", "backend-capacity-validation", "comment-drift"], "evidence": evidence}
 
 
 if __name__ == "__main__":

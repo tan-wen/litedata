@@ -50,10 +50,11 @@ class ModelingIntegrationTest {
     @Autowired ModelMapper mapper;
     @MockitoBean DorisModelGateway gateway;
 
-    @BeforeEach void clean() {
+    @BeforeEach void clean() throws SQLException {
         jdbc.update("DELETE FROM model_execution"); jdbc.update("DELETE FROM model_field");
         jdbc.update("DELETE FROM data_model"); jdbc.update("DELETE FROM audit_event");
         reset(gateway);
+        when(gateway.backendCapacity()).thenReturn(new DorisModelGateway.BackendCapacity(3, 3));
     }
 
     @Test void createsEditsFiltersAndRendersModelFormsAndDdl() throws Exception {
@@ -139,7 +140,8 @@ class ModelingIntegrationTest {
         assertThat(edited.getVersion()).isEqualTo(2);
         assertThat(service.preview(saved.getId()).hash()).isNotEqualTo(oldHash);
         assertThatIllegalArgumentException().isThrownBy(() -> service.physicalize(edited.getId(), 1, oldHash, "dev"));
-        verifyNoInteractions(gateway);
+        verify(gateway, never()).create(anyString());
+        verify(gateway, never()).inspect(anyString());
     }
 
     @Test void invalidPhysicalSettingsPreserveUserInputWithoutSaving() throws Exception {
@@ -151,6 +153,71 @@ class ModelingIntegrationTest {
                 .andExpect(model().attributeExists("error"))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("value=\"11\"")));
         assertThat(mapper.models()).isEmpty();
+    }
+
+    @Test void backendCapacitySetsFormLimitAndIsRecheckedOnSaveAndPhysicalize() throws Exception {
+        when(gateway.backendCapacity()).thenReturn(new DorisModelGateway.BackendCapacity(4, 2));
+        mvc.perform(get("/models/new").with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk())
+                .andExpect(replicaAttribute("max", "2"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-step-summary=\"3\">可用 BE：2 / 共 4 个</small>")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("当前可用 BE：2 / 共 4 个")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("当前单机环境请填 1"))));
+        var preview = fixture();
+        var model = service.require(preview.model().getId());
+        model.setReplicationNum(2);
+        service.save(model.getId(), model, "dev");
+        preview = service.preview(model.getId());
+
+        // A node goes down after opening the form: the submitted hint/max cannot bypass the fresh check.
+        when(gateway.backendCapacity()).thenReturn(new DorisModelGateway.BackendCapacity(4, 1));
+        mvc.perform(get("/models/" + model.getId() + "/edit").with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(replicaAttribute("max", "1"))
+                .andExpect(replicaAttribute("value", "2"));
+        mvc.perform(post("/models/" + model.getId()).with(user("dev").roles("DEVELOPER")).with(csrf())
+                .param("version", "2").param("tableName", model.getTableName()).param("name", "保留输入").param("subjectArea", "交易")
+                .param("replicationNum", "2").param("backendStatus.available", "99")
+                .param("fields[0].name", "id").param("fields[0].dataType", "BIGINT").param("fields[0].keyColumn", "true"))
+                .andExpect(status().isOk()).andExpect(view().name("model-form"))
+                .andExpect(model().attribute("errorStep", 3))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("副本数不能超过当前可用 BE 节点数（1 个）")))
+                .andExpect(replicaAttribute("value", "2"));
+        assertThat(service.require(model.getId()).getVersion()).isEqualTo(2);
+        assertThat(service.require(model.getId()).getName()).isEqualTo("测试模型");
+        var result = service.physicalize(model.getId(), 2, preview.hash(), "dev");
+        assertThat(result.success()).isFalse();
+        assertThat(result.message()).contains("1 个");
+        assertThat(mapper.executions(model.getId()).getFirst().getStatus()).isEqualTo("FAILED");
+        verify(gateway, never()).create(anyString());
+    }
+
+    @Test void zeroAvailableBackendsRejectsNewModelRatherThanAssumingOne() throws Exception {
+        when(gateway.backendCapacity()).thenReturn(new DorisModelGateway.BackendCapacity(2, 0));
+        mvc.perform(get("/models/new").with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(replicaAttribute("max", "0"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("当前可用 BE：0 / 共 2 个")));
+        mvc.perform(post("/models").with(user("dev").roles("DEVELOPER")).with(csrf())
+                .param("tableName", "ods_no_backend").param("name", "暂不可用").param("subjectArea", "测试")
+                .param("replicationNum", "1").param("fields[0].name", "id")
+                .param("fields[0].dataType", "BIGINT").param("fields[0].keyColumn", "true"))
+                .andExpect(status().isOk()).andExpect(model().attribute("errorStep", 3));
+        assertThat(mapper.models()).isEmpty();
+    }
+
+    @Test void failedBackendQueryShowsUnknownWithoutLeakingErrorAndAllowsOfflineModeling() throws Exception {
+        when(gateway.backendCapacity()).thenThrow(new SQLException("password=do-not-leak", "42000", 1142));
+        mvc.perform(get("/models/new").with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(replicaAttribute("max", "10"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("未获取到当前 BE 数量")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-step-summary=\"3\">BE 数量暂未获取</small>")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("do-not-leak"))));
+        var model = service.require(fixture().model().getId());
+        model.setReplicationNum(3);
+        service.save(model.getId(), model, "dev");
+        assertThat(service.require(model.getId()).getReplicationNum()).isEqualTo(3);
+        doReturn(new DorisModelGateway.BackendCapacity(12, 12)).when(gateway).backendCapacity();
+        mvc.perform(get("/models/" + model.getId() + "/edit").with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(replicaAttribute("max", "10"));
     }
 
     @Test void newFormsDefaultToAutoWhileLegacyEditsRetainTheirFixedBucketDefinition() throws Exception {
@@ -240,17 +307,20 @@ class ModelingIntegrationTest {
         mvc.perform(post("/models/" + id + "/physicalize").with(user("dev").roles("DEVELOPER")).with(csrf())
                 .param("version", "1").param("ddlHash", preview.hash()))
                 .andExpect(status().is3xxRedirection()).andExpect(flash().attributeExists("error"));
-        verifyNoInteractions(gateway);
+        verify(gateway, never()).create(anyString());
+        verify(gateway, never()).inspect(anyString());
     }
 
-    @Test void staleSavesAndStaleOrForgedPreviewsCannotExecute() {
+    @Test void staleSavesAndStaleOrForgedPreviewsCannotExecute() throws SQLException {
         var preview = fixture(); var input = service.require(preview.model().getId());
         service.save(input.getId(), input, "dev");
         assertThatIllegalArgumentException().isThrownBy(() -> service.save(input.getId(), input, "other"));
         assertThatIllegalArgumentException().isThrownBy(() -> service.physicalize(input.getId(), 1, preview.hash(), "dev"));
         assertThatIllegalArgumentException().isThrownBy(() -> service.physicalize(input.getId(), 2, "tampered", "dev"));
         assertThat(service.require(input.getId()).getVersion()).isEqualTo(2);
-        assertThat(mapper.executions(input.getId())).isEmpty(); verifyNoInteractions(gateway);
+        assertThat(mapper.executions(input.getId())).isEmpty();
+        verify(gateway, never()).create(anyString());
+        verify(gateway, never()).inspect(anyString());
     }
 
     @Test void successfulExecutionIsVersionedAndFailureIsRecordedWithoutLeakingSqlErrors() throws Exception {
@@ -293,6 +363,15 @@ class ModelingIntegrationTest {
         assertThat(mapper.executions(id)).hasSize(1);
         assertThatIllegalArgumentException().isThrownBy(() -> service.require(id));
         verifyNoInteractions(gateway);
+    }
+
+    private static org.springframework.test.web.servlet.ResultMatcher replicaAttribute(String attribute, String expected) {
+        return result -> {
+            var input = java.util.regex.Pattern.compile("<input\\b[^>]*\\bid=\"replicationNum\"[^>]*>")
+                    .matcher(result.getResponse().getContentAsString());
+            assertThat(input.find()).isTrue();
+            assertThat(input.group()).contains(" " + attribute + "=\"" + expected + "\"");
+        };
     }
 
     private ModelingService.Preview fixture() {
