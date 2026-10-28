@@ -240,7 +240,7 @@ class ModelingIntegrationTest {
         assertThat(automatic.isAutoBuckets()).isTrue();
         assertThat(service.preview(automatic.getId()).ddl()).contains("BUCKETS AUTO");
         mvc.perform(get("/models/" + automatic.getId()).with(user("dev").roles("DEVELOPER")))
-                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("HASH 自动分桶")));
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("AUTO（由 Doris 推算）")));
     }
 
     @Test void validationReturnsToTheStepContainingTheInvalidInput() throws Exception {
@@ -363,6 +363,59 @@ class ModelingIntegrationTest {
         assertThat(mapper.executions(id)).hasSize(1);
         assertThatIllegalArgumentException().isThrownBy(() -> service.require(id));
         verifyNoInteractions(gateway);
+    }
+
+    @Test void customBucketingPersistsRendersAndUpdatesThroughTheForm() throws Exception {
+        mvc.perform(post("/models").with(user("dev").roles("DEVELOPER")).with(csrf())
+                .param("tableName", "dwd_buckets").param("name", "自定义分桶").param("subjectArea", "测试")
+                .param("layer", "DWD").param("modelType", "DUPLICATE").param("distributionType", "HASH")
+                .param("distributionColumns", "region,id").param("autoBuckets", "false").param("buckets", "64")
+                .param("fields[0].name", "id").param("fields[0].dataType", "BIGINT").param("fields[0].keyColumn", "true")
+                .param("fields[1].name", "region").param("fields[1].dataType", "VARCHAR(20)"))
+                .andExpect(status().is3xxRedirection());
+        var saved = service.require(mapper.models().getFirst().getId());
+        assertThat(saved.getDistributionType()).isEqualTo("HASH");
+        assertThat(saved.getDistributionColumns()).isEqualTo("region,id");
+        assertThat(saved.getBuckets()).isEqualTo(64);
+        assertThat(service.preview(saved.getId()).ddl()).contains("DISTRIBUTED BY HASH(`region`, `id`) BUCKETS 64");
+        mvc.perform(get("/models/" + saved.getId() + "/edit").with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("region,id")));
+        mvc.perform(post("/models/" + saved.getId()).with(user("dev").roles("DEVELOPER")).with(csrf())
+                .param("version", "1").param("tableName", "dwd_buckets").param("name", "随机分桶").param("subjectArea", "测试")
+                .param("layer", "DWD").param("modelType", "DUPLICATE").param("distributionType", "RANDOM")
+                .param("distributionColumns", "region,id").param("autoBuckets", "true")
+                .param("fields[0].name", "id").param("fields[0].dataType", "BIGINT").param("fields[0].keyColumn", "true")
+                .param("fields[1].name", "region").param("fields[1].dataType", "VARCHAR(20)"))
+                .andExpect(status().is3xxRedirection());
+        saved = service.require(saved.getId());
+        assertThat(saved.getDistributionType()).isEqualTo("RANDOM");
+        assertThat(saved.getDistributionColumns()).isEmpty();
+        assertThat(saved.isAutoBuckets()).isTrue();
+        assertThat(service.preview(saved.getId()).ddl()).contains("DISTRIBUTED BY RANDOM BUCKETS AUTO");
+        mvc.perform(get("/models/" + saved.getId()).with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("RANDOM")));
+    }
+
+    @Test void invalidBucketingReturnsToPhysicalSettingsAndPreservesSelections() throws Exception {
+        for (String buckets : List.of("0", "2147483648", "1.5")) {
+            mvc.perform(post("/models").with(user("dev").roles("DEVELOPER")).with(csrf())
+                    .param("tableName", "dwd_bad_buckets").param("name", "无效分桶").param("subjectArea", "测试")
+                    .param("distributionType", "HASH").param("distributionColumns", "id").param("buckets", buckets)
+                    .param("fields[0].name", "id").param("fields[0].dataType", "BIGINT").param("fields[0].keyColumn", "true"))
+                    .andExpect(status().isOk()).andExpect(view().name("model-form"))
+                    .andExpect(model().attribute("errorStep", 3))
+                    .andExpect(model().attribute("draft", org.hamcrest.Matchers.hasProperty("distributionColumns", org.hamcrest.Matchers.is("id"))));
+        }
+        assertThat(mapper.models()).isEmpty();
+    }
+
+    @Test void legacyDistributionDefaultsSurviveSchemaUpgrade() {
+        var preview = fixture();
+        jdbc.update("UPDATE data_model SET distribution_columns=NULL WHERE id=?", preview.model().getId());
+        var legacy = service.require(preview.model().getId());
+        assertThat(legacy.getDistributionType()).isEqualTo("HASH");
+        assertThat(legacy.getDistributionColumns()).isNull();
+        assertThat(service.preview(legacy.getId()).ddl()).isEqualTo(preview.ddl());
     }
 
     private static org.springframework.test.web.servlet.ResultMatcher replicaAttribute(String attribute, String expected) {

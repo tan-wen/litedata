@@ -1,0 +1,3 @@
+ALTER TABLE data_model
+ ADD COLUMN distribution_type VARCHAR(10) NOT NULL DEFAULT 'HASH',
+ ADD COLUMN distribution_columns VARCHAR(6500) NULL DEFAULT NULL;

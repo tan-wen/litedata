@@ -33,7 +33,7 @@ public class DorisDdl {
         model.setDescription(metadata(model.getDescription(), "描述", 500, false));
         model.setModelType(choice(model.getModelType(), Set.of("DUPLICATE", "UNIQUE", "AGGREGATE"), "数据模型仅支持 DUPLICATE、UNIQUE、AGGREGATE"));
         if (model.getReplicationNum() < 1 || model.getReplicationNum() > 10) throw invalid("副本数须在 1 到 10 之间，且不能超过可用 BE 节点数");
-        if (!model.isAutoBuckets() && (model.getBuckets() < 1 || model.getBuckets() > 32)) throw invalid("分桶数须在 1 到 32 之间");
+        if (!model.isAutoBuckets() && model.getBuckets() < 1) throw invalid("分桶数须为正整数（最大 2147483647）");
         if (model.getFields() == null || model.getFields().isEmpty() || model.getFields().size() > 100)
             throw invalid("字段数量须在 1 到 100 之间");
 
@@ -66,14 +66,42 @@ public class DorisDdl {
             throw invalid("AGGREGATE 模型至少需要一个非键聚合字段");
         validateDimension(model, keys, seen);
         String partition = partition(model, keys);
+        String distribution = distribution(model, keys, seen);
 
         String tableComment = model.getDescription().isBlank() ? model.getName()
                 : model.getName() + " - " + model.getDescription();
         return "CREATE TABLE `warehouse`.`" + model.getTableName() + "` (\n"
                 + String.join(",\n", columns) + "\n)\nENGINE=OLAP\n" + model.getModelType() + " KEY(" + quoted(keys) + ")\nCOMMENT '"
-                + sqlComment(tableComment) + "'\n" + partition + "DISTRIBUTED BY HASH(" + quoted(keys) + ") BUCKETS " + (model.isAutoBuckets() ? "AUTO" : model.getBuckets())
+                + sqlComment(tableComment) + "'\n" + partition + distribution + " BUCKETS " + (model.isAutoBuckets() ? "AUTO" : model.getBuckets())
                 + "\nPROPERTIES (\n  \"replication_num\" = \"" + model.getReplicationNum() + "\""
                 + ("UNIQUE".equals(model.getModelType()) ? ",\n  \"enable_unique_key_merge_on_write\" = \"true\"" : "") + "\n);";
+    }
+
+    private static String distribution(DataModel model, List<String> keys, Set<String> fields) {
+        String kind = choice(model.getDistributionType(), Set.of("HASH", "RANDOM"), "分桶方式仅支持 HASH 或 RANDOM");
+        model.setDistributionType(kind);
+        if (kind.equals("RANDOM")) {
+            if (!"DUPLICATE".equals(model.getModelType())) throw invalid("RANDOM 分桶仅支持 DUPLICATE 模型");
+            model.setDistributionColumns("");
+            return "DISTRIBUTED BY RANDOM";
+        }
+        String raw = model.getDistributionColumns();
+        if (raw == null) raw = String.join(",", keys);
+        String[] parts = raw.split(",", -1);
+        if (raw.isBlank() || parts.length > fields.size()) throw invalid("HASH 分桶须选择至少一个有效分桶键，且不能重复");
+        var selected = new LinkedHashSet<String>();
+        for (String part : parts) {
+            String column = identifier(part, "分桶键");
+            if (!selected.add(column)) throw invalid("分桶键不能重复：" + column);
+            if (!fields.contains(column)) throw invalid("分桶键字段不存在：" + column);
+            if (!"DUPLICATE".equals(model.getModelType()) && !keys.contains(column))
+                throw invalid("UNIQUE / AGGREGATE 的分桶键必须为键列：" + column);
+            var field = model.getFields().stream().filter(item -> item.getName().equals(column)).findFirst().orElseThrow();
+            if (Set.of("FLOAT", "DOUBLE").contains(field.getDataType()))
+                throw invalid("分桶键不支持 " + field.getDataType() + "：" + column);
+        }
+        model.setDistributionColumns(String.join(",", selected));
+        return "DISTRIBUTED BY HASH(" + quoted(new ArrayList<>(selected)) + ")";
     }
 
     private static String aggregation(DataModel model, ModelField field, String type) {

@@ -90,6 +90,51 @@ class DorisDdlTest {
         }
     }
 
+    @Test void supportsCustomHashKeysAndRandomWithAutoOrFixedBuckets() {
+        var model = model(field("id", "BIGINT", true, false), field("tenant", "INT", true, false), field("region", "VARCHAR(20)", false, true));
+        model.setDistributionType(" hash "); model.setDistributionColumns(" TENANT , id "); model.setBuckets(128);
+        assertThat(ddl.generate(model)).contains("DISTRIBUTED BY HASH(`tenant`, `id`) BUCKETS 128");
+        assertThat(model.getDistributionColumns()).isEqualTo("tenant,id");
+        model.setModelType("DUPLICATE"); model.setDistributionColumns("region");
+        assertThat(ddl.generate(model)).contains("DISTRIBUTED BY HASH(`region`) BUCKETS 128");
+        model.setDistributionType("random");
+        assertThat(ddl.generate(model)).contains("DISTRIBUTED BY RANDOM BUCKETS 128").doesNotContain("HASH(");
+        assertThat(model.getDistributionColumns()).isEmpty();
+        model.setAutoBuckets(true);
+        assertThat(ddl.generate(model)).contains("DISTRIBUTED BY RANDOM BUCKETS AUTO");
+    }
+
+    @Test void rejectsInvalidBucketingDefinitions() {
+        for (String columns : List.of("", "missing", "id,id", "id,", "id); DROP TABLE x", "label")) {
+            var model = model(field("id", "BIGINT", true, false), field("label", "VARCHAR(20)", false, true));
+            model.setDistributionColumns(columns);
+            assertThatIllegalArgumentException().isThrownBy(() -> ddl.generate(model)).withMessageContaining("分桶");
+        }
+        for (String type : List.of("FLOAT", "DOUBLE")) {
+            var model = model(field("id", "BIGINT", true, false), field("value", type, false, true));
+            model.setModelType("DUPLICATE"); model.setDistributionColumns("value");
+            assertThatIllegalArgumentException().isThrownBy(() -> ddl.generate(model)).withMessageContaining("分桶键不支持");
+        }
+        for (String kind : List.of("UNIQUE", "AGGREGATE")) {
+            var model = model(field("id", "BIGINT", true, false), field("value", "INT", false, false));
+            model.setModelType(kind);
+            if (kind.equals("AGGREGATE")) model.getFields().getLast().setAggregation("SUM");
+            model.setDistributionType("RANDOM");
+            assertThatIllegalArgumentException().isThrownBy(() -> ddl.generate(model)).withMessageContaining("RANDOM 分桶仅支持 DUPLICATE");
+            model.setDistributionType("HASH"); model.setDistributionColumns("value");
+            assertThatIllegalArgumentException().isThrownBy(() -> ddl.generate(model)).withMessageContaining("必须为键列");
+        }
+        var model = model(field("id", "BIGINT", true, false)); model.setDistributionType("RANGE");
+        assertThatIllegalArgumentException().isThrownBy(() -> ddl.generate(model)).withMessageContaining("分桶方式");
+        model.setDistributionType("HASH");
+        for (int buckets : List.of(0, -1)) {
+            model.setBuckets(buckets);
+            assertThatIllegalArgumentException().isThrownBy(() -> ddl.generate(model)).withMessageContaining("正整数");
+        }
+        model.setBuckets(Integer.MAX_VALUE);
+        assertThat(ddl.generate(model)).contains("BUCKETS 2147483647");
+    }
+
     @Test void generatesStructuredDatePartitionsAndRejectsInvalidDefinitions() {
         for (String unit : List.of("DAY", "MONTH", "YEAR")) {
             var model = model(field("biz_date", "DATE", true, false), field("id", "BIGINT", true, false));

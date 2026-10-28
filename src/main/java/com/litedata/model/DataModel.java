@@ -15,6 +15,9 @@ public class DataModel {
     private String dimensionStrategy = "";
     private int buckets = 1;
     private boolean autoBuckets;
+    private String distributionType = "HASH";
+    // Null keeps legacy models/clients on all key columns until explicitly configured.
+    private String distributionColumns;
     private String modelType = "UNIQUE";
     private int replicationNum = 1;
     private String partitionType = "NONE";
@@ -52,6 +55,16 @@ public class DataModel {
     public void setBuckets(int buckets) { this.buckets = buckets; }
     public boolean isAutoBuckets() { return autoBuckets; }
     public void setAutoBuckets(boolean autoBuckets) { this.autoBuckets = autoBuckets; }
+    public String getDistributionType() { return distributionType; }
+    public void setDistributionType(String distributionType) { this.distributionType = distributionType; }
+    public String getDistributionColumns() { return distributionColumns; }
+    public void setDistributionColumns(String distributionColumns) { this.distributionColumns = distributionColumns; }
+    public List<String> getDistributionKeyColumns() {
+        if (distributionColumns == null)
+            return fields.stream().filter(ModelField::isKeyColumn).map(ModelField::getName).toList();
+        if (distributionColumns.isBlank()) return List.of();
+        return java.util.Arrays.stream(distributionColumns.split(",", -1)).map(String::trim).toList();
+    }
     public String getModelType() { return modelType; }
     public void setModelType(String modelType) { this.modelType = modelType; }
     public int getReplicationNum() { return replicationNum; }

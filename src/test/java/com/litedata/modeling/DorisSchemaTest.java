@@ -75,6 +75,35 @@ class DorisSchemaTest {
         assertThat(SchemaComparison.compare(model, auto).matches()).isFalse();
     }
 
+    @Test void comparesCustomHashAndRandomDistributionIncludingAutoPolicy() {
+        var model = new DataModel(); model.setTableName("test"); model.setName("测试"); model.setSubjectArea("测试");
+        model.setModelType("DUPLICATE"); model.setBuckets(8);
+        var id = new ModelField(); id.setName("id"); id.setDataType("BIGINT"); id.setKeyColumn(true);
+        var region = new ModelField(); region.setName("region"); region.setDataType("VARCHAR(20)"); region.setNullable(true);
+        model.setFields(List.of(id, region)); model.setDistributionColumns("region,id");
+        var columns = List.of(new DorisModelGateway.Column("id", "BIGINT", false, ""), new DorisModelGateway.Column("region", "VARCHAR(20)", true, ""));
+        String hash = new DorisDdl().generate(model);
+        var schema = DorisModelGateway.parseSchema(columns, hash);
+        assertThat(schema.distributionType()).isEqualTo("HASH");
+        assertThat(schema.hashColumns()).containsExactly("region", "id");
+        assertThat(SchemaComparison.compare(model, schema).matches()).isTrue();
+        assertThat(SchemaComparison.compare(model, DorisModelGateway.parseSchema(columns, hash.replace("HASH(`region`, `id`)", "HASH(`id`)"))).matches()).isFalse();
+        model.setDistributionType("RANDOM");
+        String random = new DorisDdl().generate(model);
+        schema = DorisModelGateway.parseSchema(columns, random);
+        assertThat(schema.distributionType()).isEqualTo("RANDOM");
+        assertThat(schema.hashColumns()).isEmpty();
+        assertThat(schema.buckets()).isEqualTo(8);
+        assertThat(SchemaComparison.compare(model, schema).matches()).isTrue();
+        assertThat(SchemaComparison.compare(model, DorisModelGateway.parseSchema(columns, hash)).matches()).isFalse();
+        assertThat(SchemaComparison.compare(model, DorisModelGateway.parseSchema(columns, random.replace("BUCKETS 8", "BUCKETS 9"))).matches()).isFalse();
+        model.setAutoBuckets(true);
+        random = new DorisDdl().generate(model);
+        assertThat(SchemaComparison.compare(model, DorisModelGateway.parseSchema(columns, random)).matches()).isTrue();
+        String numericAuto = random.replace("BUCKETS AUTO", "BUCKETS 10").replace("PROPERTIES (", "PROPERTIES (\n\"auto_bucket\" = \"true\",");
+        assertThat(SchemaComparison.compare(model, DorisModelGateway.parseSchema(columns, numericAuto)).matches()).isTrue();
+    }
+
     @Test void comparisonDetectsPhysicalSettingsAndAggregationDrift() {
         var model = new DataModel(); model.setTableName("dws_test"); model.setName("测试"); model.setSubjectArea("测试");
         model.setModelType("AGGREGATE"); model.setPartitionType("AUTO_RANGE"); model.setPartitionColumn("dt");

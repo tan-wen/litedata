@@ -18,7 +18,7 @@
    确认该字段属于业务键后，需将它移到全部非键字段前面。不要仅为开启分区把会变化的更新时间加入 UNIQUE KEY；
    这会改变记录唯一性，应结合幂等更新需求选择稳定业务日期或不分区。
    AGGREGATE 的非键字段在本步骤选择聚合函数，SUM 只用于数值，REPLACE_IF_NOT_NULL 只用于可空字段。
-   新增表默认自动分桶，无需填写桶数。前两步完成后显示摘要，第三步显示当前可用 BE 与总数，三个步骤卡片保持等高。
+   新增表默认 HASH 按全部键列自动分桶；可自选分桶方式、分桶键和 AUTO / 手动桶数。前两步完成后显示摘要，第三步显示当前可用 BE 与总数，三个步骤卡片保持等高。
    点击可见步骤时保留当前浏览位置；从长表单底部切换时，仅在新步骤标题离开可视区域时定位内容。
    可返回修改；切换步骤只保留表单草稿，不写入数据库。
 4. 保存并预览生成的 DDL，确认目标为 `warehouse` 后勾选确认、执行建表。
@@ -54,15 +54,25 @@ AGGREGATE 支持 `SUM`、`MIN`、`MAX`、`REPLACE`、`REPLACE_IF_NOT_NULL`。`SU
 查询失败或建表账号未配置时，页面明确提示未获取到数量，不推测为单 BE；逻辑模型仍可保存，实际建表由 Doris 最终校验。
 查询使用现有 writer 身份，不额外授予集群管理权限。当前 4.1.3 环境已实测原有 writer 可读取节点状态。
 计数用于副本数量预检，磁盘容量及放置条件仍由 Doris 建表时检查。
-副本负责冗余存储，桶负责数据分片；HASH 使用全部键列。
+副本负责冗余存储，桶负责数据分片。第三步支持自定义：
 
-新版新增页默认生成 `BUCKETS AUTO`，隐藏手动桶数配置。Doris 在建表或创建新分区时推断桶数，
+- 分桶方式：HASH 或 RANDOM；RANDOM 仅适用于 DUPLICATE，不需要分桶键。
+- HASH 分桶键：可选择一列或多列。UNIQUE / AGGREGATE 只允许键列；DUPLICATE 允许键列和非键列，但不支持 FLOAT / DOUBLE。选中顺序作为 HASH 列顺序保存，编辑时保留。
+- 分桶数：AUTO 或手动正整数（整数绑定上限为 2147483647，实际容量和引擎上限由 Doris 校验）。通常建议单个分区不超过 128 桶，应结合数据量、BE 和磁盘数量选择；这是一项建议，不是平台硬限制。
+
+默认仍为全部键列 HASH + AUTO。用户开始自选键后，表单会保留自选结果；删除字段或更换表模型导致已选键失效时，需要重新选择有效分桶键。
+
+新增页默认生成 `BUCKETS AUTO`，取消“由 Doris 自动推算”即可填写固定桶数。Doris 在建表或创建新分区时推断桶数，
 初始采用 Doris 的默认分区大小估算（10GB），后续新分区可参考历史分区数据。它不会自动重分桶已存在的数据，
 也不意味着每个小表只占一个 Tablet，或保证比手工配置更快。当前 4.1.3 单 BE 实测初始日期分区为 10 桶。
 自动分桶适合本平台减少初次配置的需求；大量小分区或明确的容量/并发要求仍须结合实际 Tablet 大小评估。
 
 Flyway `V13__model_auto_buckets.sql` 为已有模型保留固定分桶标识和原桶数，不自动修改现有 Doris 表。
-编辑旧模型时显示并保留原固定桶数；旧 API 客户端未提供 `autoBuckets` 时维持原固定分桶行为（1–32）。
+编辑旧模型时显示并保留原固定桶数；旧客户端未提供 `autoBuckets` 时维持固定分桶行为。
+Flyway `V14__model_distribution.sql` 新增分桶方式和键配置，旧记录仍按全部键列 HASH 生成相同 DDL，不修改已有 Doris 表。
+表单参数 `distributionType` 为 `HASH` / `RANDOM`，`distributionColumns` 为按顺序以逗号分隔的字段名。
+旧客户端省略分桶键时沿用全部键列；显式提交空串的 HASH 配置会被拒绝。RANDOM 会清空键配置。
+`autoBuckets=true` 使用 AUTO，否则要求 `buckets` 为正整数。
 结构核对比较 AUTO / 固定策略，只有固定策略才要求物理默认桶数等于逻辑桶数，不把 Doris 自动推断的数值误判为差异。
 
 分区可选“不分区”或“日期自动范围分区”：选择 DATE / DATETIME 键列及日、月、年粒度，生成
@@ -86,7 +96,7 @@ DIM/SCD1 保持 UNIQUE 且不分区，以维护业务键的唯一当前值。
 - 只执行服务端生成的单条 CREATE TABLE，不接受用户提交任意 DDL。已有表创建会失败并留记录；
   核对已有表请用“结构比对”。没有自动 ALTER、DROP、结构回滚或 Doris 逆向导入。
 - 比对信息来自 `information_schema.COLUMNS` 和 `SHOW CREATE TABLE`，覆盖字段名/类型/顺序/
-  可空/注释、模型类型、键列、字段聚合函数、HASH 字段与分桶策略（固定时比较桶数）、默认副本数、日期自动分区规则及 UNIQUE merge-on-write。
+  可空/注释、模型类型、键列、字段聚合函数、分桶方式、HASH 字段与数量策略（固定时比较桶数）、默认副本数、日期自动分区规则及 UNIQUE merge-on-write。
   不比较表说明、业务分层/主题、标准备注、已创建分区列表及各分区单独覆盖的副本/桶属性或其他引擎属性。
 - 标准备注当前为自由文本元数据，没有独立数据标准字典及强制映射。
 - ADMIN / DEVELOPER 可修改、建表、比对及归档，VIEWER 可查看。页面写操作要求 CSRF。
@@ -121,6 +131,7 @@ $env:JAVA_HOME='C:\Java\jdk-25.0.3'
 docker compose --env-file .env.example config --quiet
 python deploy/modeling_smoke.py
 python deploy/model_settings_smoke.py
+python deploy/model_bucketing_smoke.py
 ```
 
 Maven 使用 Testcontainers MySQL 验证迁移、模型和字段持久化、页面/表单、角色与 CSRF、版本冲突、
@@ -165,3 +176,11 @@ Compose 配置解析通过。当前真实 Doris 4.1.3 冒烟通过保存、DDL �
 官方语法依据：[Doris 4.x CREATE TABLE](https://doris.apache.org/docs/4.x/sql-manual/sql-statements/table-and-view/table/CREATE-TABLE/)、
 [COLUMNS 元数据](https://doris.apache.org/docs/4.x/admin-manual/system-tables/information_schema/columns/)、
 [SHOW BACKENDS 节点状态](https://doris.apache.org/docs/4.x/sql-manual/sql-statements/cluster-management/instance-management/SHOW-BACKENDS/)。
+
+2026-10-28 自定义分桶验证：全量 Maven verify 171 项通过，Compose 配置解析与 JavaScript 语法检查通过。
+真实 Doris 4.1.3 冒烟覆盖 UNIQUE / AGGREGATE 的 HASH 子集键、DUPLICATE 的非键列 HASH、RANDOM 固定桶数和 RANDOM AUTO，
+均通过建表、SHOW CREATE 回读、编辑回填及结构核对；修改逻辑分桶方式、键或桶数可识别差异，恢复后重新匹配。
+保留 `dws_bucket_smoke_bf989f689f_*` 五张表作为证据。浏览器验证默认全部键列、自选非键列、HASH 空选拦截、固定 64 桶、
+多键顺序在保存和编辑时保留，以及桌面和窄屏布局。模型 ID 63 仅保存了 UI 验证模型，未执行物理建表。
+
+自定义分桶依据：[Doris 数据分桶](https://doris.apache.org/zh-CN/docs/dev/table-design/data-partitioning/data-bucketing/)。分桶方式和键属于建表定义；修改逻辑设置不会自动调整已有物理表，应新建目标表并迁移数据。

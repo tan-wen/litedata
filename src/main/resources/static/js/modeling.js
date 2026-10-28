@@ -9,6 +9,16 @@
   const partitionType = document.getElementById('partitionType');
   const partitionColumn = document.getElementById('partitionColumn');
   const partitionUnit = document.getElementById('partitionUnit');
+  const distributionType = document.getElementById('distributionType');
+  const distributionColumns = document.getElementById('distributionColumns');
+  let defaultDistributionKeys = distributionColumns.dataset.defaultKeys === 'true';
+  const distributionKeys = document.querySelector('[data-distribution-keys]');
+  const distributionKeyList = document.querySelector('[data-distribution-key-list]');
+  const distributionTypeHelp = document.querySelector('[data-distribution-type-help]');
+  const distributionKeyHelp = document.querySelector('[data-distribution-key-help]');
+  const autoBuckets = document.querySelector('[data-auto-buckets]');
+  const bucketCount = document.querySelector('[data-bucket-count]');
+  const bucketHelp = document.querySelector('[data-bucket-help]');
   const dimensionSettings = document.getElementById('dimension-settings');
   const partitionSettings = [...document.querySelectorAll('[data-partition-setting]')];
   const guidance = document.getElementById('field-guidance');
@@ -152,13 +162,45 @@
     const writeHint = modelType.value !== 'UNIQUE' ? ' 当前自动同步和重试加工要求 UNIQUE；此模型需独立管理写入与重算。' : '';
     document.querySelector('[data-layer-model-hint]').textContent = (hints[layer.value] || '请根据写入语义选择 Doris 数据模型。') + shapeHint + writeHint;
   }
+  function distributionSelection() {
+    return distributionColumns.value.split(',').map(value => value.trim()).filter(Boolean);
+  }
+  function updateDistributionSettings() {
+    const all = fields().filter(field => field.name);
+    const duplicate = modelType.value === 'DUPLICATE';
+    const randomOption = distributionType.querySelector('option[value="RANDOM"]');
+    randomOption.disabled = !duplicate;
+    if (!duplicate && distributionType.value === 'RANDOM') distributionType.value = 'HASH';
+    const random = distributionType.value === 'RANDOM';
+    const candidates = (duplicate ? all : all.filter(field => field.key)).filter(field => !['FLOAT', 'DOUBLE'].includes(parseType(field.dataType)?.kind));
+    const selected = new Set(distributionSelection().map(value => value.toLowerCase()));
+    const valid = [...selected].map(name => candidates.find(field => field.name.toLowerCase() === name)).filter(Boolean);
+    const choices = defaultDistributionKeys ? candidates.filter(field => field.key) : valid;
+    distributionKeyList.replaceChildren();
+    candidates.forEach(field => {
+      const label = document.createElement('label'); label.className = 'd-flex align-items-center gap-2 mb-2';
+      const input = document.createElement('input'); input.className = 'check m-0'; input.type = 'checkbox'; input.value = field.name; input.checked = choices.some(item => item.name.toLowerCase() === field.name.toLowerCase());
+      input.dataset.distributionKey = 'true'; input.setAttribute('aria-label', `${field.name} 分桶键`);
+      const text = document.createElement('span'); text.textContent = `${field.name} · ${field.dataType}${field.key ? '（键列）' : ''}`;
+      label.append(input, text); distributionKeyList.append(label);
+    });
+    distributionKeys.hidden = random;
+    distributionKeyList.querySelectorAll('input').forEach(input => { input.disabled = random; });
+    distributionColumns.value = random ? '' : choices.map(field => field.name).join(',');
+    distributionColumns.setCustomValidity(!random && choices.length === 0 ? 'HASH 分桶至少需要一个分桶键。' : '');
+    distributionTypeHelp.textContent = random ? 'RANDOM 仅支持 DUPLICATE KEY，数据随机均匀分布，不能按分桶键裁剪。' : 'HASH 按分桶键计算，查询等值过滤可利用分桶裁剪。';
+    distributionKeyHelp.textContent = random ? '' : candidates.length ? (duplicate ? 'DUPLICATE KEY 可选择键列或非键列（不支持 FLOAT / DOUBLE）；至少选择一个。' : 'UNIQUE / AGGREGATE KEY 只能选择键列；至少选择一个。') : '请返回第二步维护可用的键列。';
+    bucketCount.disabled = autoBuckets.checked;
+    bucketCount.required = !autoBuckets.checked;
+    bucketHelp.textContent = autoBuckets.checked ? 'Doris 会在建表或创建新分区时推算桶数，不会重分桶已有数据。' : '手动指定 1 到 2147483647 的整数；建表后既有分区不可修改。';
+  }
   function updatePhysicalSettings() {
     updateFieldConstraints();
     partitionSettings.forEach(container => { const enabled = partitionType.value === 'AUTO_RANGE'; container.hidden = !enabled; container.querySelectorAll('select').forEach(input => { input.disabled = !enabled; }); });
     partitionColumn.required = partitionType.value === 'AUTO_RANGE'; partitionUnit.required = partitionType.value === 'AUTO_RANGE';
     const fieldHints = { ODS: 'ODS 请与源表字段对应，使用稳定业务键支持回放去重。', DIM: 'DIM 的键列对应维度业务键，用于维护成员当前值。', DWD: 'DWD 按明细粒度确定业务键；事件明细可在第三步选择保留重复记录。', DWS: 'DWS 请先确定汇总粒度，键列组成指标的分组维度。', ADS: 'ADS 按报表查询粒度定义键列，区分重算快照与增量指标。' };
     guidance.textContent = '键列须连续排在前面且不可空。' + (fieldHints[layer.value] || '') + 'Doris 数据模型和聚合规则在第三步选择。';
-    updateLayerHint(); refreshSuggestions(); updateAggregationRules();
+    updateLayerHint(); refreshSuggestions(); updateAggregationRules(); updateDistributionSettings();
   }
   function updateWizardSummary() { const tableName = document.getElementById('tableName').value.trim() || '未命名表'; form.querySelector('[data-step-summary="1"]').textContent = `${tableName} / ${layer.value || '未选择分层'}`; const all = fields(); form.querySelector('[data-step-summary="2"]').textContent = `${all.length} 个字段 / ${all.filter(field => field.key).length} 个键列`; }
   function renumber() {
@@ -190,6 +232,7 @@
     updatePhysicalSettings();
     if (modelType.value === 'AGGREGATE') { const rules = [...aggregationRules.querySelectorAll('[data-aggregate-index]')]; if (!rules.length) { setNotice('AGGREGATE KEY 至少需要一个非键字段。'); focusInvalid(modelType); return false; } const missing = rules.find(select => !select.value); if (missing) { setNotice('请为每个非键字段选择聚合函数。'); focusInvalid(missing); return false; } }
     if (partitionType.value === 'AUTO_RANGE' && !partitionColumn.value) { setNotice('自动范围分区需要 DATE/DATETIME 的不可空键列；请返回第二步维护字段。'); focusInvalid(partitionColumn); return false; }
+    if (distributionType.value === 'HASH' && !distributionSelection().length) { setNotice('HASH 分桶至少需要选择一个分桶键。'); focusInvalid(distributionKeyList); return false; }
     return validateControls(3);
   }
   function validateStep(step) { setNotice(''); if (step === 1) return validateControls(1); if (step === 2) return validateControls(2) && validateFields(); return validatePhysical(); }
@@ -211,6 +254,19 @@
   }
 
   layer.addEventListener('change', () => { updateDimension(true); updatePhysicalSettings(); updateWizardSummary(); }); modelType.addEventListener('change', updatePhysicalSettings); partitionType.addEventListener('change', updatePhysicalSettings); partitionColumn.addEventListener('change', () => partitionColumn.setCustomValidity(''));
+  distributionType.addEventListener('change', () => {
+    if (distributionType.value === 'HASH' && !distributionSelection().length) defaultDistributionKeys = true;
+    updatePhysicalSettings();
+  }); autoBuckets.addEventListener('change', updateDistributionSettings);
+  distributionKeyList.addEventListener('change', event => {
+    const input = event.target;
+    if (!input.matches('[data-distribution-key]')) return;
+    defaultDistributionKeys = false;
+    const selected = distributionSelection().filter(value => value.toLowerCase() !== input.value.toLowerCase());
+    if (input.checked) selected.push(input.value);
+    distributionColumns.value = selected.join(',');
+    distributionColumns.setCustomValidity(selected.length ? '' : 'HASH 分桶至少需要一个分桶键。');
+  });
   document.getElementById('partition-fields-action').addEventListener('click', () => {
     attemptStep(2);
     const target = fields().find(field => ['DATE', 'DATETIME'].includes(parseType(field.dataType)?.kind) && !field.key);

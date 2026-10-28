@@ -25,7 +25,7 @@ public class ModelingController {
     void bind(WebDataBinder binder) {
         binder.setAutoGrowCollectionLimit(100);
         binder.setAllowedFields("tableName", "name", "subjectArea", "layer", "description", "buckets", "autoBuckets", "version",
-                "dimensionKeys", "dimensionLabel", "dimensionStrategy", "modelType", "replicationNum", "partitionType", "partitionColumn", "partitionUnit",
+                "dimensionKeys", "dimensionLabel", "dimensionStrategy", "modelType", "replicationNum", "partitionType", "partitionColumn", "partitionUnit", "distributionType", "distributionColumns",
                 "fields[*].name", "fields[*].dataType", "fields[*].keyColumn", "fields[*].nullable", "fields[*].comment", "fields[*].standard", "fields[*].aggregation");
     }
     @ModelAttribute("activeNav") String activeNav() { return "models"; }
@@ -115,7 +115,7 @@ public class ModelingController {
     }
 
     private static boolean isPhysicalField(String field) {
-        return List.of("modelType", "replicationNum", "buckets", "autoBuckets", "partitionType", "partitionColumn", "partitionUnit").contains(field);
+        return List.of("modelType", "replicationNum", "buckets", "autoBuckets", "distributionType", "distributionColumns", "partitionType", "partitionColumn", "partitionUnit").contains(field);
     }
 
     private static int errorStep(String message) {
