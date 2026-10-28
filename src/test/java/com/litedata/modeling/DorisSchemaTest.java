@@ -8,6 +8,64 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class DorisSchemaTest {
+    @Test void comparesEquivalentRangesAndDetectsGapsAndListValueChanges() {
+        var model = new DataModel(); model.setTableName("test"); model.setName("测试"); model.setSubjectArea("测试");
+        var field = new ModelField(); field.setName("id"); field.setDataType("BIGINT"); field.setKeyColumn(true);
+        model.setFields(List.of(field)); model.setPartitionType("MANUAL_RANGE"); model.setPartitionColumn("id"); model.setPartitionRangeStyle("LESS_THAN");
+        var first = new com.litedata.model.ModelPartition(); first.setName("p_first"); first.setUpperBound("100");
+        var last = new com.litedata.model.ModelPartition(); last.setName("p_last"); last.setUpperBound("MAXVALUE");
+        model.setPartitions(List.of(first, last));
+        String ddl = new DorisDdl().generate(model);
+        var columns = List.of(new DorisModelGateway.Column("id", "BIGINT", false, ""));
+        String normalized = ddl.replace("VALUES LESS THAN (\"100\")", "VALUES [(\"-9223372036854775808\"), (\"100\"))")
+                .replace("VALUES LESS THAN (MAXVALUE)", "VALUES [(\"100\"), (MAXVALUE))");
+        assertThat(SchemaComparison.compare(model, DorisModelGateway.parseSchema(columns, normalized)).matches()).isTrue();
+        assertThat(SchemaComparison.compare(model, DorisModelGateway.parseSchema(columns, normalized.replace("[(\"100\")", "[(\"101\")"))).matches()).isFalse();
+        field.setDataType("VARCHAR(100)"); model.setPartitionType("MANUAL_LIST");
+        first.setValuesText("east,west\nPARTITION fake VALUES IN (9)"); model.setPartitions(List.of(first));
+        ddl = new DorisDdl().generate(model);
+        columns = List.of(new DorisModelGateway.Column("id", "VARCHAR(100)", false, ""));
+        assertThat(SchemaComparison.compare(model, DorisModelGateway.parseSchema(columns, ddl)).matches()).isTrue();
+        assertThat(SchemaComparison.compare(model, DorisModelGateway.parseSchema(columns, ddl.replace("\"east,west\"", "\"east\",\"west\""))).matches()).isFalse();
+    }
+
+    @Test void dynamicComparisonAcceptsEngineDefaultsButDetectsExplicitPolicyDrift() {
+        var model = new DataModel(); model.setTableName("test"); model.setName("测试"); model.setSubjectArea("测试");
+        var field = new ModelField(); field.setName("dt"); field.setDataType("DATE"); field.setKeyColumn(true);
+        model.setFields(List.of(field)); model.setPartitionType("DYNAMIC"); model.setPartitionColumn("dt");
+        String sql = new DorisDdl().generate(model);
+        var columns = List.of(new DorisModelGateway.Column("dt", "DATE", false, ""));
+        sql = sql.replace("PROPERTIES (", "PROPERTIES (\n\"dynamic_partition.start_day_of_month\" = \"1\",");
+        assertThat(SchemaComparison.compare(model, DorisModelGateway.parseSchema(columns, sql)).matches()).isTrue();
+        assertThat(SchemaComparison.compare(model, DorisModelGateway.parseSchema(columns, sql.replace("\"dynamic_partition.end\" = \"2\"", "\"dynamic_partition.end\" = \"3\""))).matches()).isFalse();
+        String withAllocation = sql.replace("PROPERTIES (", "PROPERTIES (\n\"dynamic_partition.replication_allocation\" = \"tag.location.default: 1\",");
+        assertThat(SchemaComparison.compare(model, DorisModelGateway.parseSchema(columns, withAllocation)).matches()).isTrue();
+        model.setDynamicPartitionProperties(model.getDynamicPartitionProperties().replace("    \"dynamic_partition.start\" = \"-1\",\n", ""));
+        assertThat(SchemaComparison.compare(model, DorisModelGateway.parseSchema(columns, withAllocation)).matches()).isFalse();
+    }
+
+    @Test void readsServerNormalizedLessThanAndQuoteAwareListValues() {
+        var columns = List.of(new DorisModelGateway.Column("id", "BIGINT", false, ""), new DorisModelGateway.Column("region", "VARCHAR(50)", false, ""));
+        var range = DorisModelGateway.parseSchema(columns, """
+                CREATE TABLE `t` (`id` bigint NOT NULL, `region` varchar(50) NOT NULL) ENGINE=OLAP
+                DUPLICATE KEY(`id`, `region`)
+                PARTITION BY RANGE(`id`)
+                (PARTITION p_small VALUES [("-9223372036854775808"), ("100")), PARTITION p_all VALUES [("100"), (MAXVALUE)))
+                DISTRIBUTED BY HASH(`id`) BUCKETS 1 PROPERTIES ("replication_num" = "1");
+                """);
+        assertThat(range.partitionType()).isEqualTo("MANUAL_RANGE");
+        assertThat(range.partitionRules()).extracting(DorisPartitioning.Rule::upperBound).containsExactly("100", "MAXVALUE");
+        var list = DorisModelGateway.parseSchema(columns, """
+                CREATE TABLE `t` (`id` bigint NOT NULL, `region` varchar(50) NOT NULL) ENGINE=OLAP
+                DUPLICATE KEY(`id`, `region`)
+                PARTITION BY LIST (`region`)
+                (PARTITION p VALUES IN ("east","west,central","x(y)","O\\'Reilly"))
+                DISTRIBUTED BY HASH(`id`) BUCKETS 1
+                PROPERTIES ("replication_num" = "1");
+                """);
+        assertThat(list.partitionRules().getFirst().values()).containsExactly("east", "west,central", "x(y)", "O'Reilly");
+    }
+
     @Test void readsAggregateFunctionsAutoPartitionAndReplicaAllocationFromServerDdl() {
         var schema = DorisModelGateway.parseSchema(List.of(new DorisModelGateway.Column("dt", "datev2", false, ""),
                 new DorisModelGateway.Column("total", "decimalv3(18,2)", true, "")), """

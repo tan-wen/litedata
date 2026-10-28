@@ -26,6 +26,7 @@ public class ModelingController {
         binder.setAutoGrowCollectionLimit(100);
         binder.setAllowedFields("tableName", "name", "subjectArea", "layer", "description", "buckets", "autoBuckets", "version",
                 "dimensionKeys", "dimensionLabel", "dimensionStrategy", "modelType", "replicationNum", "partitionType", "partitionColumn", "partitionUnit", "distributionType", "distributionColumns",
+                "partitionRangeStyle", "dynamicPartitionProperties", "partitions[*].name", "partitions[*].lowerBound", "partitions[*].upperBound", "partitions[*].valuesText",
                 "fields[*].name", "fields[*].dataType", "fields[*].keyColumn", "fields[*].nullable", "fields[*].comment", "fields[*].standard", "fields[*].aggregation");
     }
     @ModelAttribute("activeNav") String activeNav() { return "models"; }
@@ -115,12 +116,12 @@ public class ModelingController {
     }
 
     private static boolean isPhysicalField(String field) {
-        return List.of("modelType", "replicationNum", "buckets", "autoBuckets", "distributionType", "distributionColumns", "partitionType", "partitionColumn", "partitionUnit").contains(field);
+        return field.startsWith("partitions[") || List.of("modelType", "replicationNum", "buckets", "autoBuckets", "distributionType", "distributionColumns", "partitionType", "partitionColumn", "partitionUnit", "partitionRangeStyle", "dynamicPartitionProperties").contains(field);
     }
 
     private static int errorStep(String message) {
         if (message == null) return 1;
-        if (message.contains("分区") || message.contains("副本") || message.contains("分桶") || message.contains("AGGREGATE")
+        if (message.contains("分区") || message.contains("dynamic_partition") || message.contains("PROPERTIES") || message.contains("副本") || message.contains("分桶") || message.contains("AGGREGATE")
                 || message.contains("数据模型") || message.contains("聚合函数") || message.contains("SUM") || message.contains("REPLACE_IF_NOT_NULL")
                 || message.contains("DIM/SCD1")) return 3;
         if (message.contains("表名") || message.contains("模型中文名") || message.contains("主题域") || message.contains("分层") || message.contains("描述")) return 1;

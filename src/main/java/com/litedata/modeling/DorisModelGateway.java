@@ -17,7 +17,15 @@ public class DorisModelGateway {
     public record Schema(List<Column> columns, List<String> keyColumns, List<String> hashColumns, int buckets,
                          String modelType, int replicationNum, String partitionType, String partitionColumn,
                          String partitionUnit, Map<String,String> aggregations, boolean mergeOnWrite, boolean autoBuckets,
-                         String distributionType) {
+                         String distributionType, String partitionRangeStyle, List<DorisPartitioning.Rule> partitionRules,
+                         Map<String, String> dynamicPartitionProperties) {
+        public Schema(List<Column> columns, List<String> keyColumns, List<String> hashColumns, int buckets,
+                      String modelType, int replicationNum, String partitionType, String partitionColumn,
+                      String partitionUnit, Map<String,String> aggregations, boolean mergeOnWrite, boolean autoBuckets,
+                      String distributionType) {
+            this(columns, keyColumns, hashColumns, buckets, modelType, replicationNum, partitionType, partitionColumn,
+                    partitionUnit, aggregations, mergeOnWrite, autoBuckets, distributionType, "FIXED", List.of(), Map.of());
+        }
         public Schema(List<Column> columns, List<String> keys, List<String> hashColumns, int buckets,
                       String modelType, int replicationNum, String partitionType, String partitionColumn,
                       String partitionUnit, Map<String,String> aggregations, boolean mergeOnWrite, boolean autoBuckets) {
@@ -125,13 +133,24 @@ public class DorisModelGateway {
         String distributionType = hasDistribution ? (bucket.group(1).equalsIgnoreCase("RANDOM") ? "RANDOM" : "HASH") : "UNKNOWN";
         String bucketValue = hasDistribution ? bucket.group(2) : "0";
         boolean autoBuckets = bucketValue.equalsIgnoreCase("AUTO") || "true".equalsIgnoreCase(property(ddl, "auto_bucket"));
-        var auto = Pattern.compile("(?im)^\\s*AUTO\\s+PARTITION\\s+BY\\s+RANGE\\s*\\(\\s*date_trunc\\s*\\(\\s*`?([A-Za-z_][A-Za-z0-9_]*)`?\\s*,\\s*['\"](day|month|year)['\"]\\s*\\)\\s*\\)").matcher(ddl);
+        var auto = Pattern.compile("(?im)^\\s*AUTO\\s+PARTITION\\s+BY\\s+RANGE\\s*\\(\\s*date_trunc\\s*\\(\\s*`?([A-Za-z_][A-Za-z0-9_]*)`?\\s*,\\s*['\"](second|minute|hour|day|week|month|year)['\"]\\s*\\)\\s*\\)").matcher(ddl);
         String partitionType = Pattern.compile("(?im)^\\s*(?:AUTO\\s+)?PARTITION\\s+BY\\b").matcher(ddl).find() ? "OTHER" : "NONE";
-        String partitionColumn = "", partitionUnit = "DAY";
+        String partitionColumn = "", partitionUnit = "DAY", rangeStyle = "FIXED";
         if (auto.find()) {
             partitionType = "AUTO_RANGE"; partitionColumn = auto.group(1).toLowerCase(Locale.ROOT);
             partitionUnit = auto.group(2).toUpperCase(Locale.ROOT);
         }
+        var autoList = Pattern.compile("(?im)^\\s*AUTO\\s+PARTITION\\s+BY\\s+LIST\\s*\\(\\s*`?([A-Za-z_][A-Za-z0-9_]*)`?\\s*\\)").matcher(ddl);
+        if (autoList.find()) { partitionType = "AUTO_LIST"; partitionColumn = autoList.group(1).toLowerCase(Locale.ROOT); partitionUnit = ""; }
+        var manual = Pattern.compile("(?im)^\\s*PARTITION\\s+BY\\s+(RANGE|LIST)\\s*\\(\\s*`?([A-Za-z_][A-Za-z0-9_]*)`?\\s*\\)").matcher(ddl);
+        if (manual.find()) {
+            partitionColumn = manual.group(2).toLowerCase(Locale.ROOT); partitionUnit = "";
+            partitionType = "RANGE".equalsIgnoreCase(manual.group(1)) ? "MANUAL_RANGE" : "MANUAL_LIST";
+        }
+        var dynamic = dynamicProperties(ddl);
+        if (!dynamic.isEmpty()) partitionType = "DYNAMIC";
+        List<DorisPartitioning.Rule> rules = partitionType.startsWith("MANUAL_") ? manualRules(ddl, partitionType) : List.of();
+        if (partitionType.equals("MANUAL_RANGE") && rules.stream().allMatch(rule -> rule.lowerBound().isEmpty())) rangeStyle = "LESS_THAN";
         int replicas = 0;
         String allocation = property(ddl, "replication_allocation");
         if (!allocation.isEmpty()) {
@@ -152,7 +171,24 @@ public class DorisModelGateway {
         }
         return new Schema(columns, keys, columnsIn(ddl, "^\\s*DISTRIBUTED\\s+BY\\s+HASH"),
                 bucketValue.equalsIgnoreCase("AUTO") ? 0 : Integer.parseInt(bucketValue), type, replicas, partitionType, partitionColumn,
-                partitionUnit, Map.copyOf(aggregations), "true".equalsIgnoreCase(property(ddl, "enable_unique_key_merge_on_write")), autoBuckets, distributionType);
+                partitionUnit, Map.copyOf(aggregations), "true".equalsIgnoreCase(property(ddl, "enable_unique_key_merge_on_write")), autoBuckets, distributionType,
+                rangeStyle, rules, dynamic);
+    }
+
+    private static Map<String, String> dynamicProperties(String ddl) {
+        var found = new LinkedHashMap<String, String>();
+        var matcher = Pattern.compile("(?im)^\\s*\\\"(dynamic_partition\\.[A-Za-z_]+)\\\"\\s*=\\s*\\\"([^\\\"]*)\\\"").matcher(ddl);
+        while (matcher.find()) found.put(matcher.group(1), matcher.group(2));
+        String allocation = found.get("dynamic_partition.replication_allocation");
+        if (allocation != null) {
+            var defaultTag = Pattern.compile("\\s*tag\\.location\\.default\\s*:\\s*(\\d+)\\s*").matcher(allocation);
+            found.put("dynamic_partition.replication_num", defaultTag.matches() ? defaultTag.group(1) : "非默认标签分配：" + allocation);
+        }
+        return Map.copyOf(found);
+    }
+
+    private static List<DorisPartitioning.Rule> manualRules(String ddl, String partitionType) {
+        return DorisPartitionMetadata.parse(ddl, partitionType);
     }
 
     private static String property(String ddl, String name) {

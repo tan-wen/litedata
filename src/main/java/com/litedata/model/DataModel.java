@@ -23,6 +23,18 @@ public class DataModel {
     private String partitionType = "NONE";
     private String partitionColumn = "";
     private String partitionUnit = "DAY";
+    private String partitionRangeStyle = "FIXED";
+    public static final String DEFAULT_DYNAMIC_PARTITION_PROPERTIES = """
+            PROPERTIES(
+                "dynamic_partition.enable" = "true",
+                "dynamic_partition.time_unit" = "DAY",
+                "dynamic_partition.start" = "-1",
+                "dynamic_partition.end" = "2",
+                "dynamic_partition.prefix" = "p",
+                "dynamic_partition.create_history_partition" = "true"
+            )""";
+    private String dynamicPartitionProperties = DEFAULT_DYNAMIC_PARTITION_PROPERTIES;
+    private List<ModelPartition> partitions = new ArrayList<>();
     private int version;
     private Integer physicalVersion;
     private boolean archived;
@@ -75,6 +87,12 @@ public class DataModel {
     public void setPartitionColumn(String partitionColumn) { this.partitionColumn = partitionColumn; }
     public String getPartitionUnit() { return partitionUnit; }
     public void setPartitionUnit(String partitionUnit) { this.partitionUnit = partitionUnit; }
+    public String getPartitionRangeStyle() { return partitionRangeStyle; }
+    public void setPartitionRangeStyle(String partitionRangeStyle) { this.partitionRangeStyle = partitionRangeStyle; }
+    public String getDynamicPartitionProperties() { return dynamicPartitionProperties == null ? DEFAULT_DYNAMIC_PARTITION_PROPERTIES : dynamicPartitionProperties; }
+    public void setDynamicPartitionProperties(String properties) { this.dynamicPartitionProperties = properties; }
+    public List<ModelPartition> getPartitions() { return partitions; }
+    public void setPartitions(List<ModelPartition> partitions) { this.partitions = partitions; }
     public int getVersion() { return version; }
     public void setVersion(int version) { this.version = version; }
     public Integer getPhysicalVersion() { return physicalVersion; }

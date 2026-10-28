@@ -5,11 +5,35 @@ import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException
 
 import com.litedata.model.DataModel;
 import com.litedata.model.ModelField;
+import com.litedata.model.ModelPartition;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class DorisDdlTest {
     private final DorisDdl ddl = new DorisDdl();
+
+    @Test void preservesFractionalPartitionBoundariesAndRejectsInvalidCalendarDates() {
+        var model = model(field("dt", "DATETIME(6)", true, false)); model.setPartitionType("MANUAL_RANGE"); model.setPartitionColumn("dt");
+        model.setPartitions(List.of(partition("p_microseconds", "2026-10-28 00:00:00.000001", "2026-10-28 00:00:00.000002", "")));
+        assertThat(ddl.generate(model)).contains("00:00:00.000001", "00:00:00.000002");
+        model.getPartitions().getFirst().setLowerBound("2026-02-30 00:00:00");
+        assertThatIllegalArgumentException().isThrownBy(() -> ddl.generate(model));
+    }
+
+    @Test void validatesAndRendersDynamicPropertiesWithoutRawSql() {
+        var values = DorisPartitioning.parseDynamicProperties("""
+                PROPERTIES(
+                  "dynamic_partition.time_unit" = "day",
+                  "dynamic_partition.end" = "02",
+                  "dynamic_partition.prefix" = "p",
+                  "dynamic_partition.reserved_history_periods" = "[2026-01-01,2026-02-01],[2026-03-01 00:00:00,2026-04-01 00:00:00]"
+                )""");
+        assertThat(values).containsEntry("dynamic_partition.enable", "true").containsEntry("dynamic_partition.time_unit", "DAY")
+                .containsEntry("dynamic_partition.end", "2");
+        assertThat(DorisPartitioning.parseDynamicProperties("\"dynamic_partition.time_unit\" = \"DAY\", \"dynamic_partition.end\" = \"2\", \"dynamic_partition.prefix\" = \"p\""))
+                .doesNotContainKey("dynamic_partition.start");
+        assertThatIllegalArgumentException().isThrownBy(() -> DorisPartitioning.parseDynamicProperties("\"dynamic_partition.time_unit\" = \"DAY\", \"dynamic_partition.end\" = \"2\", \"dynamic_partition.prefix\" = \"p\"; DROP TABLE x"));
+    }
 
     @Test void generatesFixedWarehouseUniqueKeyDdlAndNormalizesModel() {
         var model = model(field("Order_ID", "bigint(20)", true, false, "业务 '主键'"),
@@ -157,6 +181,37 @@ class DorisDdlTest {
         assertThat(model.getPartitionColumn()).isEmpty();
     }
 
+    @Test void generatesAndValidatesManualRangeAndListPartitions() {
+        var fixed = model(field("dt", "DATE", true, false), field("id", "BIGINT", true, false));
+        fixed.setPartitionType("MANUAL_RANGE"); fixed.setPartitionColumn("dt");
+        fixed.setPartitions(List.of(partition("p_2026", "2026-01-01", "2027-01-01", "")));
+        assertThat(ddl.generate(fixed)).contains("PARTITION BY RANGE(`dt`)", "PARTITION `p_2026` VALUES [(\"2026-01-01\"), (\"2027-01-01\"))");
+        var less = model(field("id", "BIGINT", true, false)); less.setPartitionType("MANUAL_RANGE"); less.setPartitionColumn("id"); less.setPartitionRangeStyle("LESS_THAN");
+        less.setPartitions(List.of(partition("p_small", "", "100", ""), partition("p_all", "", "MAXVALUE", "")));
+        assertThat(ddl.generate(less)).contains("VALUES LESS THAN (\"100\")", "VALUES LESS THAN (MAXVALUE)");
+        var list = model(field("region", "VARCHAR(30)", true, false), field("id", "BIGINT", true, false)); list.setPartitionType("MANUAL_LIST"); list.setPartitionColumn("region");
+        list.setPartitions(List.of(partition("p_region", "", "", "east\nO'Reilly\nMAXVALUE")));
+        assertThat(ddl.generate(list)).contains("VALUES IN (\"east\", \"O\\'Reilly\", \"MAXVALUE\")");
+        for (List<ModelPartition> invalid : List.of(List.of(partition("p", "2026-02-30", "2027-01-01", "")),
+                List.of(partition("p", "2", "10", ""), partition("p2", "9", "20", "")),
+                List.of(partition("p", "1", "2", ""), partition("p", "3", "4", "")))) {
+            var rejected = model(field("id", "BIGINT", true, false)); rejected.setPartitionType("MANUAL_RANGE"); rejected.setPartitionColumn("id");
+            if (invalid.getFirst().getLowerBound().contains("-")) { rejected.getFields().getFirst().setDataType("DATE"); rejected.setPartitionColumn("id"); }
+            rejected.setPartitions(invalid);
+            assertThatIllegalArgumentException().isThrownBy(() -> ddl.generate(rejected));
+        }
+        var tiny = model(field("id", "TINYINT", true, false)); tiny.setPartitionType("MANUAL_RANGE"); tiny.setPartitionColumn("id"); tiny.setPartitions(List.of(partition("p", "-129", "1", "")));
+        assertThatIllegalArgumentException().isThrownBy(() -> ddl.generate(tiny));
+    }
+
+    @Test void rejectsAutoBucketsForAutoListAndUnsafeDynamicProperties() {
+        var autoList = model(field("region", "VARCHAR(30)", true, false)); autoList.setPartitionType("AUTO_LIST"); autoList.setPartitionColumn("region"); autoList.setAutoBuckets(true);
+        assertThatIllegalArgumentException().isThrownBy(() -> ddl.generate(autoList));
+        for (String invalid : List.of("\"dynamic_partition.time_unit\" = \"DAY\", \"dynamic_partition.end\" = \"2\", \"dynamic_partition.prefix\" = \"p\", \"other\" = \"x\"",
+                "\"dynamic_partition.time_unit\" = \"DAY\", \"dynamic_partition.end\" = \"2\", \"dynamic_partition.prefix\" = \"p\", \"dynamic_partition.start\" = \"0\""))
+            assertThatIllegalArgumentException().isThrownBy(() -> DorisPartitioning.parseDynamicProperties(invalid));
+    }
+
     @Test void validatesModelsReplicasAggregationsAndDimensionSemantics() {
         for (int replicas : List.of(0, 11)) {
             var model = model(field("id", "BIGINT", true, false)); model.setReplicationNum(replicas);
@@ -226,6 +281,9 @@ class DorisDdlTest {
         model.setTableName("ods_orders"); model.setName("订单"); model.setSubjectArea("交易"); model.setLayer("ods");
         model.setDescription(""); model.setBuckets(1); model.setFields(List.of(fields));
         return model;
+    }
+    private static ModelPartition partition(String name, String lower, String upper, String values) {
+        var partition = new ModelPartition(); partition.setName(name); partition.setLowerBound(lower); partition.setUpperBound(upper); partition.setValuesText(values); return partition;
     }
     private static ModelField field(String name, String type, boolean key, boolean nullable) { return field(name, type, key, nullable, ""); }
     private static ModelField field(String name, String type, boolean key, boolean nullable, String comment) { return field(name, type, key, nullable, comment, ""); }

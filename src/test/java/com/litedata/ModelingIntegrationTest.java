@@ -418,6 +418,90 @@ class ModelingIntegrationTest {
         assertThat(service.preview(legacy.getId()).ddl()).isEqualTo(preview.ddl());
     }
 
+    @Test void manualRangePartitionsPersistAndReplaceAtomicallyOnEdit() throws Exception {
+        mvc.perform(partitionRequest("dwd_manual_range", "MANUAL_RANGE", "id")
+                .param("partitionRangeStyle", "FIXED")
+                .param("partitions[0].name", "p_first").param("partitions[0].lowerBound", "0").param("partitions[0].upperBound", "100")
+                .param("partitions[1].name", "p_second").param("partitions[1].lowerBound", "100").param("partitions[1].upperBound", "200"))
+                .andExpect(status().is3xxRedirection());
+        var saved = service.require(mapper.modelByTable("dwd_manual_range").getId());
+        long savedId = saved.getId();
+        assertThat(saved.getPartitions()).hasSize(2);
+        assertThat(saved.getPartitions().getFirst().getName()).isEqualTo("p_first");
+        assertThat(saved.getPartitions().getLast().getUpperBound()).isEqualTo("200");
+        assertThat(service.preview(saved.getId()).ddl()).contains("PARTITION BY RANGE(`id`)", "`p_first`", "`p_second`");
+        mvc.perform(get("/models/" + saved.getId() + "/edit").with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("p_second")));
+        mvc.perform(partitionRequest("dwd_manual_range", "MANUAL_RANGE", "id").param("version", "1")
+                .param("partitionRangeStyle", "LESS_THAN")
+                .param("partitions[0].name", "p_all").param("partitions[0].upperBound", "MAXVALUE")
+                .with(request -> { request.setRequestURI("/models/" + savedId); return request; }))
+                .andExpect(status().is3xxRedirection());
+        saved = service.require(saved.getId());
+        assertThat(saved.getVersion()).isEqualTo(2);
+        assertThat(saved.getPartitionRangeStyle()).isEqualTo("LESS_THAN");
+        assertThat(saved.getPartitions()).hasSize(1);
+        assertThat(saved.getPartitions().getFirst().getName()).isEqualTo("p_all");
+        assertThat(service.preview(saved.getId()).ddl()).contains("MAXVALUE").doesNotContain("p_second");
+    }
+
+    @Test void manualListAndAutoListConfigurationsRoundTripThroughForms() throws Exception {
+        mvc.perform(partitionRequest("dwd_manual_list", "MANUAL_LIST", "id")
+                .param("partitions[0].name", "p_small").param("partitions[0].valuesText", "1\n2")
+                .param("partitions[1].name", "p_large").param("partitions[1].valuesText", "3\n4"))
+                .andExpect(status().is3xxRedirection());
+        var saved = service.require(mapper.modelByTable("dwd_manual_list").getId());
+        assertThat(saved.getPartitions()).hasSize(2);
+        assertThat(saved.getPartitions().getFirst().getValuesText()).isEqualTo("1\n2");
+        assertThat(service.preview(saved.getId()).ddl()).contains("PARTITION BY LIST(`id`)", "VALUES IN");
+        mvc.perform(get("/models/" + saved.getId()).with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("p_small")));
+        mvc.perform(partitionRequest("dwd_auto_list", "AUTO_LIST", "id"))
+                .andExpect(status().is3xxRedirection());
+        var automatic = mapper.modelByTable("dwd_auto_list");
+        assertThat(service.preview(automatic.getId()).ddl()).contains("AUTO PARTITION BY LIST(`id`)");
+    }
+
+    @Test void dynamicPropertiesTextareaPersistsAndInvalidInputIsPreserved() throws Exception {
+        String properties = DataModel.DEFAULT_DYNAMIC_PARTITION_PROPERTIES;
+        mvc.perform(partitionRequest("dwd_dynamic", "DYNAMIC", "dt").param("dynamicPartitionProperties", properties))
+                .andExpect(status().is3xxRedirection());
+        var saved = service.require(mapper.modelByTable("dwd_dynamic").getId());
+        assertThat(saved.getDynamicPartitionProperties()).contains("dynamic_partition.time_unit", "DAY");
+        assertThat(service.preview(saved.getId()).ddl()).contains("PARTITION BY RANGE(`dt`)", "dynamic_partition.end");
+        mvc.perform(get("/models/" + saved.getId() + "/edit").with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("dynamic_partition.create_history_partition")));
+        for (String invalid : List.of("PROPERTIES(\"dynamic_partition.end\"=\"0\")",
+                properties + "; DROP TABLE data_model", "PROPERTIES(\"replication_num\"=\"100\")")) {
+            mvc.perform(partitionRequest("dwd_bad_dynamic", "DYNAMIC", "dt").param("dynamicPartitionProperties", invalid))
+                    .andExpect(status().isOk()).andExpect(view().name("model-form"))
+                    .andExpect(model().attribute("errorStep", 3))
+                    .andExpect(model().attribute("draft", org.hamcrest.Matchers.hasProperty("dynamicPartitionProperties", org.hamcrest.Matchers.is(invalid))));
+        }
+        assertThat(mapper.modelByTable("dwd_bad_dynamic")).isNull();
+        mvc.perform(partitionRequest("dwd_bad_dynamic_replicas", "DYNAMIC", "dt")
+                .param("dynamicPartitionProperties", properties.replace("\n)", ",\n\"dynamic_partition.replication_num\" = \"4\"\n)")))
+                .andExpect(status().isOk()).andExpect(model().attribute("errorStep", 3));
+        assertThat(mapper.modelByTable("dwd_bad_dynamic_replicas")).isNull();
+    }
+
+    @Test void partitionValidationFailureKeepsManualDefinitionsWithoutWritingRows() throws Exception {
+        mvc.perform(partitionRequest("dwd_bad_range", "MANUAL_RANGE", "id")
+                .param("partitions[0].name", "p_bad").param("partitions[0].lowerBound", "200").param("partitions[0].upperBound", "100"))
+                .andExpect(status().isOk()).andExpect(view().name("model-form"))
+                .andExpect(model().attribute("errorStep", 3));
+        assertThat(mapper.modelByTable("dwd_bad_range")).isNull();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM model_partition", Long.class)).isZero();
+    }
+
+    private static org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder partitionRequest(String table, String type, String column) {
+        return post("/models").with(user("dev").roles("DEVELOPER")).with(csrf())
+                .param("tableName", table).param("name", "分区配置验证").param("subjectArea", "测试").param("layer", "DWD")
+                .param("partitionType", type).param("partitionColumn", column).param("partitionUnit", "DAY")
+                .param("fields[0].name", "dt").param("fields[0].dataType", "DATE").param("fields[0].keyColumn", "true")
+                .param("fields[1].name", "id").param("fields[1].dataType", "BIGINT").param("fields[1].keyColumn", "true");
+    }
+
     private static org.springframework.test.web.servlet.ResultMatcher replicaAttribute(String attribute, String expected) {
         return result -> {
             var input = java.util.regex.Pattern.compile("<input\\b[^>]*\\bid=\"replicationNum\"[^>]*>")

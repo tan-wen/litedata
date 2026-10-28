@@ -85,8 +85,10 @@ public class ModelingService {
             input.setId(id);
             mapper.update(input);
             mapper.deleteFields(id);
+            mapper.deletePartitions(id);
         }
         for (int i = 0; i < input.getFields().size(); i++) mapper.insertField(id, i + 1, input.getFields().get(i));
+        for (int i = 0; i < input.getPartitions().size(); i++) mapper.insertPartition(id, i + 1, input.getPartitions().get(i));
         platform.audit(actor, "MODEL_SAVE", Long.toString(id), "SUCCESS");
         return id;
     }
@@ -172,12 +174,24 @@ public class ModelingService {
         } catch (java.security.NoSuchAlgorithmException e) { throw new IllegalStateException("SHA-256 unavailable", e); }
     }
     private String replicationError(DataModel model) {
+        Integer dynamicReplicas = null;
+        if ("DYNAMIC".equals(model.getPartitionType())) {
+            String value = DorisPartitioning.parseDynamicProperties(model.getDynamicPartitionProperties()).get("dynamic_partition.replication_num");
+            if (value != null) dynamicReplicas = Integer.parseInt(value);
+            if (dynamicReplicas != null && dynamicReplicas > 10) return "动态分区副本数须在 1 到 10 之间";
+        }
         var status = backendStatus();
         if (status.known() && model.getReplicationNum() > status.available())
             return "副本数不能超过当前可用 BE 节点数（" + status.available() + " 个），请调整副本数或检查 Doris 节点状态";
+        if (status.known() && dynamicReplicas != null && dynamicReplicas > status.available())
+            return "动态分区副本数不能超过当前可用 BE 节点数（" + status.available() + " 个）";
         return null;
     }
-    private DataModel withFields(DataModel model) { model.setFields(mapper.fields(model.getId())); return model; }
+    private DataModel withFields(DataModel model) {
+        model.setFields(mapper.fields(model.getId()));
+        model.setPartitions(mapper.partitions(model.getId()));
+        return model;
+    }
     private static String query(String keyword) { return keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT); }
     private static String normalizedLayer(String layer) { return layer == null || layer.isBlank() ? "" : layer; }
     private static DataModel requireModel(DataModel model) {

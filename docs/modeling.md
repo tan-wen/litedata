@@ -13,7 +13,9 @@
    DIM 的业务键从本步骤的键列自动生成，避免重复录入不一致。
    可添加、移除和上下移动字段；最多 100 个。表名保存后固定，模型修改会增加版本。
 3. 第三步“Doris 物理设置”：结合分层提示选择模型和副本，按需启用日期分区。
-   分区字段只能从前一步的 DATE / DATETIME 非空键列中选择；无候选时不可启用日期自动分区。
+   基础设置、分桶设置和分区设置分别放在独立卡片中；分区字段、手动定义和动态 PROPERTIES 集中在分区卡片内。
+   分区方式包括自动 RANGE / LIST、手动 RANGE / LIST 和动态时间分区；本次配置均使用单个不可空键列。
+   日期方式要求 DATE / DATETIME；手动 RANGE 另支持整数，LIST 另支持布尔和 CHAR / VARCHAR。无候选时禁用对应方式。
    仅新增 DATETIME 字段还不够：若未勾选“键列”，第三步会指出具体字段并提供返回定位入口。
    确认该字段属于业务键后，需将它移到全部非键字段前面。不要仅为开启分区把会变化的更新时间加入 UNIQUE KEY；
    这会改变记录唯一性，应结合幂等更新需求选择稳定业务日期或不分区。
@@ -75,9 +77,41 @@ Flyway `V14__model_distribution.sql` 新增分桶方式和键配置，旧记录�
 `autoBuckets=true` 使用 AUTO，否则要求 `buckets` 为正整数。
 结构核对比较 AUTO / 固定策略，只有固定策略才要求物理默认桶数等于逻辑桶数，不把 Doris 自动推断的数值误判为差异。
 
-分区可选“不分区”或“日期自动范围分区”：选择 DATE / DATETIME 键列及日、月、年粒度，生成
-`AUTO PARTITION BY RANGE(date_trunc(...)) ()`。Doris 在写入时按日期值创建相应分区，不预建空日期分区，
-也不自动删除历史分区。当前配置面不包含手工 RANGE、LIST、动态分区过期策略或自由分区 SQL。
+分区可选“不分区”及以下方式：
+
+| 方式 | 配置 | 行为 |
+| --- | --- | --- |
+| 自动 RANGE | 日期键列、时间粒度 | 导入时按日期范围创建分区 |
+| 自动 LIST | 一个枚举键列 | 导入时按尚未出现的值创建分区；要求固定分桶数 |
+| 手动 RANGE | 键列、固定区间或小于上界、分区名与边界 | 建表时创建显式分区，固定区间为左闭右开，上界可用 MAXVALUE |
+| 手动 LIST | 键列、分区名、每行一个枚举值 | 建表时创建显式枚举分区，值不能跨分区重复 |
+| 动态分区 | 日期键列、PROPERTIES 文本 | Doris 按当前时间滚动预建分区，并按 start 清理过期分区 |
+
+手动分区最多 100 条，由服务端检查名称、类型、递增边界、区间重叠与重复枚举值。可回到前一步调整字段；
+切换方式时隐藏并停用不相关控件。分区值按原始数据填写，无需加 SQL 引号。
+动态分区可在 textarea 中直接编辑完整 `PROPERTIES(...)`，例如：
+
+```sql
+PROPERTIES(
+    "dynamic_partition.enable" = "true",
+    "dynamic_partition.time_unit" = "DAY",
+    "dynamic_partition.start" = "-1",
+    "dynamic_partition.end" = "2",
+    "dynamic_partition.prefix" = "p",
+    "dynamic_partition.create_history_partition" = "true"
+)
+```
+
+服务端解析并校验动态属性后，与已有表模型和副本属性合并生成 DDL。属性格式或值错误会定位至第三步并保留原文。
+支持开关、时间单位、起止偏移、前缀、历史分区创建、分桶/副本覆盖、历史数量、周/月起始点、时区和保留历史区间；
+不支持的属性会明确提示。动态副本覆盖也按当前可用 BE 数预检。
+动态分区启用后，Doris 会自动删除 start 之前的过期分区及数据；配置前应确认保留范围。
+
+Flyway `V15__model_partition_configuration.sql` 新增手动分区定义与动态属性保存，已有 NONE / AUTO_RANGE 模型维持原定义。
+结构核对会比较手动分区的名称、边界或枚举值，以及动态分区的显式属性和历史保留等关键默认策略；
+省略 start 表示保留全部历史，核对时会识别物理表仍配置了有限保留范围的情况。
+自动和动态分区由 Doris 生成的实时分区列表不会被当成策略漂移。
+
 UNIQUE 的唯一性包含分区字段；应选择不可变业务日期，不能把可能变动的更新时间作为分区键后仍期待仅按订单 ID 覆盖。
 DIM/SCD1 保持 UNIQUE 且不分区，以维护业务键的唯一当前值。
 
@@ -88,7 +122,7 @@ DIM/SCD1 保持 UNIQUE 且不分区，以维护业务键的唯一当前值。
 
 - 支持 ODS、DIM、DWD、DWS、ADS；DIM 提供业务键、展示名称字段、维度属性与 SCD1 当前值覆盖语义。操作、质量与历史处理边界见[公共维度建模](dimension-models.md)。
 
-- 生成固定 `ENGINE=OLAP`，按上述结构化设置选择表模型、副本与日期分区；仅 UNIQUE 输出 merge-on-write 属性，新表默认 BUCKETS AUTO。
+- 生成固定 `ENGINE=OLAP`，按上述配置选择表模型、副本与分区；仅 UNIQUE 输出 merge-on-write 属性，新表默认 BUCKETS AUTO。
 - 类型支持整数、BOOLEAN、DATE、DATETIME(0–6)、CHAR(1–255)、VARCHAR(1–65533)、STRING、
   DECIMAL(1–38, 0–精度)、FLOAT、DOUBLE。本期禁止 STRING 和浮点类型作为业务主键。
 - 表中文名、业务说明和字段注释不接受反斜杠及控制字符：实测 Doris 4.1.3 的 COMMENT 会丢弃
@@ -96,8 +130,8 @@ DIM/SCD1 保持 UNIQUE 且不分区，以维护业务键的唯一当前值。
 - 只执行服务端生成的单条 CREATE TABLE，不接受用户提交任意 DDL。已有表创建会失败并留记录；
   核对已有表请用“结构比对”。没有自动 ALTER、DROP、结构回滚或 Doris 逆向导入。
 - 比对信息来自 `information_schema.COLUMNS` 和 `SHOW CREATE TABLE`，覆盖字段名/类型/顺序/
-  可空/注释、模型类型、键列、字段聚合函数、分桶方式、HASH 字段与数量策略（固定时比较桶数）、默认副本数、日期自动分区规则及 UNIQUE merge-on-write。
-  不比较表说明、业务分层/主题、标准备注、已创建分区列表及各分区单独覆盖的副本/桶属性或其他引擎属性。
+  可空/注释、模型类型、键列、字段聚合函数、分桶方式、HASH 字段与数量策略（固定时比较桶数）、默认副本数、自动/手动/动态分区规则及 UNIQUE merge-on-write。
+  不比较表说明、业务分层/主题、标准备注、自动生成的实时分区列表及各分区单独覆盖的副本/桶属性或其他引擎属性。
 - 标准备注当前为自由文本元数据，没有独立数据标准字典及强制映射。
 - ADMIN / DEVELOPER 可修改、建表、比对及归档，VIEWER 可查看。页面写操作要求 CSRF。
   物理化前检查模型版本及预览摘要；保存、建表、比对和归档写审计，建表/比对保留版本、操作人、
@@ -132,6 +166,7 @@ docker compose --env-file .env.example config --quiet
 python deploy/modeling_smoke.py
 python deploy/model_settings_smoke.py
 python deploy/model_bucketing_smoke.py
+python deploy/model_partitioning_smoke.py
 ```
 
 Maven 使用 Testcontainers MySQL 验证迁移、模型和字段持久化、页面/表单、角色与 CSRF、版本冲突、
@@ -184,3 +219,12 @@ Compose 配置解析通过。当前真实 Doris 4.1.3 冒烟通过保存、DDL �
 多键顺序在保存和编辑时保留，以及桌面和窄屏布局。模型 ID 63 仅保存了 UI 验证模型，未执行物理建表。
 
 自定义分桶依据：[Doris 数据分桶](https://doris.apache.org/zh-CN/docs/dev/table-design/data-partitioning/data-bucketing/)。分桶方式和键属于建表定义；修改逻辑设置不会自动调整已有物理表，应新建目标表并迁移数据。
+
+分区语法依据：[自动分区](https://doris.apache.org/zh-CN/docs/dev/table-design/data-partitioning/auto-partitioning/)、[手动分区](https://doris.apache.org/zh-CN/docs/dev/table-design/data-partitioning/manual-partitioning/)、[动态分区](https://doris.apache.org/zh-CN/docs/dev/table-design/data-partitioning/dynamic-partitioning/)。当前平台部署版本为 Doris 4.1.3，dev 文档中其他类型、组合和新版本生命周期属性以引擎实际能力为准。
+
+2026-10-28 分区扩展验证：全量 Maven verify 182 项通过；动态默认策略及副本分配回读收口后，建模专项回归 48 项通过。
+JavaScript / Python 语法与 Compose 配置解析通过。真实 Doris 4.1.3 的六组建表、写入、编辑回填、写入前后核对，以及范围、
+枚举和动态策略漂移检查通过；保留模型 ID 64 / 65 / 66 / 67 / 68 / 70 及 `dwd_partition_smoke_226d1a69_*` 表作为证据。
+模型 70 另通过动态 replication_num 与 Doris replication_allocation 等价核对，以及移除 start 后的策略差异识别和恢复核对。
+浏览器通过动态完整 PROPERTIES 保存、错误原文回填、第三步定位、RANGE/LIST 条目切换与 AUTO LIST 固定分桶约束；
+UI 验证模型 69 保留动态配置，未执行物理建表。

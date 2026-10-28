@@ -65,7 +65,8 @@ public class DorisDdl {
         if ("AGGREGATE".equals(model.getModelType()) && keys.size() == model.getFields().size())
             throw invalid("AGGREGATE 模型至少需要一个非键聚合字段");
         validateDimension(model, keys, seen);
-        String partition = partition(model, keys);
+        DorisPartitioning.Definition partitionDefinition = DorisPartitioning.define(model, keys);
+        String partition = DorisPartitioning.ddl(partitionDefinition);
         String distribution = distribution(model, keys, seen);
 
         String tableComment = model.getDescription().isBlank() ? model.getName()
@@ -73,8 +74,7 @@ public class DorisDdl {
         return "CREATE TABLE `warehouse`.`" + model.getTableName() + "` (\n"
                 + String.join(",\n", columns) + "\n)\nENGINE=OLAP\n" + model.getModelType() + " KEY(" + quoted(keys) + ")\nCOMMENT '"
                 + sqlComment(tableComment) + "'\n" + partition + distribution + " BUCKETS " + (model.isAutoBuckets() ? "AUTO" : model.getBuckets())
-                + "\nPROPERTIES (\n  \"replication_num\" = \"" + model.getReplicationNum() + "\""
-                + ("UNIQUE".equals(model.getModelType()) ? ",\n  \"enable_unique_key_merge_on_write\" = \"true\"" : "") + "\n);";
+                + "\nPROPERTIES (\n" + properties(model, partitionDefinition.dynamicProperties()) + "\n);";
     }
 
     private static String distribution(DataModel model, List<String> keys, Set<String> fields) {
@@ -120,22 +120,14 @@ public class DorisDdl {
         return function;
     }
 
-    private static String partition(DataModel model, List<String> keys) {
-        String kind = choice(model.getPartitionType(), Set.of("NONE", "AUTO_RANGE"), "分区方式仅支持 NONE 或 AUTO_RANGE");
-        model.setPartitionType(kind);
-        if (kind.equals("NONE")) {
-            model.setPartitionColumn(""); model.setPartitionUnit("DAY");
-            return "";
-        }
-        if ("DIM".equals(model.getLayer())) throw invalid("DIM/SCD1 当前仅支持不分区，确保按业务键维护唯一当前值");
-        String column = identifier(model.getPartitionColumn(), "分区字段");
-        if (!keys.contains(column)) throw invalid("日期自动分区字段须是键列中的 DATE 或 DATETIME 字段");
-        var field = model.getFields().stream().filter(item -> item.getName().equals(column)).findFirst().orElseThrow();
-        if (!(field.getDataType().equals("DATE") || field.getDataType().startsWith("DATETIME")))
-            throw invalid("日期自动分区仅支持 DATE 或 DATETIME 字段");
-        String unit = choice(model.getPartitionUnit(), Set.of("DAY", "MONTH", "YEAR"), "分区粒度仅支持 DAY、MONTH、YEAR");
-        model.setPartitionColumn(column); model.setPartitionUnit(unit);
-        return "AUTO PARTITION BY RANGE(date_trunc(`" + column + "`, '" + unit.toLowerCase(Locale.ROOT) + "')) ()\n";
+    private static String properties(DataModel model, java.util.Map<String, String> dynamicProperties) {
+        var values = new java.util.LinkedHashMap<String, String>();
+        values.put("replication_num", Integer.toString(model.getReplicationNum()));
+        if ("UNIQUE".equals(model.getModelType())) values.put("enable_unique_key_merge_on_write", "true");
+        dynamicProperties.entrySet().stream().sorted(java.util.Map.Entry.comparingByKey())
+                .forEach(entry -> values.put(entry.getKey(), entry.getValue()));
+        return values.entrySet().stream().map(entry -> "  \"" + entry.getKey() + "\" = \"" + entry.getValue() + "\"")
+                .reduce((left, right) -> left + ",\n" + right).orElseThrow();
     }
 
     private static String choice(String value, Set<String> supported, String message) {
