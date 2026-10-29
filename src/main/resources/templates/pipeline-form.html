@@ -1,30 +1,478 @@
 <!doctype html>
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
-<head><title>同步管道 · 数据中台</title></head>
-<body><section class="scheduling-form">
+<head>
+<title>同步管道 · 数据中台</title>
+</head>
+<body>
+<section class="scheduling-form pipeline-wizard" data-pipeline-ods-form>
   <link rel="stylesheet" th:href="@{/css/scheduling.css}">
-  <div class="mb-7"><div class="page-kicker">数据开发 / <a th:href="@{/pipelines}">同步管道</a></div><h1 class="page-title" th:text="${resourceId == null ? '创建同步管道' : '编辑同步管道'}">创建同步管道</h1><p class="page-subtitle mb-0">同步只负责将源数据增量接入已登记的 ODS UNIQUE 模型；清洗、关联和汇总请使用独立的数据加工任务。</p></div>
-  <div th:replace="~{fragments/messages :: messages}"></div>
-  <article th:if="${migratedTaskId != null}" class="platform-card card mb-5"><div class="card-header">旧 SQL 已迁移</div><div class="card-body"><p class="alert theme-success mb-0">已迁移为独立数据加工任务；原 SQL 仍作为归档记录保留。<a th:href="@{/transforms/{id}(id=${migratedTaskId})}">查看加工任务 <span th:text="${migratedTaskId}"></span></a></p></div></article>
-  <article th:if="${legacyTransformSql != null and !#strings.isEmpty(legacyTransformSql)}" class="platform-card card mb-5"><div class="card-header">旧版同步后 SQL</div><div class="card-body"><p class="alert theme-warning">此入口不再执行或允许编辑这段 SQL。请先暂停相关定时并等待当前运行完成，再迁移为独立数据加工任务。</p><pre class="code-preview mb-4"><code th:text="${legacyTransformSql}"></code></pre><form th:if="${canEdit and migratedTaskId == null}" th:action="@{/pipelines/{id}/migrate-transform(id=${resourceId})}" method="post"><input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"><button class="btn-solid theme-primary" type="submit">迁移为独立数据加工任务</button></form></div></article>
-  <form th:if="${canEdit}" th:object="${draft}" th:action="${formAction}" method="post">
+<link rel="stylesheet" th:href="@{/css/pipeline-wizard.css}">
+  <div class="mb-7">
+<div class="page-kicker">数据开发 / <a th:href="@{/pipelines}">同步管道</a>
+</div>
+<h1 class="page-title" th:text="${resourceId == null ? '创建同步管道' : '编辑同步管道'}">创建同步管道</h1>
+<p class="page-subtitle mb-0">ODS 负责贴源同步；清洗、关联和汇总请在数据加工中配置独立任务。</p>
+</div>
+  <div th:replace="~{fragments/messages :: messages}">
+</div>
+  <article th:if="${migratedTaskId != null}" class="platform-card card mb-5">
+<div class="card-header">旧 SQL 已迁移</div>
+<div class="card-body">
+<p class="alert theme-success mb-0">已迁移为独立数据加工任务；原 SQL 仍作为归档记录保留。<a th:href="@{/transforms/{id}(id=${migratedTaskId})}">查看加工任务 <span th:text="${migratedTaskId}">
+</span>
+</a>
+</p>
+</div>
+</article>
+  <article th:if="${legacyTransformSql != null and !#strings.isEmpty(legacyTransformSql)}" class="platform-card card mb-5">
+<div class="card-header">旧版同步后 SQL</div>
+<div class="card-body">
+<p class="alert theme-warning">此入口不再执行或允许编辑这段 SQL。请先暂停相关定时并等待当前运行完成，再迁移为独立数据加工任务。</p>
+<pre class="code-preview mb-4">
+<code th:text="${legacyTransformSql}">
+</code>
+</pre>
+<form th:if="${canEdit and migratedTaskId == null}" th:action="@{/pipelines/{id}/migrate-transform(id=${resourceId})}" method="post">
+<input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+<button class="btn-solid theme-primary" type="submit">迁移为独立数据加工任务</button>
+</form>
+</div>
+</article>
+  <form th:if="${canEdit}" th:object="${draft}" th:action="${formAction}" method="post" data-pipeline-form novalidate th:attr="data-initial-step=${draft.wizardStep}">
     <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
-    <article class="platform-card card mb-5"><div class="card-header">1. 基础信息</div><div class="card-body"><p th:if="${resourceId != null}" class="alert theme-info">同步边界在创建后固定。停用或未启用调度时，可调整执行周期；已启用的调度请先暂停。</p><div class="row g-5">
-      <div class="md:col-6"><label class="form-label" for="name">管道名称</label><input class="form-control" th:field="*{name}" required maxlength="100"></div>
-      <div class="md:col-6"><label class="form-label" for="sourceId">来源数据源</label><select class="form-control" th:field="*{sourceId}" th:disabled="${resourceId != null}" required><option value="">请选择</option><option th:each="source : ${sources}" th:value="${source.id}" th:text="${source.name}">业务主库</option></select><input th:if="${resourceId != null}" type="hidden" th:field="*{sourceId}"></div>
-      <div class="md:col-6"><label class="form-label" for="sourceTable">来源表</label><input class="form-control" th:field="*{sourceTable}" th:disabled="${resourceId != null}" required placeholder="orders"><input th:if="${resourceId != null}" type="hidden" th:field="*{sourceTable}"></div>
-      <div class="md:col-6"><label class="form-label" for="targetTable">ODS UNIQUE 目标模型</label><select th:if="${resourceId == null}" class="form-control" th:field="*{targetTable}" required><option value="">请选择已登记的 ODS UNIQUE 模型</option><option th:each="model : ${odsModels}" th:value="${model.tableName}" th:text="${model.tableName + ' · ' + model.name}">ods_orders · 订单原始表</option></select><input th:if="${resourceId != null}" class="form-control" th:field="*{targetTable}" disabled><input th:if="${resourceId != null}" type="hidden" th:field="*{targetTable}"><div class="form-text">仅可选择已登记的 ODS UNIQUE 模型；请先在“数据建模”完成建表和结构核对。</div></div>
-      <div class="md:col-6"><label class="form-label" for="watermarkColumn">Watermark 列</label><input class="form-control" th:field="*{watermarkColumn}" th:disabled="${resourceId != null}" required placeholder="updated_at"><input th:if="${resourceId != null}" type="hidden" th:field="*{watermarkColumn}"><div class="form-text">必须为有前导索引的非空 DATETIME/TIMESTAMP。</div></div>
-    </div></div></article>
-    <article class="platform-card card mb-5" data-schedule-panel><div class="card-header">2. 调度设置</div><div class="card-body"><div class="row g-5 align-items-start">
-      <div class="md:col-6"><label class="form-label" for="cronExpression">执行周期</label><input class="form-control" th:field="*{cronExpression}" list="pipeline-schedules" required maxlength="100" data-schedule-cron><datalist id="pipeline-schedules"><option value="0 */5 * * * ?">每 5 分钟</option><option value="0 0 * * * ?">每小时整点</option><option value="0 0 2 * * ?">每天 02:00</option><option value="0 0 9 ? * MON">每周一 09:00</option></datalist><div class="form-text">可选择示例或填写 6 或 7 段 Quartz Cron；日期与星期字段必须恰有一个为 ?，最小频率为每分钟。启用后需先暂停才能修改。</div></div>
-      <div class="md:col-6"><div class="schedule-summary"><span class="schedule-summary-label">调度时区</span><strong>Asia/Shanghai</strong><span class="schedule-summary-note">计划时间以北京时间计算</span></div></div>
-      <div class="col-12"><div class="schedule-preview" data-schedule-preview aria-live="polite"><div class="schedule-preview-heading">下 3 次计划触发</div><p class="fg-2 mb-0">正在计算计划时间…</p></div></div>
-      <div class="col-12"><div class="schedule-policy"><strong>运行策略</strong><span>失败最多重试 2 次，间隔 1 分钟；节点超时 50 分钟；同一管道互斥执行。</span></div><p class="form-text mb-0">保存只更新配置，不会启用调度。保存后请在管道列表提交调度；实际开始时间可能因引擎排队而延后。</p></div>
-    </div></div></article>
-    <div class="d-flex gap-3"><button class="btn-solid theme-primary" type="submit" th:text="${resourceId == null ? '创建管道' : '保存修改'}">创建管道</button><a class="btn-outline theme-secondary" th:href="@{/pipelines}">取消</a></div>
+<input type="hidden" th:field="*{previewHash}" data-preview-hash>
+<input type="hidden" th:field="*{wizardStep}" data-wizard-step-input>
+    <ol class="pipeline-wizard-steps" aria-label="创建同步管道步骤" data-wizard-progress th:attr="data-step-count=${resourceId == null and draft.targetMode == 'AUTO' ? 4 : 2}">
+<li>
+<button type="button" data-wizard-target="1" aria-current="step">
+<span>1</span>来源与目标<small>选择来源表和 ODS 接入方式</small>
+</button>
+</li>
+<li th:hidden="${resourceId != null or draft.targetMode != 'AUTO'}">
+<button type="button" data-wizard-target="2" aria-current="false">
+<span>2</span>字段与键列<small>核对字段映射</small>
+</button>
+</li>
+<li th:hidden="${resourceId != null or draft.targetMode != 'AUTO'}">
+<button type="button" data-wizard-target="3" aria-current="false">
+<span>3</span>Doris 物理设置<small>UNIQUE KEY、分桶与分区</small>
+</button>
+</li>
+<li>
+<button type="button" data-wizard-target="4" aria-current="false">
+<span th:text="${resourceId == null and draft.targetMode == 'AUTO' ? 4 : 2}">4</span>调度与确认<small>设置周期并创建</small>
+</button>
+</li>
+</ol>
+    <p class="alert theme-danger wizard-notice" data-wizard-notice hidden role="alert">
+</p>
+
+    <section data-wizard-step="1">
+<article class="platform-card card mb-5">
+<div class="card-header">第一步：来源与 ODS 目标</div>
+<div class="card-body">
+      <div class="mb-5" data-ods-entry-mode th:if="${resourceId == null}">
+<span class="form-label d-block">ODS 接入方式</span>
+<div class="d-flex flex-wrap gap-5">
+<label class="d-inline-flex align-items-center gap-2">
+<input class="check m-0" type="radio" th:field="*{targetMode}" value="AUTO" data-target-mode>
+<span>自动读取结构并创建 ODS</span>
+</label>
+<label class="d-inline-flex align-items-center gap-2">
+<input class="check m-0" type="radio" th:field="*{targetMode}" value="EXISTING" data-target-mode>
+<span>接入已有 ODS 模型</span>
+</label>
+</div>
+<noscript>
+<p class="form-text">更改方式后请先应用，再继续填写。</p>
+<button class="btn-outline theme-secondary" type="submit" th:formaction="@{/pipelines/preview}" formnovalidate>应用接入方式</button>
+</noscript>
+</div>
+<p th:if="${resourceId != null}" class="alert theme-info">同步边界在创建后固定；可调整执行周期。</p>
+<div class="row g-5">
+      <div class="md:col-6">
+<label class="form-label" for="name">管道名称</label>
+<input class="form-control" th:field="*{name}" required maxlength="100">
+</div>
+      <div class="md:col-6">
+<label class="form-label" for="sourceId">来源数据源</label>
+<select class="form-control" th:field="*{sourceId}" th:disabled="${resourceId != null}" required data-source-id>
+<option value="">请选择</option>
+<option th:each="source : ${sources}" th:value="${source.id}" th:text="${source.name}">业务主库</option>
+</select>
+<input th:if="${resourceId != null}" type="hidden" th:field="*{sourceId}">
+</div>
+      <div class="md:col-6">
+<label class="form-label" for="sourceTableSelect">来源表</label>
+<select id="sourceTableSelect" class="form-control" th:disabled="${resourceId != null}" data-source-table-select>
+<option value="">请先选择数据源</option>
+</select>
+<input class="form-control mt-2" th:field="*{sourceTable}" data-source-table required placeholder="orders" aria-label="来源表（手动填写）">
+<div class="form-text" data-source-table-status>选择数据源后加载当前命名空间可读取的表。</div>
+<button class="btn-link theme-primary btn-sm px-0" type="button" data-source-table-manual hidden>手动填写表名</button>
+</div>
+      <div class="md:col-6">
+<label class="form-label" for="watermarkColumn">Watermark 列</label>
+<input class="form-control" th:field="*{watermarkColumn}" th:disabled="${resourceId != null}" placeholder="updated_at" data-watermark>
+<input th:if="${resourceId != null}" type="hidden" th:field="*{watermarkColumn}">
+<div class="form-text">必须为有前导索引的非空 DATETIME/TIMESTAMP；不提供 CDC 语义。</div>
+</div>
+      <div class="md:col-6" data-auto-target th:hidden="${resourceId != null or draft.targetMode != 'AUTO'}">
+<label class="form-label" for="autoTargetTable">自动生成的 ODS 表</label>
+<input id="autoTargetTable" class="form-control" name="targetTable" th:value="*{targetTable}" th:disabled="${resourceId != null or draft.targetMode != 'AUTO'}" data-auto-target-input>
+<div class="form-text">建议使用 <code>ods_来源ID_来源表</code>，可在创建前调整。</div>
+</div>
+      <div class="md:col-6" data-existing-target th:hidden="${resourceId == null and draft.targetMode != 'EXISTING'}">
+<label class="form-label" for="existingTargetTable">已登记的 ODS UNIQUE 模型</label>
+<select id="existingTargetTable" class="form-control" name="targetTable" th:disabled="${resourceId != null or draft.targetMode != 'EXISTING'}" data-existing-target-input>
+<option value="">请选择已登记的 ODS UNIQUE 模型</option>
+<option th:each="model : ${odsModels}" th:value="${model.tableName}" th:selected="${model.tableName == draft.targetTable}" th:text="${model.tableName + ' · ' + model.name}">ods_orders</option>
+</select>
+<input th:if="${resourceId != null}" type="hidden" name="targetTable" th:value="*{targetTable}">
+<div class="form-text">适合已有复杂物理策略的目标表。</div>
+</div>
+    </div>
+</div>
+</article>
+<div class="wizard-controls">
+<span>
+</span>
+<button class="btn-solid theme-primary" type="button" data-wizard-next="2">下一步：字段与键列</button>
+</div>
+</section>
+
+    <section data-wizard-step="2" th:hidden="${resourceId != null or draft.targetMode != 'AUTO'}">
+<article class="platform-card card mb-5" data-ods-preview>
+<div class="card-header">第二步：字段映射与键列</div>
+<div class="card-body">
+<div data-auto-preview-content th:hidden="${resourceId != null or draft.targetMode != 'AUTO'}">
+<p class="mb-4">读取来源结构后核对映射。预览不会创建表或修改来源。</p>
+<div th:if="${odsPreview == null}" class="alert theme-info">请返回第一步选择来源表，再读取结构。</div>
+<div th:if="${odsPreview != null and !odsPreview.warnings.isEmpty()}" class="alert theme-warning">
+<strong>请核对：</strong>
+<ul class="mb-0">
+<li th:each="warning : ${odsPreview.warnings}" th:text="${warning}">
+</li>
+</ul>
+</div>
+<div th:if="${odsPreview != null}" class="table-responsive">
+<table class="table table-hover mb-0">
+<thead>
+<tr>
+<th>源字段</th>
+<th>源类型</th>
+<th>目标字段</th>
+<th>目标类型</th>
+<th>可空</th>
+<th>键列</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr th:each="field : ${odsPreview.fields}">
+<td th:text="${field.sourceName}">
+</td>
+<td th:text="${field.sourceType}">
+</td>
+<td th:text="${field.targetName}">
+</td>
+<td th:text="${field.targetType}">
+</td>
+<td th:text="${field.nullable ? '是' : '否'}">
+</td>
+<td>
+<label class="d-inline-flex align-items-center gap-2">
+<input class="check m-0" type="checkbox" th:field="*{keyColumns}" th:value="${field.sourceName}" th:disabled="${field.nullable or !field.keyEligible}" data-key-column th:attr="data-target-column=${field.targetName},data-target-type=${field.targetType}">
+<span th:text="${field.keyColumn ? '键列' : '设为键列'}">
+</span>
+</label>
+</td>
+<td th:text="${field.comment}">
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p th:if="${odsPreview != null and !odsPreview.primaryKeys.isEmpty()}" class="form-text">来源主键已自动选中：<span th:text="${#strings.listJoin(odsPreview.primaryKeys, ', ')}">
+</span>。</p>
+</div>
+<div data-existing-preview th:hidden="${resourceId == null and draft.targetMode != 'EXISTING'}" class="alert theme-info mb-0">已选择已有 ODS 模型。字段映射和物理结构保持目标模型已登记的定义。</div>
+</div>
+</article>
+<div class="wizard-controls">
+<button class="btn-outline theme-secondary" type="button" data-wizard-back="1">上一步</button>
+<div class="d-flex gap-3">
+<button th:if="${resourceId == null}" class="btn-outline theme-secondary" type="submit" th:formaction="@{/pipelines/preview}" formnovalidate data-preview-button>读取结构并预览 ODS</button>
+<button class="btn-solid theme-primary" type="button" data-wizard-next="3">下一步：Doris 物理设置</button>
+</div>
+</div>
+</section>
+
+    <section data-wizard-step="3" th:hidden="${resourceId != null or draft.targetMode != 'AUTO'}">
+<article class="platform-card card mb-5" data-auto-settings th:hidden="${resourceId != null or draft.targetMode != 'AUTO'}">
+<div class="card-header">第三步：Doris 物理设置</div>
+<div class="card-body">
+<p class="alert theme-info">自动贴源 ODS 固定使用 <strong>UNIQUE KEY</strong>：时间水位的重叠回放和任务重试会再次写入同一业务键，UNIQUE KEY 才能保持幂等覆盖。</p>
+<div class="row g-5">
+<div class="md:col-4">
+<label class="form-label">数据模型</label>
+<input class="form-control" value="UNIQUE KEY · 幂等覆盖" readonly>
+<div class="form-text">模型类型由同步语义固定。键列应共同唯一且稳定，不要仅为时间分区把可变水位列加入键。</div>
+</div>
+<div class="md:col-4">
+<label class="form-label" for="replicationNum">副本数</label>
+<input class="form-control" type="number" min="1" th:max="${backendStatus.replicationLimit()}" th:field="*{replicationNum}" data-replication-num>
+<div class="form-text" th:text="${backendStatus.hint()}">
+</div>
+</div>
+</div>
+</div>
+      </article>
+<article class="platform-card card mb-5" data-auto-settings th:hidden="${resourceId != null or draft.targetMode != 'AUTO'}">
+<div class="card-header">分桶设置</div>
+<div class="card-body">
+<div class="row g-5">
+<div class="md:col-4">
+<label class="form-label" for="distributionColumnsSelect">HASH 分桶键</label>
+<input type="hidden" th:field="*{distributionColumns}" data-distribution-columns-value>
+<select id="distributionColumnsSelect" class="form-control" aria-label="HASH 分桶键" data-distribution-columns multiple size="4" data-initial-value="">
+<option value="" selected>全部键列（默认）</option>
+</select>
+<div class="form-text">仅可选择非空键列；默认使用全部键列。</div>
+</div>
+<div class="md:col-4">
+<label class="form-label" for="buckets">分桶数</label>
+<input class="form-control" type="number" min="1" max="2147483647" required th:field="*{buckets}" data-fixed-buckets>
+<label class="d-flex align-items-center gap-2 form-text mt-2">
+<input class="check m-0" type="checkbox" th:field="*{autoBuckets}" data-auto-buckets>
+<span>由 Doris 自动推算（AUTO）</span>
+</label>
+<div class="form-text">关闭 AUTO 后使用固定桶数。</div>
+</div>
+</div>
+</div>
+</article>
+<article class="platform-card card mb-5" data-auto-settings th:hidden="${resourceId != null or draft.targetMode != 'AUTO'}">
+<div class="card-header">分区设置</div>
+<div class="card-body">
+<div class="row g-5">
+<div class="md:col-8">
+<label class="form-label" for="partitionType">分区方式</label>
+<select class="form-control" th:field="*{partitionType}" data-partition-type>
+<option value="NONE">不分区</option>
+<option value="AUTO_RANGE">自动范围分区</option>
+<option value="AUTO_LIST">自动列表分区</option>
+<option value="MANUAL_RANGE">手动范围分区</option>
+<option value="MANUAL_LIST">手动列表分区</option>
+<option value="DYNAMIC">动态分区</option>
+</select>
+<div class="form-text">分区字段仅可使用非空键列；设置将写入 Doris DDL。</div>
+</div>
+        <div class="md:col-4" data-partition-column-wrap>
+<label class="form-label" for="partitionColumn">分区字段</label>
+<select class="form-control" th:field="*{partitionColumn}" th:attr="data-initial-value=*{partitionColumn}" data-partition-column>
+<option value="">请选择分区字段</option>
+</select>
+</div>
+<div class="md:col-4" data-partition-unit-wrap>
+<label class="form-label" for="partitionUnit">分区粒度</label>
+<select class="form-control" th:field="*{partitionUnit}">
+<option value="DAY">按日</option>
+<option value="WEEK">按周</option>
+<option value="MONTH">按月</option>
+<option value="YEAR">按年</option>
+<option value="HOUR">按时</option>
+<option value="MINUTE">按分</option>
+<option value="SECOND">按秒</option>
+</select>
+</div>
+<div class="md:col-4" data-range-style-wrap>
+<label class="form-label" for="partitionRangeStyle">范围定义</label>
+<select class="form-control" th:field="*{partitionRangeStyle}">
+<option value="FIXED">固定区间 [下界, 上界)</option>
+<option value="LESS_THAN">小于上界</option>
+</select>
+</div>
+        <div class="col-12" data-manual-range-wrap hidden>
+<div class="d-flex justify-content-between align-items-center mb-3">
+<span class="form-label mb-0">手动范围分区</span>
+<button class="btn-outline theme-primary btn-sm" type="button" data-add-partition="range">添加范围分区</button>
+</div>
+<div class="table-responsive">
+<table class="table">
+<thead>
+<tr>
+<th>分区名</th>
+<th data-range-lower-heading>下界</th>
+<th>上界</th>
+<th>
+</th>
+</tr>
+</thead>
+<tbody data-manual-range-list>
+<tr th:each="partition,row : *{partitions}" data-manual-range-row>
+<td>
+<input class="form-control form-control-sm" th:name="${'partitions['+row.index+'].name'}" th:value="${partition.name}" data-partition-property="name">
+</td>
+<td>
+<input class="form-control form-control-sm" th:name="${'partitions['+row.index+'].lowerBound'}" th:value="${partition.lowerBound}" data-partition-property="lowerBound">
+</td>
+<td>
+<input class="form-control form-control-sm" th:name="${'partitions['+row.index+'].upperBound'}" th:value="${partition.upperBound}" data-partition-property="upperBound">
+</td>
+<td>
+<button class="btn-outline theme-danger btn-sm" type="button" data-remove-partition>移除</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+        <div class="col-12" data-manual-list-wrap hidden>
+<div class="d-flex justify-content-between align-items-center mb-3">
+<span class="form-label mb-0">手动列表分区</span>
+<button class="btn-outline theme-primary btn-sm" type="button" data-add-partition="list">添加列表分区</button>
+</div>
+<div class="table-responsive">
+<table class="table">
+<thead>
+<tr>
+<th>分区名</th>
+<th>分区值（每行一个）</th>
+<th>
+</th>
+</tr>
+</thead>
+<tbody data-manual-list-list>
+<tr th:each="partition,row : *{partitions}" data-manual-list-row>
+<td>
+<input class="form-control form-control-sm" th:name="${'partitions['+row.index+'].name'}" th:value="${partition.name}" data-partition-property="name">
+</td>
+<td>
+<textarea class="form-control form-control-sm" th:name="${'partitions['+row.index+'].valuesText'}" th:text="${partition.valuesText}" data-partition-property="valuesText" rows="3">
+</textarea>
+</td>
+<td>
+<button class="btn-outline theme-danger btn-sm" type="button" data-remove-partition>移除</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+        <div class="col-12" data-dynamic-partition-wrap hidden>
+<label class="form-label" for="dynamicPartitionProperties">动态分区 PROPERTIES</label>
+<textarea class="form-control font-monospace" th:field="*{dynamicPartitionProperties}" rows="9" maxlength="8000" data-dynamic-partition-properties spellcheck="false">
+</textarea>
+<div class="form-text">直接编辑完整 <code>PROPERTIES(...)</code>；仅接受动态分区属性；设置 start 后，Doris 会自动清理窗口外的过期分区。</div>
+</div>
+</div>
+</div>
+</article>
+<article data-existing-physical th:hidden="${resourceId == null and draft.targetMode != 'EXISTING'}" class="platform-card card mb-5">
+<div class="card-header">第三步：Doris 物理设置</div>
+<div class="card-body">
+<p class="alert theme-info mb-0">已有 ODS 的模型、分区和分桶策略保持原定义。如需调整，请在数据建模中维护目标表。</p>
+</div>
+</article>
+<div class="wizard-controls">
+<button class="btn-outline theme-secondary" type="button" data-wizard-back="2">上一步</button>
+<button class="btn-solid theme-primary" type="button" data-wizard-next="4">下一步：调度与确认</button>
+</div>
+</section>
+
+    <section data-wizard-step="4">
+<article class="platform-card card mb-5">
+<div class="card-header" data-final-step-heading th:text="${resourceId == null and draft.targetMode == 'AUTO' ? '第四步：调度与确认' : '第二步：调度与确认'}">第四步：调度与确认</div>
+<div class="card-body">
+<div class="row g-5 align-items-start">
+<div class="md:col-6">
+<label class="form-label" for="cronExpression">执行周期</label>
+<input class="form-control" th:field="*{cronExpression}" list="pipeline-schedules" required maxlength="100" data-schedule-cron>
+<datalist id="pipeline-schedules">
+<option value="0 */5 * * * ?">每 5 分钟</option>
+<option value="0 0 * * * ?">每小时整点</option>
+<option value="0 0 2 * * ?">每天 02:00</option>
+</datalist>
+<div class="form-text">填写 6 或 7 段 Quartz Cron；最小频率为每分钟。</div>
+</div>
+<div class="md:col-6">
+<div class="schedule-summary">
+<span class="schedule-summary-label">调度时区</span>
+<strong>Asia/Shanghai</strong>
+<span class="schedule-summary-note">计划时间以北京时间计算</span>
+</div>
+</div>
+<div class="col-12">
+<div class="schedule-preview" data-schedule-preview aria-live="polite">
+<div class="schedule-preview-heading">下 3 次计划触发</div>
+<p class="fg-2 mb-0">正在计算计划时间…</p>
+</div>
+</div>
+</div>
+<p class="alert theme-info mt-5" data-preview-stale>来源、键列或物理设置变更后，请重新预览 DDL 并确认。</p>
+<div th:if="${odsPreview != null}" class="mt-5" data-ddl-preview>
+<p class="form-label">目标 DDL 预览</p>
+<pre class="code-preview mb-4">
+<code th:text="${odsPreview.ddl}">
+</code>
+</pre>
+<label class="d-inline-flex align-items-center gap-2">
+<input class="check m-0" type="checkbox" th:field="*{confirmed}" data-preview-confirm th:disabled="${!odsPreview.ready}">
+<span>我已核对来源结构、字段映射、Doris DDL 和键列，确认创建。</span>
+</label>
+<p th:unless="${odsPreview.ready}" class="alert theme-warning mt-4 mb-0">当前无法创建：请修正来源、键列或物理设置，并重新预览。</p>
+</div>
+</div>
+</article>
+<div class="wizard-controls">
+<button class="btn-outline theme-secondary" type="button" data-wizard-back="3">上一步</button>
+<div class="d-flex gap-3">
+<button th:if="${resourceId == null}" th:hidden="${draft.targetMode != 'AUTO'}" class="btn-outline theme-secondary" type="submit" th:formaction="@{/pipelines/preview}" formnovalidate data-preview-button>重新读取结构并预览</button>
+<button class="btn-solid theme-primary" type="submit" th:disabled="${resourceId == null and draft.targetMode == 'AUTO' and (#strings.isEmpty(draft.previewHash) or odsPreview == null or !odsPreview.ready)}" th:text="${resourceId != null ? '保存修改' : (draft.targetMode == 'AUTO' ? '创建表、登记模型并创建管道' : '创建管道')}" data-create-button>创建管道</button>
+</div>
+</div>
+</section>
+    <div class="d-flex gap-3 wizard-fallback-submit">
+<button class="btn-solid theme-primary" type="submit">保存管道</button>
+<a class="btn-outline theme-secondary" th:href="@{/pipelines}">取消</a>
+</div>
   </form>
-  <p th:unless="${canEdit}" class="alert theme-info">当前账号仅可查看同步管道。</p>
-  <script th:src="@{/js/schedule-settings.js}" defer></script>
-</section></body>
+<p th:unless="${canEdit}" class="alert theme-info">当前账号仅可查看同步管道。</p>
+  <template id="manual-range-template">
+<tr data-manual-range-row>
+<td>
+<input class="form-control form-control-sm" data-partition-property="name" aria-label="分区名">
+</td>
+<td>
+<input class="form-control form-control-sm" data-partition-property="lowerBound" aria-label="下界">
+</td>
+<td>
+<input class="form-control form-control-sm" data-partition-property="upperBound" aria-label="上界">
+</td>
+<td>
+<button class="btn-outline theme-danger btn-sm" type="button" data-remove-partition>移除</button>
+</td>
+</tr>
+</template>
+<template id="manual-list-template">
+<tr data-manual-list-row>
+<td>
+<input class="form-control form-control-sm" data-partition-property="name" aria-label="分区名">
+</td>
+<td>
+<textarea class="form-control form-control-sm" data-partition-property="valuesText" rows="3" aria-label="分区值">
+</textarea>
+</td>
+<td>
+<button class="btn-outline theme-danger btn-sm" type="button" data-remove-partition>移除</button>
+</td>
+</tr>
+</template>
+  <script th:src="@{/js/schedule-settings.js}" defer>
+</script>
+<script th:src="@{/js/pipeline-ods.js}" defer>
+</script>
+</section>
+</body>
 </html>

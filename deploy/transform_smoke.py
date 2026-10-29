@@ -125,7 +125,7 @@ def main():
     ods = "ods_flow_" + suffix
     ods_model = model(client, ods, "ODS", [("id", "BIGINT", True), ("customer_name", "VARCHAR(128)", False), ("amount", "DECIMAL(18,2)", False), ("updated_at", "DATETIME(6)", False)])
     status, page = post_form(client, page, "/pipelines", {"name": pipeline_name, "sourceId": source_id,
-        "sourceTable": "orders", "watermarkColumn": "updated_at", "targetTable": ods, "cronExpression": "0 0 * * * ?"})
+        "sourceTable": "orders", "watermarkColumn": "updated_at", "targetMode": "EXISTING", "targetTable": ods, "cronExpression": "0 0 * * * ?"})
     checked(status, page, "ODS 同步管道已保存")
     pipeline_id = id_from_row(page, pipeline_name, "/run")
     dwd_sql = f"INSERT INTO {dwd} SELECT id,customer_name,amount,updated_at FROM {ods} WHERE id IN (1,2)"

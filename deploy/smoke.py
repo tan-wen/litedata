@@ -95,7 +95,7 @@ class Client:
     def __init__(self) -> None:
         self.opener = build_opener(HTTPCookieProcessor(CookieJar()))
 
-    def request(self, method: str, path: str, fields: dict[str, str] | None = None, headers: dict[str, str] | None = None) -> tuple[int, str]:
+    def request(self, method: str, path: str, fields: dict[str, str] | list[tuple[str, str]] | None = None, headers: dict[str, str] | None = None) -> tuple[int, str]:
         target = urljoin(BASE_URL, path)
         data = urlencode(fields or {}).encode() if method == "POST" else None
         request = Request(target, data=data, headers=headers or {}, method=method)
@@ -240,7 +240,7 @@ def main() -> dict[str, object]:
         raise SmokeFailure("pipeline create page is unavailable")
     status, pipelines = post_form(client, pipeline_form, "/pipelines", {
         "name": pipeline_name, "sourceId": source_id, "sourceTable": "orders", "watermarkColumn": "updated_at",
-        "targetTable": ods_table,
+        "targetMode": "EXISTING", "targetTable": ods_table,
         "cronExpression": "0 0 * * * ?",
     })
     require_success(status, pipelines, "ODS 同步管道已保存")

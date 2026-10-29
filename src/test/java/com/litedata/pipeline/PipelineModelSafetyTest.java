@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 class PipelineModelSafetyTest {
     private final PlatformMapper platform = mock(PlatformMapper.class);
     private final ModelMapper models = mock(ModelMapper.class);
-    private final PipelineService service = new PipelineService(platform, mock(SourceService.class), mock(PlatformProperties.class), models);
+    private final PipelineService service = new PipelineService(platform, mock(SourceService.class), mock(PlatformProperties.class), models,mock(OdsSchemaGuard.class));
 
     @Test void onlyRegisteredOdsUniqueTargetsCanReceiveSyncAndInlineSqlIsRejected() {
         var duplicate = new DataModel(); duplicate.setLayer("ODS"); duplicate.setModelType("DUPLICATE");

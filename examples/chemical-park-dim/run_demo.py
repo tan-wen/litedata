@@ -432,7 +432,7 @@ class Demo:
             _, page = self.client.request("GET", "/pipelines/new")
             target = next(m["tableName"] for m in self.manifest["models"] if m["key"] == pipeline["targetModel"])
             fields = {k: pipeline[k] for k in ("sourceTable", "watermarkColumn", "cronExpression")}
-            fields.update(name=self.args.prefix + " " + pipeline["name"], sourceId=source_id, targetTable=target)
+            fields.update(name=self.args.prefix + " " + pipeline["name"], sourceId=source_id, targetMode="EXISTING", targetTable=target)
             page = checked(self.client.post(page, "/pipelines", fields), "ODS 同步管道已保存")
             self.report["resources"]["pipelines"][pipeline["key"]] = identifier(page, fields["name"], "pipelines", "run")
         for task in self.manifest["transforms"]:

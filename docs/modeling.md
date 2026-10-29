@@ -25,11 +25,11 @@
    可返回修改；切换步骤只保留表单草稿，不写入数据库。
 4. 保存并预览生成的 DDL，确认目标为 `warehouse` 后勾选确认、执行建表。
 5. 检查执行结果，或对已有表执行“结构比对”。核对成功后状态为“已核对”，编辑后为“模型已变更”。
-6. 已登记的 ODS UNIQUE 模型可在“同步管道”配置接入；DIM/DWD/DWS/ADS 的写入由“数据加工”配置。DUPLICATE / AGGREGATE 的写入与重算由独立作业管理。
+6. 新 ODS 默认在“同步管道”自动读取来源结构、预览后创建并登记；这里主要维护 DIM/DWD/DWS/ADS。已登记的 ODS UNIQUE 模型仍可在“同步管道”选择接入，适合需要自定义分区等高级策略的场景；DIM/DWD/DWS/ADS 的写入由“数据加工”配置。DUPLICATE / AGGREGATE 的写入与重算由独立作业管理。
    模型归档仅移除目录展示，保留物理表、模型字段与执行历史。
    已归档的表名仍占用，历史目前保留在元数据库中。
 
-UNIQUE 模型的 ODS 数据来自业务库的 DataX 同步；同步管道只能选择已登记的 ODS UNIQUE 模型。
+UNIQUE 模型的 ODS 数据来自业务库的 DataX 同步；同步管道可自动登记新 ODS UNIQUE 模型，或选择已有已登记模型。
 其他分层通过独立“数据加工”的 Doris `INSERT INTO ... SELECT` 写入，并声明同步或 SQL 上游依赖，
 见 [数据加工](sql-transforms.md)。按日期重算与分区替换尚未提供。UNIQUE KEY 保证相同业务主键覆盖写入，但不会自动删除
 因源数据删除或维度变化而失效的旧汇总行，后续加工任务需明确重跑和覆盖语义。
@@ -47,7 +47,7 @@ UNIQUE 模型的 ODS 数据来自业务库的 DataX 同步；同步管道只能�
 AGGREGATE 支持 `SUM`、`MIN`、`MAX`、`REPLACE`、`REPLACE_IF_NOT_NULL`。`SUM` 仅用于数值类型；
 `REPLACE_IF_NOT_NULL` 字段必须允许 NULL，输入 NULL 不会清空已有值。聚合模型不提供原始明细追溯；
 重复导入一批 `SUM` 数据会再次累加。当前自动同步回放、任务重试与全量 `INSERT SELECT` 仍要求 UNIQUE 目标，
-保存和执行时均检查登记模型类型。外部未登记的同步目标继续由管理员保证 UNIQUE 及业务键幂等性。
+保存和执行时均检查登记模型类型；同步目标必须先完成 ODS UNIQUE 模型登记和物理结构核对。
 
 副本数可设为 1–10。新增、编辑及校验失败回显时，通过当前 Doris 建表连接执行 `SHOW BACKENDS`，显示可用 BE 数与总数，并动态限制输入上限。
 可用数仅包含在线（Alive）、未退役（SystemDecommissioned=false）、支持存储（NodeRole=mix）且 location=default 的 BE，

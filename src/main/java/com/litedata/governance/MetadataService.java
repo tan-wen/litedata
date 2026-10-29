@@ -29,6 +29,20 @@ public class MetadataService {
         return table;
     }
     public List<JdbcMetadataCollector.Column> columns(long id) { require(id); return mapper.columns(id); }
+    /** Register a verified table without rescanning the scope or marking unrelated tables missing. */
+    @Transactional
+    public void registerTable(Long sourceId,String catalog,JdbcMetadataCollector.Table table,String actor) {
+        String scope=sourceId==null?"doris":"source:"+sourceId;
+        mapper.ensureScope(scope); mapper.lockScope(scope);
+        var saved=mapper.find(scope,catalog,table.name());
+        if(saved==null) saved=new MetadataTable();
+        saved.setScopeKey(scope); saved.setCatalogName(catalog); saved.setTableName(table.name());
+        saved.setComment(table.comment()); saved.setSchemaHash(hash(table));
+        if(saved.getId()==null) mapper.insert(saved); else mapper.update(saved);
+        mapper.deleteColumns(saved.getId());
+        for(var column:table.columns()) mapper.insertColumn(saved.getId(),column);
+        platform.audit(actor,"METADATA_REGISTER",scope+"/"+table.name(),"SUCCESS");
+    }
     @Transactional(rollbackFor=Exception.class)
     public int collect(Long sourceId,String actor) {
         if(sourceId!=null && sourceId<1) throw new IllegalArgumentException("请选择有效的数据源");

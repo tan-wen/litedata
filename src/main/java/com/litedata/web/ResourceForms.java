@@ -30,6 +30,54 @@ public final class ResourceForms {
         private String targetTable = "";
         private String transformSql = "";
         private String cronExpression = "0 0 * * * ?";
+        private String targetMode = "EXISTING";
+        private java.util.List<String> keyColumns = new java.util.ArrayList<>();
+        private String previewHash = "";
+        private boolean confirmed;
+        private boolean autoBuckets = true;
+        private int buckets = 1;
+        private int replicationNum = 1;
+        private int wizardStep = 1;
+        private String distributionType = "HASH";
+        private String distributionColumns = "";
+        private String partitionType = "NONE";
+        private String partitionColumn = "";
+        private String partitionUnit = "DAY";
+        private String partitionRangeStyle = "FIXED";
+        private String dynamicPartitionProperties = com.litedata.model.DataModel.DEFAULT_DYNAMIC_PARTITION_PROPERTIES;
+        private java.util.List<com.litedata.model.ModelPartition> partitions = new java.util.ArrayList<>();
+        public int getWizardStep() { return wizardStep; }
+        public void setWizardStep(int value) { wizardStep=Math.clamp(value,1,4); }
+        public String getDistributionType() { return distributionType; }
+        public void setDistributionType(String value) { distributionType=value; }
+        public String getDistributionColumns() { return distributionColumns; }
+        public void setDistributionColumns(String value) { distributionColumns=value; }
+        public String getPartitionType() { return partitionType; }
+        public void setPartitionType(String value) { partitionType=value; }
+        public String getPartitionColumn() { return partitionColumn; }
+        public void setPartitionColumn(String value) { partitionColumn=value; }
+        public String getPartitionUnit() { return partitionUnit; }
+        public void setPartitionUnit(String value) { partitionUnit=value; }
+        public String getPartitionRangeStyle() { return partitionRangeStyle; }
+        public void setPartitionRangeStyle(String value) { partitionRangeStyle=value; }
+        public String getDynamicPartitionProperties() { return dynamicPartitionProperties; }
+        public void setDynamicPartitionProperties(String value) { dynamicPartitionProperties=value; }
+        public java.util.List<com.litedata.model.ModelPartition> getPartitions() { return partitions; }
+        public void setPartitions(java.util.List<com.litedata.model.ModelPartition> value) { partitions=value; }
+        public String getTargetMode() { return targetMode; }
+        public void setTargetMode(String value) { targetMode=value; }
+        public java.util.List<String> getKeyColumns() { return keyColumns; }
+        public void setKeyColumns(java.util.List<String> value) { keyColumns=value; }
+        public String getPreviewHash() { return previewHash; }
+        public void setPreviewHash(String value) { previewHash=value; }
+        public boolean isConfirmed() { return confirmed; }
+        public void setConfirmed(boolean value) { confirmed=value; }
+        public boolean isAutoBuckets() { return autoBuckets; }
+        public void setAutoBuckets(boolean value) { autoBuckets=value; }
+        public int getBuckets() { return buckets; }
+        public void setBuckets(int value) { buckets=value; }
+        public int getReplicationNum() { return replicationNum; }
+        public void setReplicationNum(int value) { replicationNum=value; }
         public String getName() { return name; }
         public void setName(String name) { this.name = name; }
         public Long getSourceId() { return sourceId; }

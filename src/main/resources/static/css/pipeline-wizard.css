@@ -1,0 +1,15 @@
+.pipeline-wizard-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; padding: 0; margin: 0 0 1.5rem; list-style: none; }
+.pipeline-wizard-steps li { min-width: 0; }
+.pipeline-wizard-steps[data-step-count="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pipeline-wizard-steps button { width: 100%; min-height: 4.65rem; display: grid; grid-template-columns: auto 1fr; gap: .25rem .55rem; align-items: center; padding: .75rem; text-align: left; color: var(--platform-muted); border: 1px solid var(--platform-line); border-radius: .55rem; background: var(--platform-surface); }
+.pipeline-wizard-steps button span { display: grid; place-items: center; width: 1.45rem; height: 1.45rem; border-radius: 50%; color: var(--platform-surface); background: var(--platform-muted); font-size: .75rem; }
+.pipeline-wizard-steps button[aria-current="step"] { color: var(--platform-text); border-color: var(--platform-primary); }
+.pipeline-wizard-steps button[aria-current="step"] span, .pipeline-wizard-steps button.is-complete span { background: var(--platform-primary); }
+.pipeline-wizard-steps small { grid-column: 2; overflow: hidden; color: var(--platform-muted); font-size: .72rem; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+.pipeline-wizard [data-wizard-step][hidden], .pipeline-wizard [hidden] { display: none !important; }
+.pipeline-wizard .wizard-controls { display: none; justify-content: space-between; gap: 1rem; align-items: center; margin-bottom: 1.5rem; }
+.pipeline-wizard-enhanced .wizard-controls { display: flex; }
+.pipeline-wizard-enhanced .wizard-fallback-submit > button { display: none; }
+.pipeline-wizard [data-distribution-columns] { min-height: 7.5rem; }
+@media (max-width: 991.98px) { .pipeline-wizard-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 575.98px) { .pipeline-wizard-steps, .pipeline-wizard-steps[data-step-count="2"] { grid-template-columns: 1fr; } .pipeline-wizard-steps small { white-space: normal; } .pipeline-wizard .wizard-controls { align-items: stretch; flex-direction: column-reverse; } .pipeline-wizard .wizard-controls > div { display: grid !important; } }

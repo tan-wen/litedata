@@ -15,6 +15,15 @@ public class Pipeline {
     private Long definitionCode;
     private Integer scheduleId;
     private Long activeRunId;
+    private String sourceSchemaHash;
+    private String targetSchemaHash;
+    private String sourceKeyColumns;
+    public String getSourceSchemaHash() { return sourceSchemaHash; }
+    public void setSourceSchemaHash(String value) { sourceSchemaHash=value; }
+    public String getTargetSchemaHash() { return targetSchemaHash; }
+    public void setTargetSchemaHash(String value) { targetSchemaHash=value; }
+    public String getSourceKeyColumns() { return sourceKeyColumns; }
+    public void setSourceKeyColumns(String value) { sourceKeyColumns=value; }
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public String getName() { return name; }

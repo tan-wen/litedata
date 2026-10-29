@@ -20,8 +20,8 @@ LiteData 是一个部署简单、易上手的数据中台，围绕多数据库�
 | --- | --- |
 | 工作台 | 数据源、同步管道、数据服务统计及最近运行实例 |
 | 数据源 | MySQL / PostgreSQL / SQL Server / Oracle JDBC 登记、凭据加密存储和连接测试；[接入说明](docs/data-sources.md) |
-| 数据建模 | 分层/主题域、DIM 公共维度（业务键、展示字段、SCD1）、逻辑表与字段维护、标准备注、Doris DDL 预览、确认建表、结构比对、版本和执行记录 |
-| 同步管道 | 自定义分钟/小时/日/周 Quartz Cron、时间水位增量、运行互斥、执行实例及成功后推进水位 |
+| 数据建模 | 分层/主题域、DIM 公共维度（业务键、展示字段、SCD1）、DIM/DWD/DWS/ADS 逻辑表与字段维护、标准备注、Doris DDL 预览、确认建表、结构比对、版本和执行记录 |
+| 同步管道 | 自动读取来源结构、预览并创建 ODS，或接入已有 ODS；自定义分钟/小时/日/周 Quartz Cron、时间水位增量、运行互斥、执行实例及成功后推进水位 |
 | 数据加工 | 独立 INSERT SELECT、同步/SQL 上游依赖、DAG 预览、整链运行、定时启停及节点执行记录 |
 | 加工与调度 | DataX runner、Doris INSERT SELECT、DS 依赖工作流和定时启停、计划时间预览、平台内实例与节点日志；[调度运维说明](docs/scheduling-operations.md) |
 | 数据服务 | 受控 SELECT、命名参数、发布/下线、凭证轮换、限流与调用审计 |
@@ -87,14 +87,15 @@ sh deploy/start.sh
    - URL：`jdbc:mysql://demo-mysql:3306/demo_source?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC`
    - 用户：`demo_reader`，密码：`demo_reader_password`
 
-2. 在“数据建模”登记 `ods_orders`（ODS）和 `ads_orders`（ADS），均为 UNIQUE、HASH(id)、固定 1 桶、1 副本；字段结构见 `deploy/dolphinscheduler/bootstrap-doris.sql`。演示物理表已初始化时，执行“结构比对”确认一致。
+2. 在“数据建模”登记 `ads_orders`（ADS），使用 UNIQUE、HASH(id)、固定 1 桶、1 副本；字段结构见 `deploy/dolphinscheduler/bootstrap-doris.sql`。演示物理表已初始化时，执行“结构比对”确认一致。ODS 无需在此手工填写字段。
 
 3. 在“同步管道”创建任务：
 
    - 来源表：`orders`，水位字段：`updated_at`
-   - 目标模型：已登记的 ODS UNIQUE 模型 `ods_orders`
+   - 接入方式：自动读取结构并创建 ODS；目标表：`ods_demo_orders`
+   - 点击“读取结构并预览 ODS”，核对自动读取的主键、字段和 DDL，再勾选确认创建；模型和元数据由平台登记。
    - 调度：`0 0 * * * ?`
-4. 在“数据加工”创建独立 SQL 任务，目标选择已建 ADS 模型，填写 `INSERT INTO ads_orders SELECT id, customer_name, amount, updated_at FROM ods_orders`，并声明该同步管道为上游依赖。
+4. 在“数据加工”创建独立 SQL 任务，目标选择已建 ADS 模型，填写 `INSERT INTO ads_orders SELECT id, customer_name, amount, updated_at FROM ods_demo_orders`，并声明该同步管道为上游依赖。
 
 5. 从 SQL 任务运行整条依赖链，等待真实实例成功；定时建议只在末端 SQL 任务启用。首批同步会读取从 1970-01-01 起的全部数据。
 6. 在“数据服务”创建 `orders`，查询：

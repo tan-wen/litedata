@@ -67,6 +67,17 @@ class PipelineRunnerTests(unittest.TestCase):
                 self.assertEqual((7, code == 0), finish.call_args.args[:2])
                 connect.assert_not_called()
 
+    def test_auto_ods_names_follow_source_record_order_even_when_doris_keys_are_reordered(self):
+        claim=self.claim("MYSQL", "jdbc:mysql://host/sales")
+        claim["source"]["columns"]=["CustomerName","OrderID","updated_at"]
+        claim["targetColumns"]=["customername","orderid","updated_at"]
+        content=self.runner.build_datax_job(claim)["job"]["content"][0]
+        self.assertEqual(["customername","orderid","updated_at"],content["writer"]["parameter"]["column"])
+        self.assertEqual(["`CustomerName`","`OrderID`","`updated_at`"],content["reader"]["parameter"]["column"])
+        for invalid in (["orderid"],["id","id","updated_at"],["id;drop","orderid","updated_at"]):
+            with self.subTest(target_columns=invalid), self.assertRaises(ValueError):
+                self.runner.build_datax_job(dict(claim,targetColumns=invalid))
+
 
 if __name__ == "__main__":
     unittest.main()

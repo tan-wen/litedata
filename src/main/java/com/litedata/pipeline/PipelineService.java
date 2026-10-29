@@ -20,16 +20,20 @@ public class PipelineService {
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSS");
     private final PlatformMapper mapper; private final SourceService sources; private final PlatformProperties properties;
     private final ModelMapper models;
-    public PipelineService(PlatformMapper mapper, SourceService sources, PlatformProperties properties, ModelMapper models) {
+    private final OdsSchemaGuard schemaGuard;
+    public PipelineService(PlatformMapper mapper, SourceService sources, PlatformProperties properties, ModelMapper models,OdsSchemaGuard schemaGuard) {
         this.mapper=mapper; this.sources=sources; this.properties=properties; this.models=models;
+        this.schemaGuard=schemaGuard;
     }
     public Pipeline require(long id) {
         Pipeline pipeline=mapper.pipeline(id);
         if(pipeline==null) throw new IllegalArgumentException("同步任务不存在");
         return pipeline;
     }
-    public void create(String name,long sourceId,String table,String column,String target,String transform,String cron) {
-        mapper.insertPipeline(definition(name,sourceId,table,column,target,transform,cron));
+    public long create(String name,long sourceId,String table,String column,String target,String transform,String cron) {
+        var pipeline=definition(name,sourceId,table,column,target,transform,cron);
+        mapper.insertPipeline(pipeline);
+        return pipeline.getId();
     }
     @Transactional
     public void update(long id,String name,long sourceId,String table,String column,String target,String transform,String cron) {
@@ -81,11 +85,14 @@ public class PipelineService {
         if(lower.isBefore(epoch)) lower=epoch;
         PipelineRun run=new PipelineRun(); run.setPipelineId(id); run.setLowerBound(lower); run.setUpperBound(upper);
         mapper.insertRun(run); mapper.activeRun(id,run.getId());
-        return Map.of("runId",run.getId(),"source",Map.of("jdbcUrl",source.getJdbcUrl(),"username",source.getUsername(),"password",sources.password(source),
+        var claim=new LinkedHashMap<String,Object>(Map.of("runId",run.getId(),"source",Map.of("jdbcUrl",source.getJdbcUrl(),"username",source.getUsername(),"password",sources.password(source),
                         "databaseType",source.getDatabaseType().name(),"schema",Objects.toString(sourceTable.schema(),""),"columns",sourceTable.columns(),"timestampColumns",sourceTable.timestampColumns()),
                 "sourceTable",pipeline.getSourceTable(),"watermarkColumn",pipeline.getWatermarkColumn(),"targetTable",pipeline.getTargetTable(),
                 "lowerBound",TIME.format(lower),"upperBound",TIME.format(upper),
-                "doris",Map.of("jdbcUrl",properties.doris().jdbcUrl(),"username",properties.doris().username(),"password",properties.doris().password()));
+                "doris",Map.of("jdbcUrl",properties.doris().jdbcUrl(),"username",properties.doris().username(),"password",properties.doris().password())));
+        if(pipeline.getSourceSchemaHash()!=null)
+            claim.put("targetColumns",sourceTable.columns().stream().map(c->c.toLowerCase(Locale.ROOT)).toList());
+        return claim;
     }
     @Transactional
     public void finish(long runId,boolean success,String message) {
@@ -105,6 +112,7 @@ public class PipelineService {
         requireOdsTarget(pipeline.getTargetTable());
         if(pipeline.getTransformSql()!=null && !pipeline.getTransformSql().isBlank())
             throw new IllegalArgumentException("旧加工 SQL 尚未迁移，请先在同步管道编辑页迁移到数据加工");
+        schemaGuard.validate(pipeline);
     }
 
     public void requireOdsTarget(String table) {

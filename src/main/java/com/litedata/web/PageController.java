@@ -26,15 +26,22 @@ public class PageController {
     private final DolphinSchedulerClient scheduler; private final DataApiService services; private final PlatformProperties properties;
     private final com.litedata.store.ModelMapper models;
     private final PipelineTransformMigration migration;
+    private final OdsPipelineService odsPipelines;
+    private final com.litedata.data.SourceSchemaInspector sourceSchemas;
     public PageController(PlatformMapper mapper,SourceService sources,PipelineService pipelines,DolphinSchedulerClient scheduler,DataApiService services,PlatformProperties properties,
-            com.litedata.store.ModelMapper models,PipelineTransformMigration migration) {
+            com.litedata.store.ModelMapper models,PipelineTransformMigration migration,OdsPipelineService odsPipelines,
+            com.litedata.data.SourceSchemaInspector sourceSchemas) {
         this.mapper=mapper; this.sources=sources; this.pipelines=pipelines; this.scheduler=scheduler; this.services=services; this.properties=properties;
         this.models=models; this.migration=migration;
+        this.odsPipelines=odsPipelines; this.sourceSchemas=sourceSchemas;
     }
     @GetMapping("/login") String login() { return "login"; }
     @InitBinder("draft") void bind(WebDataBinder binder) {
         binder.setAllowedFields("name","databaseType","jdbcUrl","username","password","sourceId","sourceTable","watermarkColumn",
-                "targetTable","transformSql","cronExpression","slug","querySql");
+                "targetTable","transformSql","cronExpression","slug","querySql","targetMode","keyColumns","previewHash","confirmed","autoBuckets","buckets","replicationNum",
+                "wizardStep","distributionType","distributionColumns","partitionType","partitionColumn","partitionUnit","partitionRangeStyle","dynamicPartitionProperties",
+                "partitions[*].name","partitions[*].lowerBound","partitions[*].upperBound","partitions[*].valuesText");
+        binder.setAutoGrowCollectionLimit(100);
     }
     @ModelAttribute("canEdit") boolean canEdit(jakarta.servlet.http.HttpServletRequest request) {
         return request.isUserInRole("ADMIN") || request.isUserInRole("DEVELOPER");
@@ -101,10 +108,43 @@ public class PageController {
         model.addAttribute("pipelines",mapper.pipelinePage(page.pageSize(),page.offset())); model.addAttribute("runs",displayRuns());
         return "pipelines";
     }
-    @GetMapping("/pipelines/new") String newPipeline(Model model) { return form(model,new PipelineDraft(),null,"pipelines"); }
+    @GetMapping("/pipelines/new") String newPipeline(Model model) {
+        var draft=new PipelineDraft(); draft.setTargetMode("AUTO");
+        return form(model,draft,null,"pipelines");
+    }
+    @GetMapping("/pipelines/source-tables") @ResponseBody org.springframework.http.ResponseEntity<?> sourceTables(@RequestParam long sourceId) {
+        try { return org.springframework.http.ResponseEntity.ok(sourceSchemas.tables(sourceId)); }
+        catch(IllegalArgumentException exception) { return org.springframework.http.ResponseEntity.badRequest().body(Map.of("error",exception.getMessage())); }
+    }
+    @PostMapping("/pipelines/preview") String previewPipeline(@ModelAttribute("draft") PipelineDraft draft,BindingResult errors,Model model) {
+        draft.setConfirmed(false); draft.setPreviewHash("");
+        if("EXISTING".equals(draft.getTargetMode())) {
+            draft.setTargetTable(""); draft.setKeyColumns(java.util.List.of());
+            draft.setWizardStep(1);
+            return form(model,draft,null,"pipelines");
+        }
+        try {
+            if(errors.hasErrors() || draft.getSourceId()==null || !"AUTO".equals(draft.getTargetMode()))
+                throw new IllegalArgumentException("请选择数据源、来源表及自动 ODS 接入方式");
+            var preview=odsPipelines.preview(odsInput(draft));
+            draft.setTargetTable(preview.model().getTableName()); draft.setWatermarkColumn(preview.watermarkColumn());
+            draft.setKeyColumns(preview.fields().stream().filter(OdsPipelineService.Mapping::keyColumn).map(OdsPipelineService.Mapping::sourceName).toList());
+            draft.setPreviewHash(preview.previewHash()); model.addAttribute("odsPreview",preview);
+            draft.setWizardStep(Math.max(2,draft.getWizardStep()));
+        } catch(IllegalArgumentException exception) {
+            model.addAttribute("error",exception.getMessage());
+            if(exception instanceof OdsPipelineService.PreviewFailure failure) {
+                var fields=failure.fields(); model.addAttribute("odsPreview",fields);
+                draft.setTargetTable(fields.model().getTableName()); draft.setWatermarkColumn(fields.watermarkColumn());
+                draft.setKeyColumns(fields.fields().stream().filter(OdsPipelineService.Mapping::keyColumn).map(OdsPipelineService.Mapping::sourceName).toList());
+                draft.setWizardStep(Math.max(2,draft.getWizardStep()));
+            }
+        }
+        return form(model,draft,null,"pipelines");
+    }
     @GetMapping("/pipelines/{id}/edit") String editPipeline(@PathVariable long id,Model model) {
         var draft=new PipelineDraft(); BeanUtils.copyProperties(pipeline(id),draft);
-        draft.setTransformSql("");
+        draft.setTransformSql(""); draft.setTargetMode("EXISTING");
         return form(model,draft,id,"pipelines");
     }
     @PostMapping("/pipelines") String createPipeline(@ModelAttribute("draft") PipelineDraft draft,BindingResult errors,
@@ -118,17 +158,30 @@ public class PageController {
     private String savePipeline(Long id,PipelineDraft draft,BindingResult errors,Model model,RedirectAttributes redirect,Principal principal) {
         try {
             if(errors.hasErrors() || draft.getSourceId()==null) throw new IllegalArgumentException("请选择有效的数据源并检查表单格式");
-            if(id==null) pipelines.create(draft.getName(),draft.getSourceId(),draft.getSourceTable(),draft.getWatermarkColumn(),
+            if(!java.util.Set.of("AUTO","EXISTING").contains(draft.getTargetMode())) throw new IllegalArgumentException("请选择有效的 ODS 接入方式");
+            if(id==null && "AUTO".equals(draft.getTargetMode())) {
+                if(draft.getTransformSql()!=null && !draft.getTransformSql().isBlank()) throw new IllegalArgumentException("加工 SQL 请在数据加工中配置");
+                odsPipelines.create(odsInput(draft),draft.getPreviewHash(),draft.isConfirmed(),principal.getName());
+            } else if(id==null) pipelines.create(draft.getName(),draft.getSourceId(),draft.getSourceTable(),draft.getWatermarkColumn(),
                     draft.getTargetTable(),draft.getTransformSql(),draft.getCronExpression());
             else pipelines.update(id,draft.getName(),draft.getSourceId(),draft.getSourceTable(),draft.getWatermarkColumn(),
                     draft.getTargetTable(),draft.getTransformSql(),draft.getCronExpression());
             audit(principal,id==null?"PIPELINE_CREATE":"PIPELINE_UPDATE",draft.getName());
-            redirect.addFlashAttribute("success","ODS 同步管道已保存；完成目标模型建表后可执行，加工请在数据加工中配置");
+            redirect.addFlashAttribute("success",id==null && "AUTO".equals(draft.getTargetMode())
+                    ?"ODS 表、模型与同步管道已创建，可以运行同步；加工请在数据加工中配置"
+                    :"ODS 同步管道已保存；完成目标模型建表后可执行，加工请在数据加工中配置");
             return "redirect:/pipelines";
         } catch(IllegalArgumentException exception) { model.addAttribute("error",exception.getMessage()); }
-        catch(DuplicateKeyException exception) { model.addAttribute("error","管道名称已存在，请使用其他名称"); }
+        catch(DuplicateKeyException exception) { model.addAttribute("error","管道名称或目标模型已存在，请核对后选择已有 ODS 或调整名称"); }
         failedSave(principal,"pipelines",id);
+        draft.setConfirmed(false); draft.setPreviewHash("");
         return form(model,draft,id,"pipelines");
+    }
+    private static OdsPipelineService.Input odsInput(PipelineDraft draft) {
+        return new OdsPipelineService.Input(draft.getName(),draft.getSourceId(),draft.getSourceTable(),draft.getWatermarkColumn(),
+                draft.getTargetTable(),draft.getCronExpression(),draft.getKeyColumns(),draft.isAutoBuckets(),draft.getBuckets(),draft.getReplicationNum(),
+                new OdsPipelineService.PhysicalSettings(draft.getDistributionType(),draft.getDistributionColumns(),draft.getPartitionType(),
+                        draft.getPartitionColumn(),draft.getPartitionUnit(),draft.getPartitionRangeStyle(),draft.getDynamicPartitionProperties(),draft.getPartitions()));
     }
     @PostMapping("/pipelines/{id}/run") String run(@PathVariable long id,RedirectAttributes redirect,Principal principal) {
         scheduler.run(id); audit(principal,"PIPELINE_SUBMIT",Long.toString(id));
@@ -199,7 +252,9 @@ public class PageController {
         model.addAttribute("draft",draft); model.addAttribute("resourceId",id);
         model.addAttribute("formAction","/"+resource+(id==null?"":"/"+id));
         if("pipelines".equals(resource)) {
+            if(!model.containsAttribute("odsPreview")) model.addAttribute("odsPreview",null);
             model.addAttribute("sources",sources.list());
+            model.addAttribute("backendStatus",odsPipelines.backendStatus());
             model.addAttribute("odsModels",models.models().stream().filter(m->"ODS".equals(m.getLayer()) && "UNIQUE".equals(m.getModelType())).toList());
             model.addAttribute("legacyTransformSql",id==null?"":pipeline(id).getTransformSql());
             model.addAttribute("migratedTaskId",id==null?null:migration.migratedTaskId(id));

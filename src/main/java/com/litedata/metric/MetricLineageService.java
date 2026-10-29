@@ -231,14 +231,22 @@ public class MetricLineageService {
             try { catalog = source.getNamespace(); }
             catch (RuntimeException exception) { boundary(target, "源库信息无法确定"); return; }
             var asset = metadata.find("source:" + source.getId(), catalog, pipeline.getSourceTable());
-            boolean found = asset != null && asset.isPresent() && (column.equals("*") || metadata.columns(asset.getId()).stream().anyMatch(c -> c.name().equals(column)));
+            String sourceColumn=column;
+            boolean found=column.equals("*") && asset!=null && asset.isPresent();
+            if(asset!=null && asset.isPresent() && !column.equals("*")) {
+                var matches=metadata.columns(asset.getId()).stream().filter(c->c.name().equals(column)
+                        || pipeline.getSourceSchemaHash()!=null && c.name().equalsIgnoreCase(column)).toList();
+                found=matches.size()==1;
+                if(found) sourceColumn=matches.getFirst().name();
+            }
             if (asset != null && asset.isPresent() && !found) {
                 boundary(target, "源表当前未发现同名字段"); warn("源表元数据中未发现字段 " + column + "，同步字段映射需确认。"); return;
             }
-            String key = context + "source:" + source.getId() + ":" + catalog + "." + pipeline.getSourceTable() + "." + column;
-            add(new Node(key, catalog + "." + pipeline.getSourceTable() + "." + column, source.getName() + " · 依据 " + evidenceLabels.getOrDefault(context, "指标快照"), "SOURCE_FIELD",
+            String key = context + "source:" + source.getId() + ":" + catalog + "." + pipeline.getSourceTable() + "." + sourceColumn;
+            add(new Node(key, catalog + "." + pipeline.getSourceTable() + "." + sourceColumn, source.getName() + " · 依据 " + evidenceLabels.getOrDefault(context, "指标快照"), "SOURCE_FIELD",
                     asset == null ? "" : "/metadata/" + asset.getId(), found ? "已采集源结构，按同名同步配置" : "按同名同步配置，源结构未采集或已过期", 0));
-            edge(key, target, column.equals("*") ? "同步行集" : "同步同名映射", "DataX 源列与 Doris 写入列使用相同字段名；增量水位 " + pipeline.getWatermarkColumn(), writer.name(), writer.href());
+            edge(key, target, column.equals("*") ? "同步行集" : sourceColumn.equals(column)?"同步同名映射":"同步字段映射",
+                    sourceColumn+" → "+column+"；增量水位 " + pipeline.getWatermarkColumn(), writer.name(), writer.href());
         }
         List<String> schema(String table) {
             return schemas.computeIfAbsent(table, name -> {

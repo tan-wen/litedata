@@ -107,6 +107,12 @@ def build_datax_job(claim):
         raise ValueError("source columns must be unique")
     if watermark not in columns:
         raise ValueError("watermarkColumn is not present in the source table")
+    target_columns = claim.get("targetColumns", columns)
+    if not isinstance(target_columns, list) or len(target_columns) != len(columns):
+        raise ValueError("targetColumns must match the source column count")
+    target_columns = [require_identifier(column, "target column") for column in target_columns]
+    if len(set(target_columns)) != len(target_columns):
+        raise ValueError("target columns must be unique")
     writer_user = os.environ["DORIS_WRITER_USER"]
     writer_password = os.environ["DORIS_WRITER_PASSWORD"]
     writer_jdbc = os.environ.get("DORIS_WRITER_JDBC_URL", "jdbc:mysql://doris:9030/warehouse")
@@ -163,7 +169,7 @@ def build_datax_job(claim):
             "setting": {"speed": {"channel": int(os.environ.get("DATAX_CHANNELS", "4"))}, "errorLimit": {"record": 0, "percentage": 0.0}},
             "content": [{
                 "reader": {"name": readers[kind], "parameter": {"username": source["username"], "password": source["password"], "column": quoted_columns, "connection": [{"jdbcUrl": [source["jdbcUrl"]], "querySql": [query]}]}},
-                "writer": {"name": "doriswriter", "parameter": {"username": writer_user, "password": writer_password, "column": columns, "loadUrl": [load_url], "connection": [{"jdbcUrl": writer_jdbc, "selectedDatabase": "warehouse", "table": [target]}], "loadProps": {"format": "json", "strip_outer_array": "true", "strict_mode": "true"}, "maxRetries": 3}},
+                "writer": {"name": "doriswriter", "parameter": {"username": writer_user, "password": writer_password, "column": target_columns, "loadUrl": [load_url], "connection": [{"jdbcUrl": writer_jdbc, "selectedDatabase": "warehouse", "table": [target]}], "loadProps": {"format": "json", "strip_outer_array": "true", "strict_mode": "true"}, "maxRetries": 3}},
             }],
         }
     }
