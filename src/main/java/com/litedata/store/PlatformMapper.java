@@ -65,6 +65,10 @@ public interface PlatformMapper {
     int finishRun(@Param("id") long id,@Param("status") String status,@Param("message") String message);
     @Select("SELECT r.*,p.name pipeline_name FROM pipeline_run r JOIN pipeline p ON p.id=r.pipeline_id ORDER BY r.id DESC LIMIT 50")
     List<PipelineRun> recentRuns();
+    @Select("SELECT COUNT(*) FROM pipeline_run WHERE pipeline_id=#{id}")
+    long pipelineRunCount(long id);
+    @Select("SELECT r.*,p.name pipeline_name FROM pipeline_run r JOIN pipeline p ON p.id=r.pipeline_id WHERE r.pipeline_id=#{id} ORDER BY r.started_at DESC,r.id DESC LIMIT #{limit} OFFSET #{offset}")
+    List<PipelineRun> pipelineRunPage(@Param("id") long id,@Param("limit") int limit,@Param("offset") long offset);
     @Select("SELECT * FROM data_service ORDER BY id DESC") List<DataService> services();
     @Select("SELECT COUNT(*) FROM data_service") long serviceCount();
     @Select("SELECT s.*,(SELECT COUNT(*) FROM service_call c WHERE c.service_id=s.id AND c.started_at>=#{start} AND c.started_at<#{end}) daily_calls FROM data_service s ORDER BY s.id DESC LIMIT #{limit} OFFSET #{offset}")

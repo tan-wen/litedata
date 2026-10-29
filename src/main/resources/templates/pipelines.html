@@ -6,12 +6,13 @@
   <article class="platform-card card mb-5"><div class="card-header">同步任务</div><div class="card-body p-0"><div class="table-responsive"><table class="table table-hover mb-0">
     <thead><tr><th>名称 / 数据流向</th><th>执行周期</th><th>调度状态</th><th>执行状态</th><th>最近错误</th><th>操作</th></tr></thead><tbody>
     <tr th:each="pipeline : ${pipelines}" th:id="${'pipeline-' + pipeline.id}">
-      <td><a class="fw-semibold" th:href="@{/scheduling/pipeline/{id}(id=${pipeline.id})}" th:text="${pipeline.name}"></a><div class="small fg-2 mt-2"><span th:text="${pipeline.sourceTable}"></span> → <span th:text="${pipeline.targetTable}"></span></div></td>
+      <td><a class="fw-semibold" th:href="@{/pipelines/{id}/runs(id=${pipeline.id})}" th:text="${pipeline.name}"></a><div class="small fg-2 mt-2"><span th:text="${pipeline.sourceTable}"></span> → <span th:text="${pipeline.targetTable}"></span></div></td>
       <td><code th:text="${pipeline.cronExpression}"></code><small class="fg-2 d-block">北京时间</small></td>
       <td><span class="badge" th:classappend="${pipeline.status == 'SCHEDULED' ? 'theme-success' : 'theme-info'}" th:text="${pipeline.status == 'SCHEDULED' ? '已启用' : pipeline.status == 'PAUSED' ? '已停用' : pipeline.status == 'SCHEDULE_PENDING' ? '待上线' : '未启用'}"></span></td>
       <td><span class="badge" th:classappend="${pipeline.activeRunId != null ? 'theme-warning' : 'theme-info'}" th:text="${pipeline.activeRunId != null ? '运行中' : '空闲'}"></span></td>
       <td class="fg-danger" style="max-width:16rem;overflow-wrap:anywhere" th:text="${pipeline.lastError}"></td>
       <td><div class="d-flex flex-wrap gap-2">
+        <a class="btn-outline theme-secondary btn-sm" th:href="@{/pipelines/{id}/runs(id=${pipeline.id})}">同步记录</a>
         <a class="btn-outline theme-primary btn-sm" th:href="@{/scheduling/pipeline/{id}(id=${pipeline.id})}">实例 / 日志</a>
         <a th:if="${canEdit}" class="btn-link theme-primary btn-sm" th:href="@{/pipelines/{id}/edit(id=${pipeline.id})}">编辑</a>
         <form th:if="${canEdit}" th:action="@{/pipelines/{id}/run(id=${pipeline.id})}" method="post"><input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"><button class="btn-outline theme-primary btn-sm" type="submit" th:disabled="${pipeline.activeRunId != null}">立即运行</button></form>
@@ -22,8 +23,4 @@
     <tr th:if="${#lists.isEmpty(pipelines)}"><td colspan="6" class="text-center fg-2 py-7">尚无同步管道。创建后可手动运行或启用定时。</td></tr>
   </tbody></table></div></div></article>
   <div class="mb-7" th:replace="~{fragments/pagination :: pagination}"></div>
-  <article class="platform-card card"><div class="card-header">平台近期回调记录 <small class="fw-normal fg-2">最近 50 条 · 北京时间</small></div><div class="card-body p-0"><div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>管道</th><th>状态</th><th>开始时间</th><th>结果摘要</th><th>排查</th></tr></thead><tbody>
-    <tr th:each="run : ${runs}"><td th:text="${run.pipelineName}"></td><td><span class="badge" th:classappend="${run.status == 'SUCCESS' ? 'theme-success' : run.status == 'FAILED' ? 'theme-danger' : 'theme-warning'}" th:text="${run.status == 'SUCCESS' ? '成功' : run.status == 'FAILED' ? '失败' : '运行中'}"></span></td><td th:text="${run.startedAt}"></td><td th:text="${run.message}"></td><td><a th:href="@{/scheduling/pipeline/{id}(id=${run.pipelineId})}">查看引擎实例</a></td></tr>
-    <tr th:if="${#lists.isEmpty(runs)}"><td colspan="5" class="text-center fg-2 py-7">尚无平台运行记录。工作流排队或节点领取失败时，请在“实例 / 日志”查看引擎状态。</td></tr>
-  </tbody></table></div></div></article>
 </section></body></html>

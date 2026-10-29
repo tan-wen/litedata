@@ -105,8 +105,14 @@ public class PageController {
     }
     @GetMapping("/pipelines") String pipelines(@RequestParam Map<String,String> params,Model model) {
         var page=ListPagination.prepare(model,"/pipelines",params,mapper.pipelineCount());
-        model.addAttribute("pipelines",mapper.pipelinePage(page.pageSize(),page.offset())); model.addAttribute("runs",displayRuns());
+        model.addAttribute("pipelines",mapper.pipelinePage(page.pageSize(),page.offset()));
         return "pipelines";
+    }
+    @GetMapping("/pipelines/{id}/runs") String pipelineRuns(@PathVariable long id,@RequestParam Map<String,String> params,Model model) {
+        model.addAttribute("pipeline",pipeline(id));
+        var page=ListPagination.prepare(model,"/pipelines/"+id+"/runs",params,mapper.pipelineRunCount(id));
+        model.addAttribute("runs",displayRuns(mapper.pipelineRunPage(id,page.pageSize(),page.offset())));
+        return "pipeline-runs";
     }
     @GetMapping("/pipelines/new") String newPipeline(Model model) {
         var draft=new PipelineDraft(); draft.setTargetMode("AUTO");
@@ -280,7 +286,9 @@ public class PageController {
         mapper.audit(principal.getName(),"PAGE_MUTATION","/"+resource+(id==null?"":"/"+id),"FAILED");
     }
     private java.util.List<com.litedata.model.PipelineRun> displayRuns() {
-        var runs=mapper.recentRuns();
+        return displayRuns(mapper.recentRuns());
+    }
+    private java.util.List<com.litedata.model.PipelineRun> displayRuns(java.util.List<com.litedata.model.PipelineRun> runs) {
         var zone=java.time.ZoneId.of("Asia/Shanghai");
         for(var run:runs) {
             if(run.getStartedAt()!=null) run.setStartedAt(run.getStartedAt().atOffset(java.time.ZoneOffset.UTC).atZoneSameInstant(zone).toLocalDateTime());

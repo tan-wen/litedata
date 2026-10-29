@@ -642,6 +642,48 @@ class PlatformIntegrationTest {
                 .param("transformSql",pipeline.getTransformSql()).param("cronExpression",pipeline.getCronExpression());
     }
 
+    @Test
+    void syncRecordsAreScopedPaginatedAndReadableWithoutExposingEngineLogs() throws Exception {
+        var pipeline=createPipeline();
+        pipelineService.create("other-record-task",pipeline.getSourceId(),"source_orders","updated_at","ods_orders","","0 0 * * * ?");
+        long other=mapper.pipelines().getFirst().getId();
+        pipelineService.create("empty-record-task",pipeline.getSourceId(),"source_orders","updated_at","ods_orders","","0 0 * * * ?");
+        long empty=mapper.pipelines().getFirst().getId();
+        var sourceLower=LocalDateTime.of(2026,1,1,0,0,0,123456000);
+        var started=LocalDateTime.of(2026,1,2,0,0);
+        for(int i=0;i<3;i++) jdbc.update("INSERT INTO pipeline_run(pipeline_id,status,started_at,finished_at,lower_bound,upper_bound,message) VALUES(?,'SUCCESS',?,?,?,?,?)",
+                pipeline.getId(),started.plusHours(i),started.plusHours(i).plusMinutes(1),sourceLower,sourceLower.plusDays(1),i==2?"<img src=x onerror=alert(1)>":"owned-record-"+i);
+        jdbc.update("INSERT INTO pipeline_run(pipeline_id,status,started_at,lower_bound,upper_bound,message) VALUES(?,'RUNNING',?,?,?,'foreign-record')",
+                other,started.plusDays(1),sourceLower,sourceLower.plusDays(1));
+        String path="/pipelines/"+pipeline.getId()+"/runs";
+        var result=mvc.perform(get(path).with(user("viewer").roles("VIEWER")).param("pageSize","2"))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("平台同步记录")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("foreign-record"))))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("&lt;img src=x onerror=alert(1)&gt;")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("2026-01-01 00:00:00.123456")))
+                .andReturn();
+        var view=result.getModelAndView().getModel();
+        assertThat(view.get("totalCount")).isEqualTo(3L); assertThat(view.get("pagePath")).isEqualTo(path);
+        @SuppressWarnings("unchecked") var rows=(java.util.List<PipelineRun>)view.get("runs");
+        assertThat(rows).hasSize(2).allMatch(run->run.getPipelineId().equals(pipeline.getId()));
+        assertThat(rows.getFirst().getStartedAt()).isEqualTo(started.plusHours(10));
+        assertThat(rows.getFirst().getLowerBound()).isEqualTo(sourceLower);
+        assertThat(rows.getFirst().getUpperBound()).isEqualTo(sourceLower.plusDays(1));
+        var last=mvc.perform(get(path).with(user("viewer").roles("VIEWER")).param("pageSize","2").param("pageNum","999"))
+                .andExpect(status().isOk()).andReturn().getModelAndView().getModel();
+        assertThat(last.get("pageNum")).isEqualTo(2);
+        assertThat(((java.util.List<?>)last.get("runs"))).hasSize(1);
+        mvc.perform(get(path).with(user("viewer").roles("VIEWER")).param("pageSize","0")).andExpect(status().isBadRequest());
+        mvc.perform(get("/pipelines/"+empty+"/runs").with(user("viewer").roles("VIEWER")))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("此同步任务尚无平台运行记录")));
+        mvc.perform(get("/pipelines/0/runs").with(user("viewer").roles("VIEWER"))).andExpect(status().isNotFound());
+        mvc.perform(get(path)).andExpect(status().is3xxRedirection());
+        mvc.perform(get("/pipelines").with(user("viewer").roles("VIEWER")))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString(path)))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("平台近期回调记录"))))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("owned-record"))));
+    }
+
     private Pipeline createPipeline() {
         sourceService.create("source-for-pipeline", MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
         DataSource source = mapper.sources().getFirst();

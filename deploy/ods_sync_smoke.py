@@ -49,16 +49,14 @@ def api_result(client: Client, slug: str, token: str) -> dict[str, object]:
     return result
 
 
-def await_pipeline(client: Client, pipeline_name: str, after_started: str = "") -> str:
+def await_pipeline(client: Client, pipeline_id: str, after_started: str = "") -> str:
     deadline = time.monotonic() + POLL_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
-        status, page = client.request("GET", "/pipelines")
+        status, page = client.request("GET", f"/pipelines/{pipeline_id}/runs")
         if status != 200:
-            raise SmokeFailure("pipeline list became unavailable")
+            raise SmokeFailure("task-scoped synchronization records became unavailable")
         for row in parse(page).rows:
             cells = " ".join(map(str, row["cells"]))
-            if pipeline_name not in cells:
-                continue
             if "FAILED" in cells or "失败" in cells:
                 raise SmokeFailure("automatic ODS pipeline reported failure")
             if ("SUCCESS" in cells or "成功" in cells) and "ODS同步完成" in cells.replace(" ", ""):
@@ -166,7 +164,7 @@ VALUES ('{expected_name}', 88001, CURRENT_DATE(), 123.45,
 
         status, run_page = post_form(client, pipelines, f"/pipelines/{pipeline_id}/run", {})
         require_success(status, run_page, "DolphinScheduler 已接受执行请求")
-        first_started = await_pipeline(client, pipeline_name)
+        first_started = await_pipeline(client, pipeline_id)
 
         status, service_form = client.request("GET", "/services/new")
         if status != 200:
@@ -192,7 +190,7 @@ VALUES ('{expected_name}', 88001, CURRENT_DATE(), 123.45,
 
         status, replay_page = post_form(client, pipelines, f"/pipelines/{pipeline_id}/run", {})
         require_success(status, replay_page, "DolphinScheduler 已接受执行请求")
-        await_pipeline(client, pipeline_name, after_started=first_started)
+        await_pipeline(client, pipeline_id, after_started=first_started)
         replay_rows = api_result(client, service_slug, token).get("data")
         if not isinstance(replay_rows, list) or len(replay_rows) != 1 or replay_rows[0] != row:
             raise SmokeFailure("partitioned ODS replay changed the synthetic row or introduced duplicates")

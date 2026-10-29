@@ -4,7 +4,7 @@
   <ol>
     <li>数据开发</li>
     <li><a th:href="${resource.type == 'pipeline' ? '/pipelines' : '/transforms'}" th:text="${resource.type == 'pipeline' ? '同步管道' : '数据加工'}"></a></li>
-    <li><a th:if="${resource.type == 'transform'}" th:href="${resource.backPath}" th:text="${resource.name}"></a><span th:unless="${resource.type == 'transform'}" th:text="${resource.name}"></span></li>
+    <li><a th:href="${resource.type == 'pipeline' ? '/pipelines/' + resource.id + '/runs' : resource.backPath}" th:text="${resource.name}"></a></li>
     <li th:if="${instanceId == null}" aria-current="page">运行实例</li>
     <th:block th:if="${instanceId != null}">
       <li><a th:href="${resource.path()}">运行实例</a></li>
