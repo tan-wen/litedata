@@ -35,11 +35,59 @@ LiteData 是一个部署简单、易上手的数据中台，围绕多数据库�
 
 所有资源的列表、新增、编辑使用独立页面。列表默认每页20条，可切换每页条数及前后翻页，显示记录总数；模型筛选条件在翻页时保留。数据源与服务页默认限制每页 20 条，新增和编辑等页面独立路由，不内嵌弹窗。
 
-```text
-源数据库 → DataX 时间水位增量 → Doris ODS → INSERT SELECT → Doris ADS → 数据 API
-              ↑ DolphinScheduler 调度、重试及 worker 执行回调 ↑
-LiteData：页面管理、元数据、凭据、水位和运行状态；MySQL：平台及独立调度元数据库
+## 技术框架
+
+平台负责配置、治理和运行状态管理，DolphinScheduler 负责同步与加工任务的调度编排，
+DataX 与 SQL 执行器完成数据读写，Doris 承载分层数仓及查询。
+
+```mermaid
+%%{init: {"flowchart": {"wrappingWidth": 320, "nodeSpacing": 30, "rankSpacing": 45}}}%%
+flowchart TB
+    browser["管理用户 / 浏览器"]
+    client["业务应用 / Agent"]
+
+    subgraph platform["LiteData 平台 · Spring Boot 4.1.1 / JDK 25"]
+        web["管理界面<br/>Thymeleaf / Bootstrap 6"]
+        api["HTTP 接口<br/>受控数据 API / MCP"]
+        service["业务与治理服务<br/>数据源 · 建模 · 同步 · 加工 · 数据服务<br/>元数据血缘 · 资产 · 质量 · 指标<br/>Spring Security / MyBatis / Flyway"]
+        web --> service
+        api --> service
+    end
+
+    subgraph ds["DolphinScheduler 3.4.0"]
+        scheduler["API / Master<br/>Cron · DAG · 重试 · 串行排队"]
+        subgraph worker["Worker 执行环境"]
+            runner["SHELL 节点 / Python 执行器<br/>run_pipeline.py / run_sql_task.py"]
+            datax["DataX<br/>多源时间水位增量同步"]
+            runner -->|启动同步作业| datax
+        end
+        scheduler -->|调度 SHELL 节点| runner
+    end
+
+    platformDb[("MySQL · platform<br/>配置 / 凭据密文 / 水位 / 运行记录")]
+    schedulerDb[("MySQL · dolphinscheduler<br/>工作流 / 调度 / 实例元数据")]
+    source[("业务源数据库<br/>MySQL / PostgreSQL / SQL Server / Oracle")]
+    doris[("Doris 4.1.3 · warehouse<br/>ODS / DIM / DWD / DWS / ADS")]
+
+    browser -->|HTTP / Session| web
+    client -->|HTTP / API Key 或 Bearer| api
+    service -->|MyBatis / JDBC| platformDb
+    service -->|HTTP：发布、启停、状态与日志| scheduler
+    runner -.->|内部 HTTP：领取配置和 SQL、回传结果| service
+    scheduler -->|JDBC| schedulerDb
+    service -->|JDBC：源结构与水位| source
+    source -->|JDBC：按水位区间读取| datax
+    datax -->|Stream Load：写入 ODS| doris
+    runner -->|PyMySQL：执行 INSERT SELECT| doris
+    service -->|JDBC：建模、治理及只读查询| doris
 ```
+
+- **同步与加工**：典型链路为 DataX 写入 ODS，再由独立 SQL 任务清洗、关联或汇总到 DIM/DWD/DWS/ADS。
+  DS 节点实际类型为 `SHELL`；SQL 保存在平台，执行器运行时通过内部 HTTP 接口领取 SQL 快照，执行后回传结果。
+- **状态与调度**：平台维护运行互斥和同步水位，成功回调后才推进水位；加工失败不回退同步水位。
+  同步与加工使用 DS 调度，数据质量扫描使用平台内置 Spring 调度，扫描范围为 MySQL 数据源与 Doris。
+- **元数据隔离**：平台库 `platform` 与 DS 库 `dolphinscheduler` 使用独立账号；默认开发部署共用一个 MySQL 实例，
+  生产部署拆分为独立 MySQL 服务。图中按逻辑职责展示，具体进程与容器划分见 [生产部署说明](deploy/production/README.md)。
 
 技术基线：Spring Boot **4.1.1** / JDK **25 LTS** / Thymeleaf / MyBatis Starter **4.1.0** /
 Bootstrap **6.0.0-alpha.1** / MySQL **8.4.11**。Bootstrap 随应用提供，运行时无需访问 CDN。
