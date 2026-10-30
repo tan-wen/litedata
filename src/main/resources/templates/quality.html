@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
 <head><title>数据质量 · LiteData</title></head><body><section>
-  <div class="d-flex flex-wrap justify-content-between align-items-center mb-7 gap-5"><div><div class="page-kicker">数据治理 / 数据质量</div><h1 class="page-title">数据质量任务</h1><p class="page-subtitle mb-0">为 Doris 表或已登记数据源配置字段、指标、关联和自定义 SQL 异常扫描。</p></div><a th:if="${canEdit}" class="btn-solid theme-primary" th:href="@{/quality/new}">新增质量任务</a></div>
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-7 gap-5"><div><h1 class="page-title">数据质量任务</h1><p class="page-subtitle mb-0">为 Doris 表或已登记数据源配置字段、指标、关联和自定义 SQL 异常扫描。</p></div><a th:if="${canEdit}" class="btn-solid theme-primary" th:href="@{/quality/new}">新增质量任务</a></div>
   <div th:replace="~{fragments/messages :: messages}"></div>
   <article class="platform-card card"><div class="card-header">质量扫描目录</div><div class="card-body"><form class="row g-3 mb-5" th:action="@{/quality}" method="get"><div class="sm:col-8"><input class="form-control" name="keyword" th:value="${keyword}" maxlength="100" aria-label="搜索质量任务" placeholder="任务名、表名、负责人"></div><div class="sm:col-4"><button class="btn-outline theme-primary" type="submit">查询</button><a class="btn-link theme-primary" th:href="@{/quality}">重置</a></div></form>
   <div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>任务 / 表</th><th>规则数</th><th>负责人</th><th>调度</th><th>状态</th><th>操作</th></tr></thead><tbody>

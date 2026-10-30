@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
 <head><title>创建 API Key · LiteData</title></head><body><section>
-  <div class="mb-7"><div class="page-kicker">系统设置 / <a th:href="@{/settings/api-keys}">我的 API Key</a></div><h1 class="page-title">创建 API Key</h1><p class="page-subtitle mb-0">仅授予 Agent 此次连接所需的工具和资源范围。</p></div>
+  <div class="mb-7"><h1 class="page-title">创建 API Key</h1><p class="page-subtitle mb-0">仅授予 Agent 此次连接所需的工具和资源范围。</p></div>
   <div th:replace="~{fragments/messages :: messages}"></div>
   <form th:object="${draft}" th:action="@{/settings/api-keys}" method="post"><input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
     <article class="platform-card card mb-5"><div class="card-header">Key 配置</div><div class="card-body"><div class="row g-5">

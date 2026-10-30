@@ -2,13 +2,13 @@
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
 <head><title>账号权限 · LiteData</title></head><body><section>
   <div class="d-flex justify-content-between align-items-start gap-5 mb-7">
-    <div><div class="page-kicker">系统管理 / 账号权限</div><h1 class="page-title">账号权限</h1><p class="page-subtitle mb-0">管理员维护账号，开发者配置管道和服务，只读用户查看运行状态。</p></div>
+    <div><h1 class="page-title">账号权限</h1><p class="page-subtitle mb-0">管理员维护账号，开发者配置管道和服务，只读用户查看运行状态。</p></div>
     <a class="btn-solid theme-primary" th:href="@{/users/new}">新增账号</a>
   </div>
   <div th:replace="~{fragments/messages :: messages}"></div>
   <article class="platform-card card"><div class="card-header">账号列表</div><div class="card-body p-0"><div class="table-responsive">
     <table class="table table-hover mb-0"><thead><tr><th>账号</th><th>角色</th><th>状态</th><th>操作</th></tr></thead>
-      <tbody><tr th:each="account : ${users}"><td th:text="${account.username}"></td><td th:text="${account.role}"></td><td th:text="${account.enabled} ? '启用' : '停用'"></td><td><a class="btn-outline theme-primary btn-sm" th:href="@{/users/{id}/edit(id=${account.id})}">编辑</a></td></tr>
+      <tbody><tr th:each="account : ${users}" th:id="${'user-' + account.id}"><td th:text="${account.username}"></td><td th:text="${account.role}"></td><td th:text="${account.enabled} ? '启用' : '停用'"></td><td><a class="btn-outline theme-primary btn-sm" th:href="@{/users/{id}/edit(id=${account.id})}">编辑</a></td></tr>
       <tr th:if="${#lists.isEmpty(users)}"><td colspan="4" class="text-center fg-2 py-7">暂无账号。</td></tr></tbody>
     </table>
   </div></div></article>

@@ -5,7 +5,6 @@
   <link rel="stylesheet" th:href="@{/css/scheduler-console.css}">
   <div class="d-flex flex-wrap justify-content-between align-items-start gap-5 mb-7">
     <div>
-      <nav th:replace="~{fragments/scheduler-breadcrumb :: breadcrumb(${resource}, ${instanceId})}"></nav>
       <h1 class="page-title">节点与执行日志</h1>
       <p class="page-subtitle mb-0">选择节点查看该次执行的日志，失败节点优先展开。</p>
       <p class="scheduler-status small fg-2 mb-0" data-scheduler-status role="status" aria-live="polite">每 5 秒自动更新状态</p>

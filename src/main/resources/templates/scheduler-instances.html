@@ -3,7 +3,7 @@
 <head><title>运行实例 · LiteData</title></head><body><section>
   <link rel="stylesheet" th:href="@{/css/scheduler-console.css}">
   <div class="d-flex flex-wrap justify-content-between align-items-start gap-5 mb-7">
-    <div><nav th:replace="~{fragments/scheduler-breadcrumb :: breadcrumb(${resource}, ${null})}"></nav><h1 class="page-title">运行实例</h1><p class="page-subtitle mb-0">查看每次工作流执行的实际结果，进入实例定位节点并查看日志。</p></div>
+    <div><h1 class="page-title">运行实例</h1><p class="page-subtitle mb-0">查看每次工作流执行的实际结果，进入实例定位节点并查看日志。</p></div>
     <div class="d-flex gap-3"><button class="btn-outline theme-primary" type="button" onclick="location.reload()">刷新实例</button><a th:if="${resource.type == 'pipeline'}" class="btn-outline theme-secondary" th:href="@{/pipelines/{id}/runs(id=${resource.id})}">同步记录</a><a class="btn-outline theme-secondary" th:href="${resource.backPath}">返回任务</a></div>
   </div>
   <div th:if="${engineError}" class="alert theme-warning" role="alert"><span th:text="${engineError}"></span> <a th:href="${resource.type == 'pipeline' ? '/pipelines/' + resource.id + '/runs' : resource.backPath}">查看平台运行记录</a></div>

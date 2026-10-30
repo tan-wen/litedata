@@ -66,6 +66,13 @@ button, a, input, select, textarea { scroll-margin-block: 5rem; }
 .mobile-toggle { display: none; }
 .main-content { min-width: 0; padding: 1.75rem; outline: none; }
 .page-kicker { color: var(--platform-muted); font-size: .72rem; margin-bottom: .45rem; }
+.breadcrumb-nav ol { display: flex; flex-wrap: wrap; gap: .25rem .4rem; margin: 0; padding: 0; list-style: none; }
+.breadcrumb-nav li { min-width: 0; overflow-wrap: anywhere; }
+.breadcrumb-nav .breadcrumb-separator { margin-right: .4rem; color: var(--platform-muted); }
+.breadcrumb-nav a { color: var(--platform-muted); text-decoration-color: color-mix(in srgb, currentColor 55%, transparent); }
+.breadcrumb-nav a:hover { color: var(--platform-primary); }
+.breadcrumb-nav a:focus-visible { color: var(--platform-primary); outline: 2px solid var(--platform-primary); outline-offset: 2px; border-radius: .15rem; }
+.breadcrumb-nav [aria-current="page"] { color: var(--platform-text); font-weight: 600; }
 .page-title { font-size: 1.55rem; line-height: 1.35; font-weight: 720; letter-spacing: -.03em; margin: 0; }
 .page-subtitle { color: var(--platform-muted); font-size: .82rem; margin-top: .5rem; line-height: 1.7; }
 .platform-card, .metric-card { background: var(--platform-surface); border: 1px solid var(--platform-line); border-radius: .7rem; box-shadow: var(--platform-shadow); overflow: hidden; }

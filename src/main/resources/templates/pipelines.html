@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
 <head><title>同步管道 · 数据中台</title></head><body><section>
-  <div class="d-flex flex-wrap justify-content-between align-items-start mb-7 gap-5"><div><div class="page-kicker">数据开发 / 同步管道</div><h1 class="page-title">同步管道</h1><p class="page-subtitle mb-0">仅将源数据同步至已登记的 ODS UNIQUE 模型；SQL 加工请创建独立任务并从末端调度。</p></div><a th:if="${canEdit}" class="btn-solid theme-primary" th:href="@{/pipelines/new}">创建同步管道</a></div>
+  <div class="d-flex flex-wrap justify-content-between align-items-start mb-7 gap-5"><div><h1 class="page-title">同步管道</h1><p class="page-subtitle mb-0">仅将源数据同步至已登记的 ODS UNIQUE 模型；SQL 加工请创建独立任务并从末端调度。</p></div><a th:if="${canEdit}" class="btn-solid theme-primary" th:href="@{/pipelines/new}">创建同步管道</a></div>
   <div th:replace="~{fragments/messages :: messages}"></div>
   <article class="platform-card card mb-5"><div class="card-header">同步任务</div><div class="card-body p-0"><div class="table-responsive"><table class="table table-hover mb-0">
     <thead><tr><th>名称 / 数据流向</th><th>执行周期</th><th>调度状态</th><th>执行状态</th><th>最近错误</th><th>操作</th></tr></thead><tbody>

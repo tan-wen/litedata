@@ -1,6 +1,3 @@
-.scheduler-breadcrumb ol { display: flex; flex-wrap: wrap; gap: .25rem .4rem; margin: 0; padding: 0; list-style: none; }
-.scheduler-breadcrumb li { min-width: 0; overflow-wrap: anywhere; }
-.scheduler-breadcrumb li + li::before { content: "/"; margin-right: .4rem; color: var(--platform-muted); }
 .scheduler-status { margin-top: .5rem; }
 .scheduler-status-error { margin: .5rem 0 0; }
 .scheduler-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1rem; }

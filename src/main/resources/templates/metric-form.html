@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
 <head><title>指标定义 · LiteData</title></head><body><section>
-  <div class="mb-7"><div class="page-kicker">数据治理 / <a th:href="@{/metrics}">指标管理</a></div><h1 class="page-title" th:text="${metricId == null ? '新增指标' : '编辑指标'}"></h1><p class="page-subtitle mb-0">原子指标从模型聚合；派生指标在原子指标上限定窗口；复合指标用已保存指标计算。保存后生成可追溯 SQL 快照。</p></div>
+  <div class="mb-7"><h1 class="page-title" th:text="${metricId == null ? '新增指标' : '编辑指标'}"></h1><p class="page-subtitle mb-0">原子指标从模型聚合；派生指标在原子指标上限定窗口；复合指标用已保存指标计算。保存后生成可追溯 SQL 快照。</p></div>
   <div th:replace="~{fragments/messages :: messages}"></div>
   <form th:if="${canEdit}" th:object="${draft}" th:action="${metricId == null ? '/metrics' : '/metrics/' + metricId}" method="post" data-metric-form>
     <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"><input type="hidden" th:field="*{version}">

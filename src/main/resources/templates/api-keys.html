@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
 <head><title>我的 API Key · LiteData</title></head><body><section>
-  <div class="d-flex justify-content-between align-items-start gap-5 mb-7"><div><div class="page-kicker">系统设置 / 我的 API Key</div><h1 class="page-title">我的 API Key</h1><p class="page-subtitle mb-0">为 Agent 创建权限受限的 MCP 凭证。密钥只在创建时显示一次。</p></div><a class="btn-solid theme-primary" th:href="@{/settings/api-keys/new}">创建 API Key</a></div>
+  <div class="d-flex justify-content-between align-items-start gap-5 mb-7"><div><h1 class="page-title">我的 API Key</h1><p class="page-subtitle mb-0">为 Agent 创建权限受限的 MCP 凭证。密钥只在创建时显示一次。</p></div><a class="btn-solid theme-primary" th:href="@{/settings/api-keys/new}">创建 API Key</a></div>
   <div th:replace="~{fragments/messages :: messages}"></div>
   <p class="fg-2">时间以 UTC 显示。权限或资源范围需要调整时，请创建替代 Key 并吊销旧 Key。</p>
   <article class="platform-card card"><div class="card-header">已创建的 Key</div><div class="card-body p-0"><div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>名称</th><th>前缀</th><th>权限</th><th>资源范围</th><th>有效期</th><th>最近使用</th><th>状态</th><th>操作</th></tr></thead><tbody>

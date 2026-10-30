@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
 <head><title>API Key 已创建 · LiteData</title></head><body><section>
-  <div class="mb-7"><div class="page-kicker">系统设置 / 我的 API Key</div><h1 class="page-title">API Key 已创建</h1><p class="page-subtitle mb-0">请立即复制到 Agent 的安全配置中。离开此页后无法再次查看明文。</p></div>
+  <div class="mb-7"><h1 class="page-title">API Key 已创建</h1><p class="page-subtitle mb-0">请立即复制到 Agent 的安全配置中。离开此页后无法再次查看明文。</p></div>
   <article class="platform-card card mb-5"><div class="card-header">仅显示一次</div><div class="card-body"><p class="alert theme-warning">此 Key 相当于密码。请勿提交到仓库、粘贴到对话或写入日志。</p><code class="d-block user-select-all text-break p-3 border rounded" th:text="${issued.token}">ld_mcp_…</code></div></article>
   <article class="platform-card card mb-5"><div class="card-header">MCP 客户端配置</div><div class="card-body"><p>将 MCP 服务地址设为 <code>https://&lt;LiteData 主机&gt;/mcp</code>，并在请求头加入：</p><pre class="mb-0"><code>Authorization: Bearer &lt;刚创建的 API Key&gt;</code></pre></div></article>
   <a class="btn-solid theme-primary" th:href="@{/settings/api-keys}">我已安全保存，返回列表</a>

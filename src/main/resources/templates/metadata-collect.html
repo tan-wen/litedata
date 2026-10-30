@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
 <head><title>采集元数据 · LiteData</title></head><body><section>
-  <div class="mb-7"><div class="page-kicker">数据治理 / 元数据</div><h1 class="page-title">采集元数据</h1><p class="page-subtitle">读取所选数据库的表名、字段、类型与注释，更新元数据目录。</p></div>
+  <div class="mb-7"><h1 class="page-title">采集元数据</h1><p class="page-subtitle">读取所选数据库的表名、字段、类型与注释，更新元数据目录。</p></div>
   <div th:replace="~{fragments/messages :: messages}"></div>
   <article class="platform-card card"><div class="card-header">采集范围</div><div class="card-body">
     <form th:action="@{/metadata/collect}" method="post">

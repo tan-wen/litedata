@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org"><body>
+<nav th:fragment="breadcrumb(items)" th:if="${items != null and !#lists.isEmpty(items)}" class="page-kicker breadcrumb-nav" aria-label="面包屑">
+  <ol>
+    <li th:each="item, position : ${items}">
+      <span th:unless="${position.first}" class="breadcrumb-separator" aria-hidden="true">/</span>
+      <a th:if="${item.href != null}" th:href="${item.href}" th:text="${item.label}">上级页面</a>
+      <span th:unless="${item.href != null}" aria-current="page" th:text="${item.label}">当前页面</span>
+    </li>
+  </ol>
+</nav>
+</body></html>

@@ -49,7 +49,7 @@
         </form>
       </div>
     </header>
-    <main class="main-content" id="main-content" tabindex="-1"><th:block th:replace="${content}"></th:block></main>
+    <main class="main-content" id="main-content" tabindex="-1"><th:block th:replace="~{fragments/breadcrumb :: breadcrumb(${breadcrumbs})}"></th:block><th:block th:replace="${content}"></th:block></main>
   </div>
 </div>
 <dialog class="navigation-dialog" id="mobile-navigation" aria-label="导航菜单">

@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
 <head><title th:text="${resourceId == null ? '新增账号 · LiteData' : '编辑账号 · LiteData'}">账号权限 · LiteData</title></head><body><section>
-  <div class="mb-7"><div class="page-kicker">系统管理 / <a th:href="@{/users}">账号权限</a></div><h1 class="page-title" th:text="${resourceId == null ? '新增账号' : '编辑账号'}"></h1><p class="page-subtitle mb-0">维护账号角色与登录密码。</p></div>
+  <div class="mb-7"><h1 class="page-title" th:text="${resourceId == null ? '新增账号' : '编辑账号'}"></h1><p class="page-subtitle mb-0">维护账号角色与登录密码。</p></div>
   <div th:replace="~{fragments/messages :: messages}"></div>
   <form th:object="${draft}" th:action="${formAction}" method="post">
     <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">

@@ -18,6 +18,12 @@
 - Bootstrap 6 使用 `btn-solid theme-primary`、`btn-outline theme-secondary` 等组合；响应式类为 `md:col-6`，选择框使用 `form-control`，复选框使用 `check`。不要重新引入 Bootstrap 5 的旧组件类。
 - `static/vendor/bootstrap/SOURCES.md` 记录精确版本、来源和完整性校验；发行文件保留原始内容及 MIT 授权。
 
+## 面包屑导航
+
+- 所有使用后台公共布局的页面由 `fragments/breadcrumb.html` 统一生成面包屑；独立登录页不显示。
+- 上级项必须链接到可访问的真实页面，当前页是唯一使用 `aria-current="page"` 的末项；不要为“数据开发”“数据治理”等没有对应页面的概念添加伪父级。
+- 有详情页的资源应链接到详情页；没有详情页的资源祖先链接到列表中对应行的锚点。面包屑名称较长时应允许换行，不省略页面层级。
+
 ## 版本与验证边界
 
 Bootstrap 6 仍为 Alpha 预发行版。升级应固定版本，按[官方迁移说明](https://getbootstrap.com/docs/6.0/guides/migration/)检查破坏性变更。当前官方浏览器最低要求为 Chrome / Edge 130、Firefox 132、Safari 18；低于该范围的浏览器不作为已支持目标。

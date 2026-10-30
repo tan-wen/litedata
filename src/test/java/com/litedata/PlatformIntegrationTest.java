@@ -684,6 +684,28 @@ class PlatformIntegrationTest {
                 .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("owned-record"))));
     }
 
+    @Test
+    void breadcrumbsUseResolvedViewsOnFailedPostsAndEscapeResourceLabels() throws Exception {
+        var pipeline=createPipeline();
+        String label="订单 <img src=x onerror=alert(1)>";
+        jdbc.update("UPDATE pipeline SET name=? WHERE id=?",label,pipeline.getId());
+        var records=mvc.perform(get("/pipelines/"+pipeline.getId()+"/runs").with(user("viewer").roles("VIEWER")))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("aria-label=\"面包屑\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("<img src=x"))))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("&lt;img src=x onerror=alert(1)&gt;")))
+                .andReturn();
+        @SuppressWarnings("unchecked") var crumbs=(java.util.List<com.litedata.web.PageBreadcrumbs.Item>)records.getModelAndView().getModel().get("breadcrumbs");
+        assertThat(crumbs).extracting(com.litedata.web.PageBreadcrumbs.Item::href)
+                .containsExactly("/","/pipelines","/pipelines#pipeline-"+pipeline.getId(),null);
+        var failed=mvc.perform(pipelineEdit(pipeline).param("name",label).param("cronExpression","invalid"))
+                .andExpect(status().isOk()).andReturn();
+        @SuppressWarnings("unchecked") var editing=(java.util.List<com.litedata.web.PageBreadcrumbs.Item>)failed.getModelAndView().getModel().get("breadcrumbs");
+        assertThat(editing.getLast().label()).isEqualTo("编辑同步管道");
+        assertThat(editing.get(2).href()).isEqualTo("/pipelines#pipeline-"+pipeline.getId());
+        mvc.perform(get("/sources/new").with(user("developer").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("aria-current=\"page\">新增数据源")));
+    }
+
     private Pipeline createPipeline() {
         sourceService.create("source-for-pipeline", MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
         DataSource source = mapper.sources().getFirst();

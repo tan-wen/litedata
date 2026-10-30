@@ -2,7 +2,7 @@
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
 <head><title>数据服务 · 数据中台</title></head>
 <body><section>
-  <div class="mb-7"><div class="page-kicker">数据开发 / <a th:href="@{/services}">数据服务</a></div><h1 class="page-title" th:text="${resourceId == null ? '创建数据服务' : '编辑数据服务'}">创建数据服务</h1><p class="page-subtitle mb-0">将 Doris 只读 SQL 发布为受控 API；命名参数如 <code>:customerId</code> 自动成为请求参数。</p></div>
+  <div class="mb-7"><h1 class="page-title" th:text="${resourceId == null ? '创建数据服务' : '编辑数据服务'}">创建数据服务</h1><p class="page-subtitle mb-0">将 Doris 只读 SQL 发布为受控 API；命名参数如 <code>:customerId</code> 自动成为请求参数。</p></div>
   <div th:replace="~{fragments/messages :: messages}"></div>
   <form th:if="${canEdit}" th:object="${draft}" th:action="${formAction}" method="post">
     <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
