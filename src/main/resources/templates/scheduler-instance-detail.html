@@ -26,7 +26,7 @@
       <div class="scheduler-summary-item"><div class="small fg-2 mb-2">节点统计</div><strong data-node-count th:text="${#lists.size(nodes)}"></strong></div>
     </div></div></article>
   </th:block>
-  <article class="platform-card card mb-5" th:if="${callbackPage != null}" data-callback-records th:attr="data-callback-initial-total=${callbackPage.total},data-callback-history-url=@{/pipelines/{id}/runs(id=${resource.id})}">
+  <article class="platform-card card mb-5" th:if="${callbackPage != null}" data-callback-records th:attr="data-callback-history-url=@{/pipelines/{id}/runs(id=${resource.id})}">
     <div class="card-header d-flex justify-content-between gap-3"><span>同步回调记录</span><small class="fw-normal fg-2" data-callback-total th:text="${'共 ' + callbackPage.total + ' 条 · 平台回调' }"></small></div>
     <div class="card-body border-bottom"><p class="mb-0">回调在执行节点实际领取同步后登记，并回传 ODS 同步结果和水位区间。它独立于工作流状态：工作流成功不等于已经收到成功回调。</p></div>
     <div class="card-body p-0"><div class="table-responsive"><table class="table table-hover mb-0">
@@ -44,9 +44,7 @@
       </tbody>
     </table></div></div>
     <template data-callback-row-template><tr><td><code data-callback-id></code></td><td><code data-callback-task-id></code></td><td><span class="badge" data-callback-state></span></td><td data-callback-start></td><td data-callback-end></td><td><code data-callback-range></code><div class="small fg-2 mt-1">源库时间 · 左闭右开</div></td><td class="small" style="max-width:24rem;overflow-wrap:anywhere" data-callback-message></td></tr></template>
-    <p class="small fg-2 m-5 mb-0" data-callback-page-notice hidden>回调总数已变化；刷新页面以更新分页导航。</p>
   </article>
-  <th:block th:if="${callbackPage != null and callbackPage.total > 0}"><div th:replace="~{fragments/pagination :: pagination}"></div></th:block>
   <th:block th:if="${instance != null}">
     <div class="scheduler-workspace">
       <article class="platform-card card scheduler-node-panel"><div class="card-header">执行节点</div><div class="card-body p-0"><nav aria-label="执行节点选择" class="scheduler-node-list" data-scheduler-nodes>

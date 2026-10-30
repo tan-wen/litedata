@@ -188,9 +188,6 @@
     }
     const total = Number.isInteger(page.total) ? page.total : values.length;
     write(panel.querySelector('[data-callback-total]'), `共 ${total} 条 · 平台回调`);
-    const initial = Number(panel.dataset.callbackInitialTotal);
-    const notice = panel.querySelector('[data-callback-page-notice]');
-    if (notice && Number.isFinite(initial)) notice.hidden = total === initial;
   }
   async function refreshStatus() {
     if (loading || !active || document.hidden) return;

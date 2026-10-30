@@ -1,7 +1,6 @@
 package com.litedata.scheduling;
 
 import com.litedata.model.PipelineRun;
-import com.litedata.service.QueryPage;
 import com.litedata.store.PlatformMapper;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
@@ -17,9 +16,9 @@ public class PipelineCallbackRecords {
     private static final DateTimeFormatter TIME=DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSS");
     private final PlatformMapper mapper;
     public PipelineCallbackRecords(PlatformMapper mapper) { this.mapper=mapper; }
-    public long count(long pipelineId,long instanceId) { return mapper.instanceRunCount(pipelineId,instanceId); }
-    public Page page(long pipelineId,long instanceId,QueryPage page,long total) {
-        return new Page(total,mapper.instanceRunPage(pipelineId,instanceId,page.pageSize(),page.offset()).stream().map(this::display).toList());
+    public Page records(long pipelineId,long instanceId) {
+        var items=mapper.instanceRuns(pipelineId,instanceId).stream().map(this::display).toList();
+        return new Page(items.size(),items);
     }
     private Callback display(PipelineRun run) {
         return new Callback(run.getId(),run.getTaskInstanceId(),run.getStatus(),beijing(run.getStartedAt()),beijing(run.getFinishedAt()),

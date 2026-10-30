@@ -740,7 +740,7 @@ class PlatformIntegrationTest {
         assertThat(mapper.pipelineRunCount(pipeline.getId())).isZero();
     }
 
-    @Test void instanceCallbacksAreScopedPaginatedSafeAndRefreshIndependentlyFromEngineSuccess() throws Exception {
+    @Test void instanceCallbacksShowAllAttemptsWithoutPagingAndRefreshIndependentlyFromEngineSuccess() throws Exception {
         var pipeline=createPipeline(); long id=pipeline.getId(); mapper.definition(id,88);
         pipelineService.create("other-callback-task",pipeline.getSourceId(),"source_orders","updated_at","ods_orders","","0 0 * * * ?");
         long other=mapper.pipelines().getFirst().getId();
@@ -759,16 +759,19 @@ class PlatformIntegrationTest {
                 .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("must-not-leak"))))
                 .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("unlinked-history"))))
                 .andReturn().getModelAndView().getModel();
-        assertThat(page.get("totalCount")).isEqualTo(3L);
+        var callbacks=(com.litedata.scheduling.PipelineCallbackRecords.Page)page.get("callbackPage");
+        assertThat(callbacks.total()).isEqualTo(3L);
+        assertThat(callbacks.items()).hasSize(3);
+        assertThat(page).doesNotContainKeys("pageNum","pageSize","totalPages");
         mvc.perform(get(path+"/status").param("pageSize","2").with(user("viewer").roles("VIEWER")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.callbackPage.total").value(3))
-                .andExpect(jsonPath("$.callbackPage.items.length()").value(2))
+                .andExpect(jsonPath("$.callbackPage.items.length()").value(3))
                 .andExpect(jsonPath("$.callbackPage.items[0].status").value("RUNNING"))
                 .andExpect(jsonPath("$.callbackPage.items[0].startedAt").value("2026-01-01 08:02:00.123456"))
                 .andExpect(jsonPath("$.callbackPage.items[0].lowerBound").value("2026-01-01 00:00:00.123456"));
         mvc.perform(get(path).param("pageSize","2").param("pageNum","999").with(user("viewer").roles("VIEWER")))
-                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("attempt-0")));
-        mvc.perform(get(path).param("pageSize","101").with(user("viewer").roles("VIEWER"))).andExpect(status().isBadRequest());
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("attempt-0")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("资源列表分页"))));
         when(monitor.instance(402)).thenReturn(new DolphinMonitorClient.Workflow(402,999,"foreign","SUCCESS","","",1));
         mvc.perform(get("/scheduling/pipeline/"+id+"/instances/402").with(user("viewer").roles("VIEWER"))).andExpect(status().isNotFound());
         mvc.perform(get("/pipelines/"+id+"/runs").with(user("viewer").roles("VIEWER")))

@@ -71,8 +71,8 @@ public interface PlatformMapper {
     List<PipelineRun> pipelineRunPage(@Param("id") long id,@Param("limit") int limit,@Param("offset") long offset);
     @Select("SELECT COUNT(*) FROM pipeline_run WHERE pipeline_id=#{pipelineId} AND workflow_instance_id=#{instanceId}")
     long instanceRunCount(@Param("pipelineId") long pipelineId,@Param("instanceId") long instanceId);
-    @Select("SELECT * FROM pipeline_run WHERE pipeline_id=#{pipelineId} AND workflow_instance_id=#{instanceId} ORDER BY started_at DESC,id DESC LIMIT #{limit} OFFSET #{offset}")
-    List<PipelineRun> instanceRunPage(@Param("pipelineId") long pipelineId,@Param("instanceId") long instanceId,@Param("limit") int limit,@Param("offset") long offset);
+    @Select("SELECT * FROM pipeline_run WHERE pipeline_id=#{pipelineId} AND workflow_instance_id=#{instanceId} ORDER BY started_at DESC,id DESC")
+    List<PipelineRun> instanceRuns(@Param("pipelineId") long pipelineId,@Param("instanceId") long instanceId);
     @Select("SELECT * FROM data_service ORDER BY id DESC") List<DataService> services();
     @Select("SELECT COUNT(*) FROM data_service") long serviceCount();
     @Select("SELECT s.*,(SELECT COUNT(*) FROM service_call c WHERE c.service_id=s.id AND c.started_at>=#{start} AND c.started_at<#{end}) daily_calls FROM data_service s ORDER BY s.id DESC LIMIT #{limit} OFFSET #{offset}")
