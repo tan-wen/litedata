@@ -4,6 +4,7 @@ import com.litedata.model.SqlTask;
 import com.litedata.store.PlatformMapper;
 import com.litedata.modeling.ModelingService;
 import com.litedata.transform.*;
+import com.litedata.workflow.WorkflowService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.security.Principal;
 import java.util.*;
@@ -21,8 +22,13 @@ public class TransformController {
     private final TransformScheduler scheduler;
     private final ModelingService models;
     private final PlatformMapper platform;
-    public TransformController(TransformService tasks,TransformScheduler scheduler,ModelingService models,PlatformMapper platform) {
+    private final WorkflowService workflows;
+    public TransformController(TransformService tasks,TransformScheduler scheduler,ModelingService models,PlatformMapper platform,WorkflowService workflows) {
         this.tasks=tasks; this.scheduler=scheduler; this.models=models; this.platform=platform;
+        this.workflows=workflows;
+    }
+    @ModelAttribute("workflowId") Long context(@RequestParam(required=false) Long workflowId) {
+        if(workflowId!=null) workflows.require(workflowId); return workflowId;
     }
     @ModelAttribute("activeNav") String activeNav() { return "transforms"; }
     @ModelAttribute("canEdit") boolean canEdit(HttpServletRequest request) { return request.isUserInRole("ADMIN") || request.isUserInRole("DEVELOPER"); }
@@ -41,22 +47,31 @@ public class TransformController {
     @GetMapping("/{id}") String detail(@PathVariable long id,Model model) {
         var task=tasks.require(id); var graph=tasks.graph(id);
         model.addAttribute("task",task); model.addAttribute("graph",graph); model.addAttribute("runs",tasks.runs(id));
+        model.addAttribute("taskWorkflow",workflows.forRoot(id));
         var names=new LinkedHashMap<String,String>(); graph.nodes().forEach(node->names.put(node.key(),node.name()));
         model.addAttribute("nodeNames",names);
         model.addAttribute("definitionCurrent",Objects.equals(task.getDefinitionHash(),graph.hash()));
         return "transform-detail";
     }
-    @PostMapping String create(@ModelAttribute("draft") SqlTask draft,BindingResult errors,Model model,Principal principal,RedirectAttributes redirect) {
-        return save(null,draft,errors,model,principal,redirect);
+    @PostMapping String create(@ModelAttribute("draft") SqlTask draft,BindingResult errors,Model model,Principal principal,RedirectAttributes redirect,HttpServletRequest request) {
+        return save(null,draft,errors,model,principal,redirect,request);
     }
-    @PostMapping("/{id}") String update(@PathVariable long id,@ModelAttribute("draft") SqlTask draft,BindingResult errors,Model model,Principal principal,RedirectAttributes redirect) {
-        return save(id,draft,errors,model,principal,redirect);
+    @PostMapping("/{id}") String update(@PathVariable long id,@ModelAttribute("draft") SqlTask draft,BindingResult errors,Model model,Principal principal,RedirectAttributes redirect,HttpServletRequest request) {
+        return save(id,draft,errors,model,principal,redirect,request);
     }
-    private String save(Long id,SqlTask draft,BindingResult errors,Model model,Principal principal,RedirectAttributes redirect) {
+    private String save(Long id,SqlTask draft,BindingResult errors,Model model,Principal principal,RedirectAttributes redirect,HttpServletRequest request) {
         try {
             if(errors.hasErrors()) throw new IllegalArgumentException("表单格式有误，请检查模型和上游任务选择");
+            // The standalone editor now edits SQL only. Omitted graph fields must never clear dependencies.
+            if(id!=null) {
+                var current=tasks.require(id);
+                if(!request.getParameterMap().containsKey("cronExpression")) draft.setCronExpression(current.getCronExpression());
+                if(!request.getParameterMap().containsKey("upstreamTaskIds") && !request.getParameterMap().containsKey("_upstreamTaskIds")) draft.setUpstreamTaskIds(current.getUpstreamTaskIds());
+                if(!request.getParameterMap().containsKey("upstreamPipelineIds") && !request.getParameterMap().containsKey("_upstreamPipelineIds")) draft.setUpstreamPipelineIds(current.getUpstreamPipelineIds());
+            }
             long saved=tasks.save(id,draft,principal.getName());
-            redirect.addFlashAttribute("success","数据加工已保存，请检查依赖链后运行或启用调度");
+            redirect.addFlashAttribute("success","数据加工已保存，依赖和执行周期请在工作流中维护");
+            if(model.getAttribute("workflowId") instanceof Long workflowId) return "redirect:/workflows/"+workflowId;
             return "redirect:/transforms/"+saved;
         } catch(IllegalArgumentException exception) {
             model.addAttribute("error",exception.getMessage()); return form(model,draft,id);

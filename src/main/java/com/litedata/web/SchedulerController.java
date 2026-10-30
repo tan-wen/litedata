@@ -70,10 +70,12 @@ public class SchedulerController {
         model.addAttribute("callbackPage",callbackRecords(resource,instanceId));
         model.addAttribute("statusUrl",resource.path()+"/instances/"+instanceId+"/status");
         model.addAttribute("instance",null); model.addAttribute("nodes",List.of()); model.addAttribute("selectedNode",null);
+        model.addAttribute("executionGraph",null);
         try {
             var snapshot=operations.snapshot(resource,instanceId);
             var instance=snapshot.instance(); var nodes=snapshot.nodes();
             model.addAttribute("instance",instance); model.addAttribute("nodes",nodes);
+            model.addAttribute("executionGraph",operations.graph(resource,instance.definitionCode()));
             if(canEdit(request) && !nodes.isEmpty()) {
                 var selected=taskId==null?nodes.stream().filter(n->n.state().equals("FAILURE")).findFirst().orElse(nodes.getFirst())
                         :nodes.stream().filter(n->n.id()==taskId).findFirst().orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"节点不属于该工作流实例"));
@@ -108,7 +110,7 @@ public class SchedulerController {
         }
     }
     private void prepare(Model model,SchedulerOperations.Resource resource) {
-        model.addAttribute("resource",resource); model.addAttribute("activeNav",resource.type().equals("pipeline")?"pipelines":"transforms");
+        model.addAttribute("resource",resource); model.addAttribute("activeNav",switch(resource.type()) { case "pipeline" -> "pipelines"; case "workflow" -> "workflows"; default -> "transforms"; });
     }
     private PipelineCallbackRecords.Page callbackRecords(SchedulerOperations.Resource resource,long instanceId) {
         if(!"pipeline".equals(resource.type())) return null;

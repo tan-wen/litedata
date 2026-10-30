@@ -37,6 +37,7 @@
 </div>
 </article>
   <form th:if="${canEdit}" th:object="${draft}" th:action="${formAction}" method="post" data-pipeline-form novalidate th:attr="data-initial-step=${draft.wizardStep}">
+    <input th:if="${workflowId != null}" type="hidden" name="workflowId" th:value="${workflowId}">
     <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
 <input type="hidden" th:field="*{previewHash}" data-preview-hash>
 <input type="hidden" th:field="*{wizardStep}" data-wizard-step-input>
@@ -433,7 +434,7 @@
 </section>
     <div class="d-flex gap-3 wizard-fallback-submit">
 <button class="btn-solid theme-primary" type="submit">保存管道</button>
-<a class="btn-outline theme-secondary" th:href="@{/pipelines}">取消</a>
+<a class="btn-outline theme-secondary" th:href="${workflowId == null ? '/pipelines' : '/workflows/' + workflowId}">取消</a>
 </div>
   </form>
 <p th:unless="${canEdit}" class="alert theme-info">当前账号仅可查看同步管道。</p>

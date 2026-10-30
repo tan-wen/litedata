@@ -1,6 +1,7 @@
 package com.litedata.scheduling;
 
 import com.litedata.store.*;
+import com.litedata.workflow.*;
 import java.util.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -16,8 +17,11 @@ public class SchedulerOperations {
     private final PlatformMapper platform;
     private final SqlTaskMapper tasks;
     private final DolphinMonitorClient engine;
-    public SchedulerOperations(PlatformMapper platform,SqlTaskMapper tasks,DolphinMonitorClient engine) {
+    private final WorkflowMapper workflows;
+    private final WorkflowSnapshots snapshots;
+    public SchedulerOperations(PlatformMapper platform,SqlTaskMapper tasks,DolphinMonitorClient engine,WorkflowMapper workflows,WorkflowSnapshots snapshots) {
         this.platform=platform; this.tasks=tasks; this.engine=engine;
+        this.workflows=workflows; this.snapshots=snapshots;
     }
     public Resource resource(String type,long id) {
         String name,back; Long current;
@@ -27,6 +31,12 @@ public class SchedulerOperations {
         } else if(type.equals("transform")) {
             var item=tasks.task(id); if(item==null) throw missing();
             name=item.getName(); current=item.getDefinitionCode(); back="/transforms/"+id;
+        } else if(type.equals("workflow")) {
+            var workflow=workflows.workflow(id); if(workflow==null) throw missing();
+            var item=tasks.task(workflow.getRootTaskId()); if(item==null) throw missing();
+            var codes=new LinkedHashSet<Long>(); if(item.getDefinitionCode()!=null) codes.add(item.getDefinitionCode());
+            codes.addAll(workflows.snapshotCodes(item.getId()));
+            return new Resource(type,id,workflow.getName(),"/workflows/"+id,List.copyOf(codes));
         } else throw missing();
         var codes=new LinkedHashSet<Long>(); if(current!=null) codes.add(current);
         codes.addAll(platform.workflowCodes(type,id));
@@ -46,6 +56,15 @@ public class SchedulerOperations {
         // A workflow result can arrive before the last node's final state becomes visible.
         boolean finished=!isRunning(instance.state()) && nodes.stream().noneMatch(node->isRunning(node.state()));
         return new Snapshot(instance,nodes,finished,java.time.Instant.now());
+    }
+    public List<WorkflowService.Node> graph(Resource resource,long code) {
+        checkCode(resource,code);
+        long root;
+        if(resource.type().equals("workflow")) {
+            var workflow=workflows.workflow(resource.id()); if(workflow==null) throw missing(); root=workflow.getRootTaskId();
+        } else if(resource.type().equals("transform")) root=resource.id();
+        else return null;
+        return snapshots.read(root,code);
     }
     public LogPage log(Resource resource,long instanceId,long taskId,int offset,int limit,String actor) {
         if(offset<0 || offset>1_000_000 || limit<1 || limit>1000) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"日志偏移须在0到1000000之间，每次读取1到1000行");

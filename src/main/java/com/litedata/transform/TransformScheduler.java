@@ -2,6 +2,7 @@ package com.litedata.transform;
 
 import com.litedata.store.PlatformMapper;
 import com.litedata.store.SqlTaskMapper;
+import com.litedata.workflow.WorkflowSnapshots;
 import java.util.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,8 +13,10 @@ public class TransformScheduler {
     private final PlatformMapper platform;
     private final TransformService tasks;
     private final DolphinWorkflowClient engine;
-    public TransformScheduler(SqlTaskMapper mapper,PlatformMapper platform,TransformService tasks,DolphinWorkflowClient engine) {
+    private final WorkflowSnapshots snapshots;
+    public TransformScheduler(SqlTaskMapper mapper,PlatformMapper platform,TransformService tasks,DolphinWorkflowClient engine,WorkflowSnapshots snapshots) {
         this.mapper=mapper; this.platform=platform; this.tasks=tasks; this.engine=engine;
+        this.snapshots=snapshots;
     }
     @Transactional(noRollbackFor=IllegalStateException.class)
     public void run(long id,int version,String actor) {
@@ -61,6 +64,7 @@ public class TransformScheduler {
         }).toList();
         long code=engine.create("platform-sql-"+rootId+"-"+graph.hash().substring(0,12),task.getName(),nodes);
         mapper.definition(rootId,code,graph.hash());
+        snapshots.remember(rootId,code,graph);
         remember(graph,code);
         return code;
     }

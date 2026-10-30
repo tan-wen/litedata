@@ -36,6 +36,10 @@ public class PageController {
         this.odsPipelines=odsPipelines; this.sourceSchemas=sourceSchemas;
     }
     @GetMapping("/login") String login() { return "login"; }
+    @ModelAttribute("workflowId") Long workflowContext(@RequestParam(required=false) Long workflowId) {
+        if(workflowId!=null && workflowId<=0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"工作流编号无效");
+        return workflowId;
+    }
     @InitBinder("draft") void bind(WebDataBinder binder) {
         binder.setAllowedFields("name","databaseType","jdbcUrl","username","password","sourceId","sourceTable","watermarkColumn",
                 "targetTable","transformSql","cronExpression","slug","querySql","targetMode","keyColumns","previewHash","confirmed","autoBuckets","buckets","replicationNum",
@@ -176,6 +180,7 @@ public class PageController {
             redirect.addFlashAttribute("success",id==null && "AUTO".equals(draft.getTargetMode())
                     ?"ODS 表、模型与同步管道已创建，可以运行同步；加工请在数据加工中配置"
                     :"ODS 同步管道已保存；完成目标模型建表后可执行，加工请在数据加工中配置");
+            if(model.getAttribute("workflowId") instanceof Long workflowId) return "redirect:/workflows/"+workflowId;
             return "redirect:/pipelines";
         } catch(IllegalArgumentException exception) { model.addAttribute("error",exception.getMessage()); }
         catch(DuplicateKeyException exception) { model.addAttribute("error","管道名称或目标模型已存在，请核对后选择已有 ODS 或调整名称"); }

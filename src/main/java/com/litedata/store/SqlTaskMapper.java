@@ -20,6 +20,9 @@ public interface SqlTaskMapper {
     @Options(useGeneratedKeys=true,keyProperty="id") void insert(SqlTask task);
     @Update("UPDATE sql_task SET name=#{name},model_id=#{modelId},sql_text=#{sqlText},cron_expression=#{cronExpression},version=version+1 WHERE id=#{id}")
     void update(SqlTask task);
+    @Update("UPDATE sql_task SET version=version+1 WHERE id=#{id}") void changed(long id);
+    @Update("UPDATE sql_task SET cron_expression=#{cron},version=version+1 WHERE id=#{id}")
+    void cron(@Param("id") long id,@Param("cron") String cron);
     @Delete("DELETE FROM sql_task_dependency WHERE task_id=#{id}") void deleteTaskDependencies(long id);
     @Delete("DELETE FROM sql_pipeline_dependency WHERE task_id=#{id}") void deletePipelineDependencies(long id);
     @Insert("INSERT INTO sql_task_dependency(task_id,upstream_id) VALUES(#{id},#{upstream})")

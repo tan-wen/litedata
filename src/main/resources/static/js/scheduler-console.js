@@ -210,6 +210,7 @@
       }
       renderNodes(data.nodes, log?.id || '', labels);
       renderCallbacks(data.callbackPage);
+      window.dispatchEvent(new CustomEvent('scheduler:snapshot', { detail: data }));
       finished = data.finished; stopped = false; retryAt = 0; failures = 0; error.hidden = true;
       const time = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', timeStyle: 'medium' }).format(new Date(data.updatedAt));
       status.textContent = finished ? `执行已结束 · ${time} 更新` : `每 5 秒自动更新状态 · ${time} 更新`;

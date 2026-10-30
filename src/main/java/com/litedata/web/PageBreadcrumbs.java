@@ -10,6 +10,7 @@ public final class PageBreadcrumbs {
     private static final Map<String,Module> MODULES=Map.ofEntries(
             Map.entry("sources",new Module("数据源","/sources")),Map.entry("models",new Module("数据建模","/models")),
             Map.entry("pipelines",new Module("同步管道","/pipelines")),Map.entry("transforms",new Module("数据加工","/transforms")),
+            Map.entry("workflows",new Module("工作流","/workflows")),
             Map.entry("services",new Module("数据服务","/services")),Map.entry("metadata",new Module("元数据与血缘","/metadata")),
             Map.entry("quality",new Module("数据质量","/quality")),Map.entry("metrics",new Module("指标管理","/metrics")),
             Map.entry("assets",new Module("资产目录","/assets")),Map.entry("api-keys",new Module("我的 API Key","/settings/api-keys")),
@@ -27,6 +28,8 @@ public final class PageBreadcrumbs {
             case "model-form" -> form(items,model,"models","modelId","name","新增模型","编辑模型",false);
             case "pipeline-form" -> form(items,model,"pipelines","resourceId","name","创建同步管道","编辑同步管道",true);
             case "transform-form" -> form(items,model,"transforms","taskId","name","新增数据加工","编辑数据加工",false);
+            case "workflow-form" -> form(items,model,"workflows","workflowId","name","新建工作流","编辑工作流信息",false);
+            case "workflow-canvas" -> detail(items,model,"workflows","workflow");
             case "service-form" -> form(items,model,"services","resourceId","name","创建数据服务","编辑数据服务",true);
             case "metric-form" -> form(items,model,"metrics","metricId","name","新增指标","编辑指标",false);
             case "quality-form" -> form(items,model,"quality","taskId","name","新增质量任务","编辑质量任务",false);
@@ -98,11 +101,12 @@ public final class PageBreadcrumbs {
     }
     private static void scheduler(List<Item> items,Map<String,Object> model,boolean instance) {
         var resource=model.get("resource"); boolean pipeline="pipeline".equals(property(resource,"type"));
-        String module=pipeline?"pipelines":"transforms"; Object id=property(resource,"id");
+        boolean workflow="workflow".equals(property(resource,"type"));
+        String module=pipeline?"pipelines":workflow?"workflows":"transforms"; Object id=property(resource,"id");
         parent(items,module);
         items.add(link(name(resource,"name","任务"),pipeline?row(module,id):resource(module,id)));
         if(instance) {
-            items.add(link("运行实例","/scheduling/"+(pipeline?"pipeline":"transform")+"/"+number(id)));
+            items.add(link("运行实例","/scheduling/"+(pipeline?"pipeline":workflow?"workflow":"transform")+"/"+number(id)));
             items.add(current("实例 #"+number(model.get("instanceId"))));
         } else items.add(current("运行实例"));
     }

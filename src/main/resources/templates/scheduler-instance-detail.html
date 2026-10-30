@@ -3,6 +3,7 @@
 <head><title>运行实例详情 · LiteData</title></head><body><section data-scheduler-console
   th:attr="data-status-url=${statusUrl ?: resource.path() + '/instances/' + instanceId + '/status'},data-instance-path=${resource.path() + '/instances/' + instanceId},data-can-read-logs=${canEdit}">
   <link rel="stylesheet" th:href="@{/css/scheduler-console.css}">
+  <link rel="stylesheet" th:href="@{/css/workflow-canvas.css}">
   <div class="d-flex flex-wrap justify-content-between align-items-start gap-5 mb-7">
     <div>
       <h1 class="page-title">运行实例详情</h1>
@@ -46,6 +47,7 @@
     <template data-callback-row-template><tr><td><code data-callback-id></code></td><td><code data-callback-task-id></code></td><td><span class="badge" data-callback-state></span></td><td data-callback-start></td><td data-callback-end></td><td><code data-callback-range></code><div class="small fg-2 mt-1">源库时间 · 左闭右开</div></td><td class="small" style="max-width:24rem;overflow-wrap:anywhere" data-callback-message></td></tr></template>
   </article>
   <th:block th:if="${instance != null}">
+    <article th:if="${executionGraph != null}" class="platform-card card mb-5"><div class="card-header">工作流运行图 <small class="fw-normal fg-2">仅显示本次工作流快照，不推测历史版本</small></div><div class="card-body workflow-execution" data-workflow-execution><div class="workflow-stage-wrap"><div class="workflow-stage"><svg data-workflow-edges aria-hidden="true"></svg><div data-workflow-nodes></div></div></div></div></article>
     <div class="scheduler-workspace">
       <article class="platform-card card scheduler-node-panel"><div class="card-header">执行节点</div><div class="card-body p-0"><nav aria-label="执行节点选择" class="scheduler-node-list" data-scheduler-nodes>
         <a th:each="node : ${nodes}" class="scheduler-node" th:classappend="${selectedNode != null and selectedNode.id == node.id} ? 'is-selected'" th:attr="aria-current=${selectedNode != null and selectedNode.id == node.id ? 'true' : null},data-node-id=${node.id}" th:href="${resource.path() + '/instances/' + instance.id + '?taskId=' + node.id}">
@@ -73,5 +75,5 @@
       <article th:if="${!canEdit}" class="platform-card card"><div class="card-body fg-2">当前账号可查看运行状态。节点执行日志仅向管理员和开发者开放。</div></article>
     </div>
   </th:block>
-  <script th:src="@{/js/scheduler-console.js}" defer></script>
+  <script th:inline="javascript">window.executionGraph = /*[[${executionGraph}]]*/ null; window.schedulerNodes = /*[[${nodes}]]*/ []; window.schedulerLabels = /*[[${statusLabels}]]*/ {};</script><script th:src="@{/js/workflow-canvas.js}" defer></script><script th:src="@{/js/scheduler-console.js}" defer></script>
 </section></body></html>
