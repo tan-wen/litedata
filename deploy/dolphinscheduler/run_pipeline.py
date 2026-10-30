@@ -30,12 +30,47 @@ if _worker_config.is_file():
 IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6}$")
 TIMEOUT_SECONDS = 30
+DS_EXECUTION_ROOT = Path("/tmp/dolphinscheduler/exec/process")
 
 
 def require_identifier(value, name):
     if not isinstance(value, str) or not IDENTIFIER.fullmatch(value):
         raise ValueError(f"{name} must be one SQL identifier")
     return value
+
+
+def instance_ids(workflow_instance_id, task_instance_id, working_directory=None, execution_root=DS_EXECUTION_ROOT):
+    """Return DS instance IDs without inferring them from time or task names.
+
+    Newly published workflows pass DolphinScheduler's built-in IDs explicitly.
+    Legacy DS 3.4 Shell tasks run directly in the verified default
+    ``.../exec/process/<task-instance-id>`` directory.  That layout supplies
+    only the task ID; the platform resolves and validates its workflow ID from
+    DolphinScheduler.  A previously supported, fully validated longer layout
+    remains compatible for already-published tasks, but is not assumed to be
+    the current default.
+    """
+    if (workflow_instance_id is None) != (task_instance_id is None):
+        raise ValueError("workflow and task instance identifiers must be provided together")
+    if workflow_instance_id is not None:
+        if workflow_instance_id <= 0 or task_instance_id <= 0:
+            raise ValueError("workflow and task instance identifiers must be positive")
+        return workflow_instance_id, task_instance_id
+    directory = Path.cwd() if working_directory is None else Path(working_directory)
+    try:
+        relative = directory.resolve().relative_to(Path(execution_root).resolve())
+    except ValueError as error:
+        raise ValueError("legacy workflow must run from the DolphinScheduler default execution directory") from error
+    if len(relative.parts) == 1 and re.fullmatch(r"[1-9]\d*", relative.parts[0]):
+        return None, int(relative.parts[0])
+    if len(relative.parts) == 5:
+        tenant, project, definition_version, workflow, task = relative.parts
+        match = re.fullmatch(r"([1-9]\d*)_([1-9]\d*)", definition_version)
+        if re.fullmatch(r"[A-Za-z0-9_-]+", tenant) and project.isdecimal() and match and workflow.isdecimal() and task.isdecimal():
+            workflow_id, task_id = int(workflow), int(task)
+            if int(project) > 0 and workflow_id > 0 and task_id > 0:
+                return workflow_id, task_id
+    raise ValueError("DolphinScheduler execution directory layout is invalid")
 
 
 def platform_request(path, payload=None):
@@ -221,12 +256,18 @@ def execute_datax(command, output, environment):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--pipeline-id", required=True, type=int)
+    parser.add_argument("--workflow-instance-id", type=int)
+    parser.add_argument("--task-instance-id", type=int)
     args = parser.parse_args()
     run_id = None
     temp_path = None
     datax_log_path = None
     try:
-        _, claim = platform_request(f"/internal/pipelines/{args.pipeline_id}/claim")
+        workflow_instance_id, task_instance_id = instance_ids(args.workflow_instance_id, args.task_instance_id)
+        association = {"taskInstanceId": task_instance_id}
+        if workflow_instance_id is not None:
+            association["workflowInstanceId"] = workflow_instance_id
+        _, claim = platform_request(f"/internal/pipelines/{args.pipeline_id}/claim", association)
         if not claim.get("runId"):
             raise RuntimeError("claim response did not include runId")
         run_id = claim["runId"]

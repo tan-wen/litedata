@@ -52,17 +52,22 @@ def api_result(client: Client, slug: str, token: str) -> dict[str, object]:
 def await_pipeline(client: Client, pipeline_id: str, after_started: str = "") -> str:
     deadline = time.monotonic() + POLL_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
-        status, page = client.request("GET", f"/pipelines/{pipeline_id}/runs")
+        resource = f"/scheduling/pipeline/{pipeline_id}"
+        status, page = client.request("GET", resource)
         if status != 200:
-            raise SmokeFailure("task-scoped synchronization records became unavailable")
-        for row in parse(page).rows:
-            cells = " ".join(map(str, row["cells"]))
-            if "FAILED" in cells or "失败" in cells:
-                raise SmokeFailure("automatic ODS pipeline reported failure")
-            if ("SUCCESS" in cells or "成功" in cells) and "ODS同步完成" in cells.replace(" ", ""):
-                started = str(row["cells"][2])
-                if started != after_started:
+            raise SmokeFailure("pipeline instances became unavailable")
+        instances = re.findall(re.escape(resource) + r"/instances/\d+", page)
+        if instances:
+            status, body = client.request("GET", instances[0] + "/status")
+            if status != 200:
+                raise SmokeFailure("pipeline instance status became unavailable")
+            snapshot = json.loads(body)
+            for run in snapshot.get("callbackPage", {}).get("items", []):
+                started = run.get("startedAt", "")
+                if started > after_started and run.get("status") == "SUCCESS":
                     return started
+            if snapshot.get("finished") and snapshot.get("instance", {}).get("state") == "FAILURE":
+                raise SmokeFailure("automatic ODS pipeline reported failure")
         time.sleep(5)
     raise SmokeFailure("automatic ODS pipeline did not finish before timeout")
 

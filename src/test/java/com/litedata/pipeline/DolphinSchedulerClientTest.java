@@ -23,6 +23,7 @@ class DolphinSchedulerClientTest {
     private final Queue<Reply> replies=new ArrayDeque<>();
     private final List<String> requests=new ArrayList<>();
     private final List<String> definitionNames=new ArrayList<>();
+    private final List<String> definitionRequests=new ArrayList<>();
 
     @BeforeEach void startServer() throws IOException {
         mapper=mock(PlatformMapper.class);
@@ -106,6 +107,8 @@ class DolphinSchedulerClientTest {
         verify(mapper).definition(1L,101L);
         verify(mapper).rememberWorkflow("pipeline",1L,101L);
         verifyNoMoreInteractions(mapper);
+        assertTrue(definitionRequests.getFirst().contains("--workflow-instance-id ${system.workflow.instance.id}"));
+        assertTrue(definitionRequests.getFirst().contains("--task-instance-id ${system.task.instance.id}"));
     }
 
     @Test void reportsInvalidFormatWhenTaskCodeDataIsNotAList() {
@@ -204,6 +207,8 @@ class DolphinSchedulerClientTest {
         exchange.getResponseHeaders().set("Content-Type","application/json");
         try(var requestBody=exchange.getRequestBody(); var responseBody=exchange.getResponseBody()) {
             String requestText=new String(requestBody.readAllBytes(),StandardCharsets.UTF_8);
+            if(exchange.getRequestURI().getPath().equals("/projects/9/workflow-definition"))
+                definitionRequests.add(java.net.URLDecoder.decode(requestText,StandardCharsets.UTF_8));
             if(exchange.getRequestURI().getPath().equals("/projects/9/workflow-definition"))
                 for(String part:requestText.split("&")) if(part.startsWith("name="))
                     definitionNames.add(java.net.URLDecoder.decode(part.substring(5),StandardCharsets.UTF_8));

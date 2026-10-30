@@ -54,6 +54,7 @@ public class TransformScheduler {
         var nodes=graph.nodes().stream().map(node-> {
             String script=node.kind().equals("同步")
                     ? "python3 /opt/platform/bin/run_pipeline.py --pipeline-id "+node.refId()
+                        +" --workflow-instance-id ${system.workflow.instance.id} --task-instance-id ${system.task.instance.id}"
                     : "python3 /opt/platform/bin/run_sql_task.py --task-id "+node.refId()+" --version "+node.version()
                         +" --root-id "+rootId+" --graph-hash "+graph.hash();
             return new DolphinWorkflowClient.Node(node.key(),node.kind()+"："+node.name(),script,node.upstreamKeys());

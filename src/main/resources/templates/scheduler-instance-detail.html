@@ -1,12 +1,12 @@
 <!doctype html>
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
-<head><title>节点与日志 · LiteData</title></head><body><section data-scheduler-console
-  th:attr="data-status-url=${resource.path() + '/instances/' + instanceId + '/status'},data-instance-path=${resource.path() + '/instances/' + instanceId},data-can-read-logs=${canEdit}">
+<head><title>运行实例详情 · LiteData</title></head><body><section data-scheduler-console
+  th:attr="data-status-url=${statusUrl ?: resource.path() + '/instances/' + instanceId + '/status'},data-instance-path=${resource.path() + '/instances/' + instanceId},data-can-read-logs=${canEdit}">
   <link rel="stylesheet" th:href="@{/css/scheduler-console.css}">
   <div class="d-flex flex-wrap justify-content-between align-items-start gap-5 mb-7">
     <div>
-      <h1 class="page-title">节点与执行日志</h1>
-      <p class="page-subtitle mb-0">选择节点查看该次执行的日志，失败节点优先展开。</p>
+      <h1 class="page-title">运行实例详情</h1>
+      <p class="page-subtitle mb-0" th:text="${resource.type == 'pipeline' ? '查看本次调度执行的节点日志，以及该实例收到的同步回调结果。' : '查看本次调度执行的节点日志，失败节点优先展开。'}">查看本次调度执行的节点日志。</p>
       <p class="scheduler-status small fg-2 mb-0" data-scheduler-status role="status" aria-live="polite">每 5 秒自动更新状态</p>
       <div class="alert theme-warning scheduler-status-error" data-scheduler-error role="alert" hidden></div>
     </div>
@@ -25,6 +25,29 @@
       <div class="scheduler-summary-item"><div class="small fg-2 mb-2">运行次数</div><strong data-workflow-runs th:text="${instance.runTimes}"></strong></div>
       <div class="scheduler-summary-item"><div class="small fg-2 mb-2">节点统计</div><strong data-node-count th:text="${#lists.size(nodes)}"></strong></div>
     </div></div></article>
+  </th:block>
+  <article class="platform-card card mb-5" th:if="${callbackPage != null}" data-callback-records th:attr="data-callback-initial-total=${callbackPage.total},data-callback-history-url=@{/pipelines/{id}/runs(id=${resource.id})}">
+    <div class="card-header d-flex justify-content-between gap-3"><span>同步回调记录</span><small class="fw-normal fg-2" data-callback-total th:text="${'共 ' + callbackPage.total + ' 条 · 平台回调' }"></small></div>
+    <div class="card-body border-bottom"><p class="mb-0">回调在执行节点实际领取同步后登记，并回传 ODS 同步结果和水位区间。它独立于工作流状态：工作流成功不等于已经收到成功回调。</p></div>
+    <div class="card-body p-0"><div class="table-responsive"><table class="table table-hover mb-0">
+      <thead><tr><th>平台记录 ID</th><th>节点实例</th><th>回调状态</th><th>开始时间（北京时间）</th><th>结束时间（北京时间）</th><th>水位区间</th><th>结果摘要</th></tr></thead>
+      <tbody data-callback-rows>
+        <tr th:each="run : ${callbackPage.items}">
+          <td><code data-callback-id th:text="${run.id}"></code></td>
+          <td><code data-callback-task-id th:text="${run.taskInstanceId ?: '—'}"></code></td>
+          <td><span class="badge" data-callback-state th:classappend="${run.status == 'SUCCESS' ? 'theme-success' : run.status == 'FAILED' ? 'theme-danger' : 'theme-warning'}" th:text="${run.status == 'SUCCESS' ? '成功' : run.status == 'FAILED' ? '失败' : '运行中'}"></span></td>
+          <td data-callback-start th:text="${run.startedAt ?: '—'}"></td><td data-callback-end th:text="${run.finishedAt ?: '—'}"></td>
+          <td><code data-callback-range th:text="${'[' + (run.lowerBound ?: '—') + ', ' + (run.upperBound ?: '—') + ')'}"></code><div class="small fg-2 mt-1">源库时间 · 左闭右开</div></td>
+          <td class="small" style="max-width:24rem;overflow-wrap:anywhere" data-callback-message th:text="${run.message ?: '等待执行节点回传结果'}"></td>
+        </tr>
+        <tr th:if="${#lists.isEmpty(callbackPage.items)}" data-callback-empty><td colspan="7" class="text-center fg-2 py-7">尚未收到可关联回调。实例可能仍在排队、节点尚未领取，或回调尚未抵达平台。旧执行器未携带实例编号的记录请查看<a th:href="@{/pipelines/{id}/runs(id=${resource.id})}">历史未关联回调</a>。</td></tr>
+      </tbody>
+    </table></div></div>
+    <template data-callback-row-template><tr><td><code data-callback-id></code></td><td><code data-callback-task-id></code></td><td><span class="badge" data-callback-state></span></td><td data-callback-start></td><td data-callback-end></td><td><code data-callback-range></code><div class="small fg-2 mt-1">源库时间 · 左闭右开</div></td><td class="small" style="max-width:24rem;overflow-wrap:anywhere" data-callback-message></td></tr></template>
+    <p class="small fg-2 m-5 mb-0" data-callback-page-notice hidden>回调总数已变化；刷新页面以更新分页导航。</p>
+  </article>
+  <th:block th:if="${callbackPage != null and callbackPage.total > 0}"><div th:replace="~{fragments/pagination :: pagination}"></div></th:block>
+  <th:block th:if="${instance != null}">
     <div class="scheduler-workspace">
       <article class="platform-card card scheduler-node-panel"><div class="card-header">执行节点</div><div class="card-body p-0"><nav aria-label="执行节点选择" class="scheduler-node-list" data-scheduler-nodes>
         <a th:each="node : ${nodes}" class="scheduler-node" th:classappend="${selectedNode != null and selectedNode.id == node.id} ? 'is-selected'" th:attr="aria-current=${selectedNode != null and selectedNode.id == node.id ? 'true' : null},data-node-id=${node.id}" th:href="${resource.path() + '/instances/' + instance.id + '?taskId=' + node.id}">

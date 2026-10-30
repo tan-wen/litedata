@@ -1,13 +1,13 @@
 <!doctype html>
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
-<head><title>同步记录 · 数据中台</title></head><body><section>
+<head><title>历史未关联回调 · 数据中台</title></head><body><section>
   <div class="d-flex flex-wrap justify-content-between align-items-start mb-7 gap-5">
     <div>
-      <h1 class="page-title">同步记录</h1>
-      <p class="page-subtitle mb-0">查看此同步任务已领取的水位范围及平台收到的执行结果。</p>
+      <h1 class="page-title">历史未关联回调</h1>
+      <p class="page-subtitle mb-0">保留未携带调度实例标识的旧平台回调，供历史排查。</p>
     </div>
     <div class="d-flex flex-wrap gap-2">
-      <a class="btn-outline theme-primary" th:href="@{/scheduling/pipeline/{id}(id=${pipeline.id})}">实例 / 日志</a>
+      <a class="btn-outline theme-primary" th:href="@{/scheduling/pipeline/{id}(id=${pipeline.id})}">运行实例</a>
       <a class="btn-outline theme-secondary" th:href="@{/pipelines}">返回同步管道</a>
     </div>
   </div>
@@ -22,8 +22,8 @@
   </article>
 
   <article class="platform-card card">
-    <div class="card-header">平台同步记录 <small class="fw-normal fg-2">任务专属</small></div>
-    <div class="card-body border-bottom"><p class="mb-2">执行节点领取水位范围时会登记一条记录，完成后回传成功或失败结果。只有成功才会推进水位；失败会保留原水位，供后续重试。</p><p class="small fg-2 mb-0">尚未领取或仍在排队的情况请查看“实例 / 日志”。这里的运行 ID 是平台同步记录，与调度引擎实例编号独立，不能按本地运行 ID 对应引擎实例。</p></div>
+    <div class="card-header">历史平台回调 <small class="fw-normal fg-2">未关联实例</small></div>
+    <div class="card-body border-bottom"><p class="mb-2">这些回调来自旧执行，未保存 DolphinScheduler 工作流实例标识。为了避免按时间误关联，不会将它们归入某次运行实例。</p><p class="small fg-2 mb-0">新执行的回调会显示在对应的“运行实例详情”中。只有成功回调才会推进水位；失败会保留原水位。</p></div>
     <div class="card-body p-0"><div class="table-responsive"><table class="table table-hover mb-0">
       <thead><tr><th>运行 ID</th><th>状态</th><th>开始时间（北京时间）</th><th>结束时间（北京时间）</th><th>水位区间</th><th>结果摘要</th></tr></thead>
       <tbody>
@@ -35,7 +35,7 @@
           <td><code th:text="${'[' + (run.lowerBound != null ? #temporals.format(run.lowerBound, 'yyyy-MM-dd HH:mm:ss.SSSSSS') : '—') + ', ' + (run.upperBound != null ? #temporals.format(run.upperBound, 'yyyy-MM-dd HH:mm:ss.SSSSSS') : '—') + ')'}"></code><div class="small fg-2 mt-1">源库时间 · 左闭右开</div></td>
           <td class="small" style="max-width:24rem;overflow-wrap:anywhere" th:text="${run.message != null ? run.message : '等待执行节点回传结果'}"></td>
         </tr>
-        <tr th:if="${#lists.isEmpty(runs)}"><td colspan="6" class="text-center fg-2 py-7">此同步任务尚无平台运行记录。若任务未领取或正在排队，请前往“实例 / 日志”查看引擎状态。</td></tr>
+        <tr th:if="${#lists.isEmpty(runs)}"><td colspan="6" class="text-center fg-2 py-7">没有历史未关联回调。请在“运行实例”中查看当前执行的回调结果。</td></tr>
       </tbody>
     </table></div></div>
   </article>

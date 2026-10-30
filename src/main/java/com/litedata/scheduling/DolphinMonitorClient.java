@@ -6,6 +6,8 @@ import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.*;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.json.JsonMapper;
@@ -34,6 +36,11 @@ public class DolphinMonitorClient {
         return new Page(total.longValue(),rows.stream().map(this::workflow).toList());
     }
     public Workflow instance(long id) { return workflow(get("/projects/"+config.projectCode()+"/workflow-instances/"+id,Map.of())); }
+    public long workflowForTask(long taskId) {
+        var task=map(request("/v2/projects/"+config.projectCode()+"/task-instances/"+taskId,Map.of(),true));
+        if(number(task,"id")!=taskId) throw invalid();
+        return number(task,"workflowInstanceId");
+    }
     public List<Node> nodes(long id) {
         var data=map(get("/projects/"+config.projectCode()+"/workflow-instances/"+id+"/tasks",Map.of()));
         if(!(data.get("taskList") instanceof List<?> rows)) throw invalid();
@@ -55,13 +62,18 @@ public class DolphinMonitorClient {
         return log;
     }
     private Object get(String path,Map<String,?> params) {
+        return request(path,params,false);
+    }
+    private Object request(String path,Map<String,?> params,boolean jsonPost) {
         if(config.projectCode()<=0 || config.token()==null || config.token().isBlank())
             throw new IllegalStateException("尚未配置调度引擎，平台运行记录仍可查看");
         try {
-            return client.get().uri(builder->{
+            var request=client.method(jsonPost?HttpMethod.POST:HttpMethod.GET).uri(builder->{
                 builder.path(path); params.forEach((key,value)->{ if(!"".equals(value)) builder.queryParam(key,value); });
                 return builder.build();
-            }).exchange((request,response)->{
+            });
+            if(jsonPost) request.contentType(MediaType.APPLICATION_JSON).body("{}");
+            return request.exchange((outgoing,response)->{
                 if(!response.getStatusCode().is2xxSuccessful()) throw unavailable();
                 byte[] body=response.getBody().readNBytes(2*1024*1024+1);
                 if(body.length>2*1024*1024) throw new IllegalStateException("引擎返回内容过大，请减少日志行数后重试");
@@ -69,6 +81,8 @@ public class DolphinMonitorClient {
                 try { result=json.readValue(body,Map.class); }
                 catch(RuntimeException exception) { throw invalid(); }
                 if(result==null) throw invalid();
+                // DS v2 returns the task entity directly; v1 uses a code/data envelope.
+                if(jsonPost) return result;
                 if(!(result.get("code") instanceof Number code)) throw invalid();
                 if(code.longValue()!=0) throw unavailable();
                 return result.get("data");

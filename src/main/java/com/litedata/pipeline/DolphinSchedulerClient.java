@@ -78,7 +78,8 @@ public class DolphinSchedulerClient {
             Map<String,Object> task=new LinkedHashMap<>();
             task.put("code",taskCode); task.put("name","ODS 贴源同步"); task.put("version",1); task.put("description","DataX 增量同步至 ODS");
             task.put("taskType","SHELL"); task.put("taskParams",Map.of("resourceList",List.of(),"localParams",List.of(),
-                    "rawScript","python3 /opt/platform/bin/run_pipeline.py --pipeline-id "+pipeline.getId()));
+                    "rawScript","python3 /opt/platform/bin/run_pipeline.py --pipeline-id "+pipeline.getId()
+                            +" --workflow-instance-id ${system.workflow.instance.id} --task-instance-id ${system.task.instance.id}"));
             task.put("flag","YES"); task.put("taskPriority","MEDIUM"); task.put("workerGroup","default"); task.put("environmentCode",-1);
             task.put("failRetryTimes",2); task.put("failRetryInterval",1); task.put("timeoutFlag","OPEN");
             task.put("timeoutNotifyStrategy","FAILED"); task.put("timeout",50); task.put("delayTime",0);

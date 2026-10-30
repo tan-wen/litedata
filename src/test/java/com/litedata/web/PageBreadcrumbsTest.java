@@ -23,8 +23,8 @@ class PageBreadcrumbsTest {
 
     @Test void editsAndRecordPagesReturnToRealResourcePagesOrListRows() {
         var items=PageBreadcrumbs.forView("pipeline-runs",model());
-        assertThat(items).extracting(PageBreadcrumbs.Item::href).containsExactly("/","/pipelines","/pipelines#pipeline-7",null);
-        assertThat(items.getLast().label()).isEqualTo("同步记录");
+        assertThat(items).extracting(PageBreadcrumbs.Item::href).containsExactly("/","/pipelines","/pipelines#pipeline-7","/scheduling/pipeline/7",null);
+        assertThat(items.getLast().label()).isEqualTo("历史未关联回调");
         assertThat(PageBreadcrumbs.forView("source-form",model()).get(2).href()).isEqualTo("/sources#source-7");
         assertThat(PageBreadcrumbs.forView("model-form",model()).get(2).href()).isEqualTo("/models/7");
         assertThat(PageBreadcrumbs.forView("asset-form",model()).get(2).href()).isEqualTo("/assets/MODEL/7");

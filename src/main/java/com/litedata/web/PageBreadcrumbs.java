@@ -41,7 +41,10 @@ public final class PageBreadcrumbs {
             case "metric-lineage" -> metric(items,model,true);
             case "metadata-detail", "metadata-lineage" -> metadata(items,model,view.endsWith("lineage"));
             case "asset-detail", "asset-form" -> asset(items,model,view.endsWith("form"));
-            case "pipeline-runs" -> records(items,model,"pipelines","pipeline","同步记录");
+            case "pipeline-runs" -> {
+                records(items,model,"pipelines","pipeline","历史未关联回调");
+                items.add(items.size()-1,link("运行实例","/scheduling/pipeline/"+number(property(model.get("pipeline"),"id"))));
+            }
             case "service-calls" -> records(items,model,"services","service","调用记录");
             case "quality-run-detail" -> {
                 parent(items,"quality"); var task=model.get("task");

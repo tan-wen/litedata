@@ -3,10 +3,10 @@
 <head><title>运行实例 · LiteData</title></head><body><section>
   <link rel="stylesheet" th:href="@{/css/scheduler-console.css}">
   <div class="d-flex flex-wrap justify-content-between align-items-start gap-5 mb-7">
-    <div><h1 class="page-title">运行实例</h1><p class="page-subtitle mb-0">查看每次工作流执行的实际结果，进入实例定位节点并查看日志。</p></div>
-    <div class="d-flex gap-3"><button class="btn-outline theme-primary" type="button" onclick="location.reload()">刷新实例</button><a th:if="${resource.type == 'pipeline'}" class="btn-outline theme-secondary" th:href="@{/pipelines/{id}/runs(id=${resource.id})}">同步记录</a><a class="btn-outline theme-secondary" th:href="${resource.backPath}">返回任务</a></div>
+    <div><h1 class="page-title">运行实例</h1><p class="page-subtitle mb-0">查看每次调度执行；进入实例可查看节点日志和该实例收到的同步回调。</p></div>
+    <div class="d-flex gap-3"><button class="btn-outline theme-primary" type="button" onclick="location.reload()">刷新实例</button><a th:if="${resource.type == 'pipeline'}" class="btn-outline theme-secondary" th:href="@{/pipelines/{id}/runs(id=${resource.id})}">历史未关联回调</a><a class="btn-outline theme-secondary" th:href="${resource.backPath}">返回任务</a></div>
   </div>
-  <div th:if="${engineError}" class="alert theme-warning" role="alert"><span th:text="${engineError}"></span> <a th:href="${resource.type == 'pipeline' ? '/pipelines/' + resource.id + '/runs' : resource.backPath}">查看平台运行记录</a></div>
+  <div th:if="${engineError}" class="alert theme-warning" role="alert"><span th:text="${engineError}"></span> <a th:if="${resource.type == 'pipeline'}" th:href="${'/pipelines/' + resource.id + '/runs'}">查看历史未关联回调</a></div>
   <article class="platform-card card mb-5"><div class="card-body">
     <form method="get" th:action="${resource.path()}" class="row g-5 align-items-end">
       <div class="md:col-6"><label for="workflow-code" class="form-label">执行链路版本</label><select class="form-control" id="workflow-code" name="workflowCode" aria-describedby="workflow-code-help" th:disabled="${#lists.isEmpty(resource.codes)}"><option th:each="code : ${resource.codes}" th:value="${code}" th:selected="${code == workflowCode}" th:text="${'工作流 ' + code}"></option></select></div>
@@ -21,5 +21,5 @@
     <tr th:if="${#lists.isEmpty(instances)}"><td colspan="6" class="text-center fg-2 py-10" th:text="${engineError != null ? '暂时无法读取运行实例，请刷新重试。' : #lists.isEmpty(resource.codes) ? '当前任务暂无已登记的工作流。若曾作为上游运行，请从对应 数据加工链的运行实例查看。' : '当前条件下尚无运行实例。新提交的任务可能仍在排队，请稍后刷新。'}"></td></tr>
     </tbody></table></div></div></article>
   <div th:if="${!#lists.isEmpty(resource.codes)}" th:replace="~{fragments/pagination :: pagination}"></div>
-  <p class="small fg-2 mt-5 mb-0">这里的实例编号来自 DolphinScheduler，与平台同步/SQL 运行记录编号独立。已提交不代表执行成功；日志保留时长由调度引擎决定。</p>
+  <p class="small fg-2 mt-5 mb-0">实例编号来自 DolphinScheduler。同步管道的回调会在对应实例详情中展示；旧记录未保存引擎实例标识，不会按时间推测关联，仍在“历史未关联回调”中保留。</p>
 </section></body></html>

@@ -16,6 +16,7 @@ class DolphinMonitorClientTest {
     private HttpServer server;
     private final Queue<Reply> replies=new ArrayDeque<>();
     private final List<String> paths=new ArrayList<>();
+    private final List<String> methods=new ArrayList<>(),contentTypes=new ArrayList<>(),bodies=new ArrayList<>();
 
     @BeforeEach void startServer() throws IOException {
         server=HttpServer.create(new InetSocketAddress("localhost",0),0);
@@ -45,6 +46,17 @@ class DolphinMonitorClientTest {
         assertEquals(new DolphinMonitorClient.Workflow(42,88,"run","RUNNING","2026-10-24 01:00:00","",0),instance);
         assertFalse(instance.toString().contains("secret"));
         assertFalse(instance.toString().contains("password"));
+    }
+
+    @Test void resolvesLegacyTaskIdentityThroughTheExactV2Endpoint() {
+        replies.add(new Reply(200,"{\"id\":173,\"workflowInstanceId\":61,\"taskParams\":\"must-not-expose\"}"));
+        assertEquals(61,client().workflowForTask(173));
+        assertEquals("/v2/projects/9/task-instances/173",paths.getFirst());
+        assertEquals("POST",methods.getFirst());
+        assertEquals("application/json",contentTypes.getFirst());
+        assertEquals("{}",bodies.getFirst());
+        replies.add(new Reply(200,"{\"id\":174,\"workflowInstanceId\":61}"));
+        assertThrows(IllegalStateException.class,()->client().workflowForTask(173));
     }
 
     @Test void rejectsTaskNodesFromAnotherWorkflowInstance() {
@@ -104,6 +116,8 @@ class DolphinMonitorClientTest {
 
     private void reply(HttpExchange exchange) throws IOException {
         paths.add(exchange.getRequestURI().toString());
+        methods.add(exchange.getRequestMethod()); contentTypes.add(exchange.getRequestHeaders().getFirst("Content-Type"));
+        bodies.add(new String(exchange.getRequestBody().readAllBytes(),StandardCharsets.UTF_8));
         Reply response=replies.remove();
         byte[] bytes=response.body().getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type","application/json");

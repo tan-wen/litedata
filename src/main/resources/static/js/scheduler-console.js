@@ -152,6 +152,46 @@
     }
     if (empty) empty.hidden = nodes.length > 0;
   }
+  function callbackBadge(element, state) {
+    if (!element) return;
+    element.classList.remove('theme-success', 'theme-danger', 'theme-warning', 'theme-info', 'theme-secondary');
+    element.classList.add(state === 'SUCCESS' ? 'theme-success' : state === 'FAILED' ? 'theme-danger' : 'theme-warning');
+    element.textContent = state === 'SUCCESS' ? '成功' : state === 'FAILED' ? '失败' : '运行中';
+  }
+  function renderCallbacks(page) {
+    const panel = find('callback-records');
+    if (!panel || !page || !Array.isArray(page.items)) return;
+    const rows = panel.querySelector('[data-callback-rows]');
+    const template = panel.querySelector('[data-callback-row-template]');
+    if (!rows || !template) return;
+    const values = page.items;
+    rows.replaceChildren();
+    for (const run of values) {
+      const row = template.content.firstElementChild.cloneNode(true);
+      const part = key => row.querySelector(`[data-callback-${key}]`);
+      write(part('id'), run.id ?? '—'); write(part('task-id'), run.taskInstanceId ?? '—');
+      callbackBadge(part('state'), run.status || 'RUNNING');
+      write(part('start'), run.startedAt || '—'); write(part('end'), run.finishedAt || '—');
+      write(part('range'), `[${run.lowerBound || '—'}, ${run.upperBound || '—'})`);
+      write(part('message'), run.message || '等待执行节点回传结果');
+      rows.append(row);
+    }
+    if (!values.length) {
+      const empty = document.createElement('tr'); empty.dataset.callbackEmpty = '';
+      const cell = document.createElement('td'); cell.colSpan = 7; cell.className = 'text-center fg-2 py-7';
+      cell.append('尚未收到可关联回调。实例可能仍在排队、节点尚未领取，或回调尚未抵达平台。旧执行器未携带实例编号的记录请查看');
+      if (panel.dataset.callbackHistoryUrl) {
+        const history = document.createElement('a'); history.href = panel.dataset.callbackHistoryUrl; history.textContent = '历史未关联回调';
+        cell.append(history, '。');
+      }
+      empty.append(cell); rows.append(empty);
+    }
+    const total = Number.isInteger(page.total) ? page.total : values.length;
+    write(panel.querySelector('[data-callback-total]'), `共 ${total} 条 · 平台回调`);
+    const initial = Number(panel.dataset.callbackInitialTotal);
+    const notice = panel.querySelector('[data-callback-page-notice]');
+    if (notice && Number.isFinite(initial)) notice.hidden = total === initial;
+  }
   async function refreshStatus() {
     if (loading || !active || document.hidden) return;
     const current = generation; loading = true; refresh.disabled = true;
@@ -172,6 +212,7 @@
         log.select(selected, data.finished, labels);
       }
       renderNodes(data.nodes, log?.id || '', labels);
+      renderCallbacks(data.callbackPage);
       finished = data.finished; stopped = false; retryAt = 0; failures = 0; error.hidden = true;
       const time = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', timeStyle: 'medium' }).format(new Date(data.updatedAt));
       status.textContent = finished ? `执行已结束 · ${time} 更新` : `每 5 秒自动更新状态 · ${time} 更新`;

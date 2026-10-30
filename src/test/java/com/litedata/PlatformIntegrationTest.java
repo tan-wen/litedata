@@ -195,7 +195,7 @@ class PlatformIntegrationTest {
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("workflowCode=89")));
         when(monitor.instances(eq(89L),any(),eq(""))).thenThrow(new IllegalStateException("调度引擎暂不可用"));
         mvc.perform(get(path).with(user("admin").roles("ADMIN"))).andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("查看平台运行记录")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("历史未关联回调")));
         mvc.perform(get("/scheduling/preview").param("cron","0 0 * * * ?").with(user("viewer").roles("VIEWER")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.timezone").value("Asia/Shanghai")).andExpect(jsonPath("$.nextTimes.length()").value(3));
         mvc.perform(get("/scheduling/preview").param("cron","* * * * * *").with(user("admin").roles("ADMIN"))).andExpect(status().isBadRequest());
@@ -657,7 +657,7 @@ class PlatformIntegrationTest {
                 other,started.plusDays(1),sourceLower,sourceLower.plusDays(1));
         String path="/pipelines/"+pipeline.getId()+"/runs";
         var result=mvc.perform(get(path).with(user("viewer").roles("VIEWER")).param("pageSize","2"))
-                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("平台同步记录")))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("历史未关联回调")))
                 .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("foreign-record"))))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("&lt;img src=x onerror=alert(1)&gt;")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("2026-01-01 00:00:00.123456")))
@@ -675,11 +675,12 @@ class PlatformIntegrationTest {
         assertThat(((java.util.List<?>)last.get("runs"))).hasSize(1);
         mvc.perform(get(path).with(user("viewer").roles("VIEWER")).param("pageSize","0")).andExpect(status().isBadRequest());
         mvc.perform(get("/pipelines/"+empty+"/runs").with(user("viewer").roles("VIEWER")))
-                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("此同步任务尚无平台运行记录")));
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("没有历史未关联回调")));
         mvc.perform(get("/pipelines/0/runs").with(user("viewer").roles("VIEWER"))).andExpect(status().isNotFound());
         mvc.perform(get(path)).andExpect(status().is3xxRedirection());
         mvc.perform(get("/pipelines").with(user("viewer").roles("VIEWER")))
-                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString(path)))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("/scheduling/pipeline/"+pipeline.getId())))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(path))))
                 .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("平台近期回调记录"))))
                 .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("owned-record"))));
     }
@@ -696,7 +697,7 @@ class PlatformIntegrationTest {
                 .andReturn();
         @SuppressWarnings("unchecked") var crumbs=(java.util.List<com.litedata.web.PageBreadcrumbs.Item>)records.getModelAndView().getModel().get("breadcrumbs");
         assertThat(crumbs).extracting(com.litedata.web.PageBreadcrumbs.Item::href)
-                .containsExactly("/","/pipelines","/pipelines#pipeline-"+pipeline.getId(),null);
+                .containsExactly("/","/pipelines","/pipelines#pipeline-"+pipeline.getId(),"/scheduling/pipeline/"+pipeline.getId(),null);
         var failed=mvc.perform(pipelineEdit(pipeline).param("name",label).param("cronExpression","invalid"))
                 .andExpect(status().isOk()).andReturn();
         @SuppressWarnings("unchecked") var editing=(java.util.List<com.litedata.web.PageBreadcrumbs.Item>)failed.getModelAndView().getModel().get("breadcrumbs");
@@ -704,6 +705,78 @@ class PlatformIntegrationTest {
         assertThat(editing.get(2).href()).isEqualTo("/pipelines#pipeline-"+pipeline.getId());
         mvc.perform(get("/sources/new").with(user("developer").roles("DEVELOPER")))
                 .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("aria-current=\"page\">新增数据源")));
+    }
+
+    @Test void workerIdentityPersistsAcrossFailureRetryAndIdempotentCallbacks() throws Exception {
+        var pipeline=createPipeline(); String claim="/internal/pipelines/"+pipeline.getId()+"/claim";
+        mapper.definition(pipeline.getId(),88);
+        when(monitor.workflowForTask(501)).thenReturn(401L);
+        when(monitor.instance(401)).thenReturn(new DolphinMonitorClient.Workflow(401,88,"bound","RUNNING_EXECUTION","","",1));
+        String token="integration-test-internal-token-0123456789";
+        mvc.perform(post(claim).contentType("application/json").content("{\"workflowInstanceId\":401,\"taskInstanceId\":501}"))
+                .andExpect(status().isUnauthorized());
+        for(String body:java.util.List.of("{\"workflowInstanceId\":401}","{\"workflowInstanceId\":0,\"taskInstanceId\":501}"))
+            mvc.perform(post(claim).header("X-Internal-Token",token).contentType("application/json").content(body)).andExpect(status().isBadRequest());
+        mvc.perform(post(claim).header("X-Internal-Token",token).contentType("application/json")
+                .content("{\"workflowInstanceId\":402,\"taskInstanceId\":501}")).andExpect(status().isBadRequest());
+        when(monitor.workflowForTask(599)).thenReturn(999L);
+        when(monitor.instance(999)).thenReturn(new DolphinMonitorClient.Workflow(999,999,"foreign","RUNNING_EXECUTION","","",1));
+        mvc.perform(post(claim).header("X-Internal-Token",token).contentType("application/json")
+                .content("{\"taskInstanceId\":599}")).andExpect(status().isNotFound());
+        mvc.perform(post(claim).header("X-Internal-Token",token).contentType("application/json")
+                .content("{\"workflowInstanceId\":401,\"taskInstanceId\":501}")).andExpect(status().isOk());
+        long first=mapper.pipeline(pipeline.getId()).getActiveRunId();
+        assertThat(mapper.run(first).getWorkflowInstanceId()).isEqualTo(401L);
+        assertThat(mapper.run(first).getTaskInstanceId()).isEqualTo(501L);
+        var before=mapper.pipeline(pipeline.getId()).getWatermark();
+        pipelineService.finish(first,false,"");
+        assertThat(mapper.pipeline(pipeline.getId()).getWatermark()).isEqualTo(before);
+        mvc.perform(post(claim).header("X-Internal-Token",token).contentType("application/json")
+                .content("{\"taskInstanceId\":501}")).andExpect(status().isOk());
+        long retry=mapper.pipeline(pipeline.getId()).getActiveRunId();
+        pipelineService.finish(retry,true,""); pipelineService.finish(retry,false,"");
+        assertThat(mapper.instanceRunCount(pipeline.getId(),401)).isEqualTo(2);
+        assertThat(mapper.run(retry).getStatus()).isEqualTo("SUCCESS");
+        assertThat(mapper.pipelineRunCount(pipeline.getId())).isZero();
+    }
+
+    @Test void instanceCallbacksAreScopedPaginatedSafeAndRefreshIndependentlyFromEngineSuccess() throws Exception {
+        var pipeline=createPipeline(); long id=pipeline.getId(); mapper.definition(id,88);
+        pipelineService.create("other-callback-task",pipeline.getSourceId(),"source_orders","updated_at","ods_orders","","0 0 * * * ?");
+        long other=mapper.pipelines().getFirst().getId();
+        var begin=LocalDateTime.of(2026,1,1,0,0,0,123456000);
+        for(int i=0;i<3;i++) jdbc.update("INSERT INTO pipeline_run(pipeline_id,workflow_instance_id,task_instance_id,status,started_at,lower_bound,upper_bound,message) VALUES(?,401,501,?,?,?,?,?)",
+                id,i==2?"RUNNING":"FAILED",begin.plusMinutes(i),begin,begin.plusDays(1),i==2?"<script>bad()</script>":"attempt-"+i);
+        for(long owner:java.util.List.of(id,other)) jdbc.update("INSERT INTO pipeline_run(pipeline_id,workflow_instance_id,task_instance_id,status,lower_bound,upper_bound,message) VALUES(?,?,501,'SUCCESS',?,?,'must-not-leak')",
+                owner,owner==id?402:401,begin,begin.plusDays(1));
+        jdbc.update("INSERT INTO pipeline_run(pipeline_id,status,lower_bound,upper_bound,message) VALUES(?,'SUCCESS',?,?,'unlinked-history')",id,begin,begin.plusDays(1));
+        var workflow=new DolphinMonitorClient.Workflow(401,88,"instance","SUCCESS","","",1);
+        when(monitor.instance(401)).thenReturn(workflow); when(monitor.nodes(401)).thenReturn(java.util.List.of());
+        String path="/scheduling/pipeline/"+id+"/instances/401";
+        var page=mvc.perform(get(path).param("pageSize","2").with(user("viewer").roles("VIEWER"))).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("同步回调记录")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("&lt;script&gt;bad()&lt;/script&gt;")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("must-not-leak"))))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("unlinked-history"))))
+                .andReturn().getModelAndView().getModel();
+        assertThat(page.get("totalCount")).isEqualTo(3L);
+        mvc.perform(get(path+"/status").param("pageSize","2").with(user("viewer").roles("VIEWER")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.callbackPage.total").value(3))
+                .andExpect(jsonPath("$.callbackPage.items.length()").value(2))
+                .andExpect(jsonPath("$.callbackPage.items[0].status").value("RUNNING"))
+                .andExpect(jsonPath("$.callbackPage.items[0].startedAt").value("2026-01-01 08:02:00.123456"))
+                .andExpect(jsonPath("$.callbackPage.items[0].lowerBound").value("2026-01-01 00:00:00.123456"));
+        mvc.perform(get(path).param("pageSize","2").param("pageNum","999").with(user("viewer").roles("VIEWER")))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("attempt-0")));
+        mvc.perform(get(path).param("pageSize","101").with(user("viewer").roles("VIEWER"))).andExpect(status().isBadRequest());
+        when(monitor.instance(402)).thenReturn(new DolphinMonitorClient.Workflow(402,999,"foreign","SUCCESS","","",1));
+        mvc.perform(get("/scheduling/pipeline/"+id+"/instances/402").with(user("viewer").roles("VIEWER"))).andExpect(status().isNotFound());
+        mvc.perform(get("/pipelines/"+id+"/runs").with(user("viewer").roles("VIEWER")))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("unlinked-history")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("attempt-0"))));
+        when(monitor.instance(401)).thenThrow(new IllegalStateException("调度引擎暂不可用"));
+        mvc.perform(get(path).with(user("viewer").roles("VIEWER"))).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("attempt-0")));
     }
 
     private Pipeline createPipeline() {

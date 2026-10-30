@@ -17,8 +17,11 @@ import org.springframework.web.server.ResponseStatusException;
 public class SchedulerController {
     private final SchedulerOperations operations;
     private final DolphinMonitorClient engine;
+    private final PipelineCallbackRecords callbacks;
     private static final Map<String,String> FILTERS=Map.of("SUCCESS","成功","FAILURE","失败","RUNNING_EXECUTION","运行中","STOP","已停止","PAUSE","已暂停");
-    public SchedulerController(SchedulerOperations operations,DolphinMonitorClient engine) { this.operations=operations; this.engine=engine; }
+    public SchedulerController(SchedulerOperations operations,DolphinMonitorClient engine,PipelineCallbackRecords callbacks) {
+        this.operations=operations; this.engine=engine; this.callbacks=callbacks;
+    }
     @ModelAttribute("canEdit") boolean canEdit(HttpServletRequest request) { return request.isUserInRole("ADMIN") || request.isUserInRole("DEVELOPER"); }
     @ModelAttribute("canManageUsers") boolean admin(HttpServletRequest request) { return request.isUserInRole("ADMIN"); }
     @ModelAttribute("statusLabels") Map<String,String> labels() {
@@ -59,9 +62,13 @@ public class SchedulerController {
     }
     @GetMapping("/{type}/{id}/instances/{instanceId}")
     String detail(@PathVariable String type,@PathVariable long id,@PathVariable long instanceId,
-                  @RequestParam(required=false) Long taskId,Model model,HttpServletRequest request) {
+                  @RequestParam(required=false) Long taskId,@RequestParam Map<String,String> params,Model model,HttpServletRequest request) {
         var resource=operations.resource(type,id); prepare(model,resource);
+        if(instanceId<=0) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         model.addAttribute("instanceId",instanceId);
+        model.addAttribute("taskId",taskId);
+        model.addAttribute("callbackPage",callbackPage(resource,instanceId,params,model));
+        model.addAttribute("statusUrl",resource.path()+"/instances/"+instanceId+"/status?pageNum="+model.asMap().getOrDefault("pageNum",1)+"&pageSize="+model.asMap().getOrDefault("pageSize",20));
         model.addAttribute("instance",null); model.addAttribute("nodes",List.of()); model.addAttribute("selectedNode",null);
         try {
             var snapshot=operations.snapshot(resource,instanceId);
@@ -77,12 +84,16 @@ public class SchedulerController {
         return "scheduler-instance-detail";
     }
     @GetMapping("/{type}/{id}/instances/{instanceId}/status") @ResponseBody
-    ResponseEntity<?> status(@PathVariable String type,@PathVariable long id,@PathVariable long instanceId) {
+    ResponseEntity<?> status(@PathVariable String type,@PathVariable long id,@PathVariable long instanceId,@RequestParam Map<String,String> params) {
         try {
-            var snapshot=operations.snapshot(operations.resource(type,id),instanceId);
-            return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(Map.of(
+            var resource=operations.resource(type,id);
+            var snapshot=operations.snapshot(resource,instanceId);
+            var body=new LinkedHashMap<String,Object>(Map.of(
                     "instance",snapshot.instance(),"nodes",snapshot.nodes(),"finished",snapshot.finished(),
                     "updatedAt",snapshot.updatedAt(),"labels",labels()));
+            var page=callbackPage(resource,instanceId,params,new org.springframework.ui.ExtendedModelMap());
+            if(page!=null) body.put("callbackPage",page);
+            return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(body);
         } catch(IllegalStateException exception) {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).cacheControl(CacheControl.noStore()).body(Map.of("message",exception.getMessage()));
         }
@@ -98,5 +109,13 @@ public class SchedulerController {
     }
     private void prepare(Model model,SchedulerOperations.Resource resource) {
         model.addAttribute("resource",resource); model.addAttribute("activeNav",resource.type().equals("pipeline")?"pipelines":"transforms");
+    }
+    private PipelineCallbackRecords.Page callbackPage(SchedulerOperations.Resource resource,long instanceId,Map<String,String> params,Model model) {
+        if(!"pipeline".equals(resource.type())) return null;
+        var requested=QueryPage.parse(params,20);
+        if(requested.pageSize()>100) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"同步回调记录每页最多100条");
+        long total=callbacks.count(resource.id(),instanceId);
+        var page=ListPagination.prepare(model,resource.path()+"/instances/"+instanceId,params,total);
+        return callbacks.page(resource.id(),instanceId,page,total);
     }
 }

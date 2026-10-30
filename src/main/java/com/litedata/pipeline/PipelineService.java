@@ -67,6 +67,12 @@ public class PipelineService {
     }
     @Transactional
     public Map<String,Object> claim(long id) {
+        return claim(id,null,null);
+    }
+    @Transactional
+    public Map<String,Object> claim(long id,Long workflowInstanceId,Long taskInstanceId) {
+        if((workflowInstanceId==null)!=(taskInstanceId==null) || (workflowInstanceId!=null && (workflowInstanceId<=0 || taskInstanceId<=0)))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"工作流实例和节点编号必须同时提供且为正整数");
         Pipeline pipeline=mapper.lockPipeline(id);
         if(pipeline==null) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"任务不存在");
         if(pipeline.getActiveRunId()!=null) throw new ResponseStatusException(HttpStatus.CONFLICT,"已有实例运行；确认执行节点停止后再恢复");
@@ -84,6 +90,7 @@ public class PipelineService {
         LocalDateTime epoch=LocalDateTime.of(1970,1,1,0,0);
         if(lower.isBefore(epoch)) lower=epoch;
         PipelineRun run=new PipelineRun(); run.setPipelineId(id); run.setLowerBound(lower); run.setUpperBound(upper);
+        run.setWorkflowInstanceId(workflowInstanceId); run.setTaskInstanceId(taskInstanceId);
         mapper.insertRun(run); mapper.activeRun(id,run.getId());
         var claim=new LinkedHashMap<String,Object>(Map.of("runId",run.getId(),"source",Map.of("jdbcUrl",source.getJdbcUrl(),"username",source.getUsername(),"password",sources.password(source),
                         "databaseType",source.getDatabaseType().name(),"schema",Objects.toString(sourceTable.schema(),""),"columns",sourceTable.columns(),"timestampColumns",sourceTable.timestampColumns()),

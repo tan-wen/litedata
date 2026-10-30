@@ -57,7 +57,7 @@ public interface PlatformMapper {
     void advanceWatermark(@Param("id") long id,@Param("watermark") LocalDateTime watermark);
     @Update("UPDATE pipeline SET active_run_id=NULL,last_error=#{error} WHERE id=#{id}")
     void failPipeline(@Param("id") long id,@Param("error") String error);
-    @Insert("INSERT INTO pipeline_run(pipeline_id,status,lower_bound,upper_bound) VALUES(#{pipelineId},'RUNNING',#{lowerBound},#{upperBound})")
+    @Insert("INSERT INTO pipeline_run(pipeline_id,status,lower_bound,upper_bound,workflow_instance_id,task_instance_id) VALUES(#{pipelineId},'RUNNING',#{lowerBound},#{upperBound},#{workflowInstanceId},#{taskInstanceId})")
     @Options(useGeneratedKeys=true,keyProperty="id") void insertRun(PipelineRun run);
     @Select("SELECT * FROM pipeline_run WHERE id=#{id}") PipelineRun run(long id);
     @Select("SELECT * FROM pipeline_run WHERE id=#{id} FOR UPDATE") PipelineRun lockRun(long id);
@@ -65,10 +65,14 @@ public interface PlatformMapper {
     int finishRun(@Param("id") long id,@Param("status") String status,@Param("message") String message);
     @Select("SELECT r.*,p.name pipeline_name FROM pipeline_run r JOIN pipeline p ON p.id=r.pipeline_id ORDER BY r.id DESC LIMIT 50")
     List<PipelineRun> recentRuns();
-    @Select("SELECT COUNT(*) FROM pipeline_run WHERE pipeline_id=#{id}")
+    @Select("SELECT COUNT(*) FROM pipeline_run WHERE pipeline_id=#{id} AND workflow_instance_id IS NULL")
     long pipelineRunCount(long id);
-    @Select("SELECT r.*,p.name pipeline_name FROM pipeline_run r JOIN pipeline p ON p.id=r.pipeline_id WHERE r.pipeline_id=#{id} ORDER BY r.started_at DESC,r.id DESC LIMIT #{limit} OFFSET #{offset}")
+    @Select("SELECT r.*,p.name pipeline_name FROM pipeline_run r JOIN pipeline p ON p.id=r.pipeline_id WHERE r.pipeline_id=#{id} AND r.workflow_instance_id IS NULL ORDER BY r.started_at DESC,r.id DESC LIMIT #{limit} OFFSET #{offset}")
     List<PipelineRun> pipelineRunPage(@Param("id") long id,@Param("limit") int limit,@Param("offset") long offset);
+    @Select("SELECT COUNT(*) FROM pipeline_run WHERE pipeline_id=#{pipelineId} AND workflow_instance_id=#{instanceId}")
+    long instanceRunCount(@Param("pipelineId") long pipelineId,@Param("instanceId") long instanceId);
+    @Select("SELECT * FROM pipeline_run WHERE pipeline_id=#{pipelineId} AND workflow_instance_id=#{instanceId} ORDER BY started_at DESC,id DESC LIMIT #{limit} OFFSET #{offset}")
+    List<PipelineRun> instanceRunPage(@Param("pipelineId") long pipelineId,@Param("instanceId") long instanceId,@Param("limit") int limit,@Param("offset") long offset);
     @Select("SELECT * FROM data_service ORDER BY id DESC") List<DataService> services();
     @Select("SELECT COUNT(*) FROM data_service") long serviceCount();
     @Select("SELECT s.*,(SELECT COUNT(*) FROM service_call c WHERE c.service_id=s.id AND c.started_at>=#{start} AND c.started_at<#{end}) daily_calls FROM data_service s ORDER BY s.id DESC LIMIT #{limit} OFFSET #{offset}")

@@ -10,6 +10,12 @@ public class PipelineRun {
     private java.time.LocalDateTime lowerBound;
     private java.time.LocalDateTime upperBound;
     private String message;
+    private Long workflowInstanceId;
+    private Long taskInstanceId;
+    public Long getWorkflowInstanceId() { return workflowInstanceId; }
+    public void setWorkflowInstanceId(Long workflowInstanceId) { this.workflowInstanceId = workflowInstanceId; }
+    public Long getTaskInstanceId() { return taskInstanceId; }
+    public void setTaskInstanceId(Long taskInstanceId) { this.taskInstanceId = taskInstanceId; }
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public Long getPipelineId() { return pipelineId; }
