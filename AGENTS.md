@@ -1,55 +1,33 @@
 # LiteData 代理协作入口
 
-本文件是仓库内自动化代理的协作入口。开发者贡献步骤见 [CONTRIBUTING.md](CONTRIBUTING.md)。所有修改以实际源码、`pom.xml`、`compose.yaml` 和 `docs/` 为准。
+单机数据中台；Java 根包及 Maven 坐标为 `com.litedata` / `com.litedata:litedata`。以源码和配置为准。
 
-## 项目上下文
+## 按需读取
 
-LiteData 是面向单机试点的轻量数据中台。当前版本为 `0.1.0-SNAPSHOT`，处于首版开发和引擎联调阶段：平台功能与自动化测试已实现；真实 DataX、Doris、DolphinScheduler 演示同步及分层加工链路已实测跑通，百万行压测和连续七天运行仍待验收。范围和已知验证状态以 [README](README.md)、[实施及验收计划](docs/implementation-plan.md) 和 [引擎运行说明](docs/engine-runbook.md) 为准。
+- 先查 `git status` 和任务相关文件，保留他人未提交修改。
+- [README](README.md) 提供启动和演示；[文档索引](docs/README.md) 按模块定位说明，只读取任务需要的文档与章节。
+- 默认搜索限定相关源码目录；不要全库展开或读取 `target/`、`output/`、`deploy/runtime/`、缓存、截图、第三方压缩资源及整份操作手册。确有需要时再定位读取。
+- `src/main/java/com/litedata/` 按业务分包；`store` 为 MyBatis，`web` 为页面/API，`model` 为领域对象；资源、模板和 Flyway 迁移位于 `src/main/resources/`。
+- `deploy/` 为引擎、worker 和冒烟脚本，`deploy/production/` 为生产交付，`examples/` 为可运行示例。
 
-- Java 根包为 `com.litedata`，Maven 坐标为 `com.litedata:litedata`；新增代码和引用保持一致。
-- `src/main/java/com/litedata/`：`config` 配置绑定，`data` 数据源连接，`pipeline` 调度和水位流程，`security` 鉴权及凭据，`service` 受控查询，`store` MyBatis 持久化，`web` 页面与 API；`model` 为领域对象。
-- `modeling` 维护逻辑模型、Doris 建表和结构核对；`transform` 维护独立 SQL 加工、同步/SQL 依赖 DAG 与 DS 调度，使用独立运行记录，不回退或推进同步管道水位。操作边界见 `docs/sql-transforms.md`。
-- `src/main/resources/db/migration/` 是 Flyway 迁移；模板、静态资源和应用配置同在 `src/main/resources/`。`deploy/` 提供 Compose 引擎初始化、worker 与冒烟脚本；`docs/` 保存实施边界和引擎操作说明。
+## 必须保持
 
-### 运行和验证
+- 资源列表、新增、编辑使用独立页面与路由；列表用数据库分页并保留筛选，禁止内存分页。具体行为见 [贡献约定](CONTRIBUTING.md#资源管理页面约定)。
+- 使用本地固定版 Bootstrap 6、统一分页及主题控件；界面遵循 [UI 说明](docs/ui-guide.md)。
+- Flyway 只新增顺序迁移，不改写已执行的迁移。
+- 同步以非空、带前导索引的时间水位读取 `[最近成功水位 - 5 分钟, 源库上界)`；固定批次边界并保持运行互斥。DataX 成功写入已登记的 ODS UNIQUE 目标后才推进水位，独立 SQL 失败不回退它；重跑依赖目标业务主键幂等。时间水位不等于 CDC，硬删除和窗口外迟到需对账补数。
+- 不提交或输出 `.env`、凭据、令牌、真实业务数据和未脱敏日志；数据源密码加密、API Key 存摘要，读写账号和 worker 内部令牌保持职责分离。见 [安全说明](SECURITY.md)。
 
-使用 JDK 25（Maven Enforcer 要求 `[25,26)`）、仓库 Maven Wrapper 和 Docker Compose v2。自动化测试由 Testcontainers 启动真实 MySQL，因而需要 Docker：
+## 验证与维护
 
-```powershell
-.\mvnw.cmd verify
-docker compose --env-file .env.example config --quiet
-```
+JDK 25、仓库 Maven Wrapper、Docker Compose v2；Testcontainers 集成测试需要 Docker。
+按改动执行相关检查并报告实际结果，Java 改动通常运行 `./mvnw verify`（Windows 为 `.\mvnw.cmd verify`）。部署配置检查使用 `docker compose --env-file .env.example config --quiet`。
+单测、配置解析、任务提交接受均不代表真实引擎或容量验收；状态与验收步骤见 [引擎运行说明](docs/engine-runbook.md#验证与验收)。
 
-Linux/macOS 对应使用 `./mvnw verify`。完整部署通过 `deploy/start.ps1` 或 `deploy/start.sh` 启动；只有实际运行后才可执行 `deploy/smoke.py`。没有实测真实引擎链路时，不能把单测、Compose 配置解析或任务提交接受表述为全链路验收通过。
+文档保留当前行为、操作命令和限制；同一规则维护一处，其他位置链接引用。过程日志、临时编号和导出件不写回长期文档，生成物放 Git 忽略的 `target/` 或 `output/`。
 
-### 数据链路和安全边界
+## 委派与审查
 
-数据流程是：MySQL 源表 → DataX 时间水位增量 → Doris ODS（UNIQUE KEY）→ `INSERT SELECT` 加工 → Doris ADS → 只读数据 API。DolphinScheduler 调度和重试同步/加工任务，worker 向平台回调结果。平台 MySQL 与 DolphinScheduler MySQL 元数据库相互独立。
-
-- 源表水位必须是非空、有前导索引的 `DATETIME`/`TIMESTAMP`；每批取源库上界，读取 `[最近成功水位 - 5 分钟, 上界)`，首批从 1970-01-01 开始。
-- runner 对管道实行运行互斥并固定上下界；DataX 成功写入已登记的 ODS UNIQUE 目标后才推进水位。独立 SQL 加工失败不会回退同步水位；重跑依赖各自目标表的业务主键幂等写入。
-- 时间水位不能完整捕获硬删除、超出重放窗口的迟到和历史水位回写；这些情形需要对账和显式补数。不要把它描述为 CDC 语义。
-- 平台密钥和内部令牌从环境变量或本地 `.env` 注入：不得提交 `.env`、令牌、密钥、真实业务数据、含密码日志或 `deploy/runtime/` 内容。页面登记的数据源密码以密文存储，主密钥由环境提供；API Key 仅保存摘要，Doris 读写账号和内部 worker 令牌必须职责分离。具体披露方式见 [SECURITY.md](SECURITY.md)。
-
-## 工作方式
-
-- 先检查工作区和相关文件，保留其他人的未提交修改；不要用重置或回退覆盖无关工作。
-- 保持改动小且聚焦。涉及包名时使用 `com.litedata`。
-- 所有资源的列表页、新增页、编辑页必须使用独立页面和独立路由；列表只保留操作入口，不内嵌或并排展示新增、编辑表单，也不以弹窗、抽屉替代独立页面。新增及改造页面遵循 [资源管理页面约定](CONTRIBUTING.md#资源管理页面约定)。
-- 所有资源列表必须支持数据库分页，并在翻页时保留筛选条件；使用统一分页组件，禁止全量加载后在内存分页。
-- 前端使用本地固定版本的 Bootstrap 6；所有页面及 SQL 高亮遵循 [界面与主题说明](docs/ui-guide.md)，使用统一外观控件和语义色变量，支持浅色、深色、跟随系统及主题配色。
-- Java 构建使用 JDK 25、仓库 Maven Wrapper 与 Docker。优先运行与改动相称的检查；报告实际执行的命令和结果。
-- Flyway 只接受新增的顺序迁移，不改写已执行迁移。变更管道时维护时间水位、运行互斥、成功后推进和目标幂等写入这些约束。
-- 禁止提交或输出 `.env`、密码、API Key、内部令牌、加密主密钥、真实数据及未脱敏日志。不要将未实测的 DataX→Doris→DolphinScheduler→API 全链路描述为验收通过。
-
-## 成本感知委派
-
-- 只委派边界明确、可独立完成，并具有明确验收标准和可行验证方式的任务。
-- 窄范围只读搜索、清单、摘要、简单静态检查和确定性测试/日志分诊优先使用 `luna_checker`。
-- 需要判断但范围集中的实现、诊断或审查优先使用 `terra_worker`。
-- 不把架构、安全关键决策、跨模块改动或最终结论外包；主代理必须检查子代理的证据和差异，并独立确认相关项目检查。
-- 除非用户明确要求扩大并行度，同时运行的子代理最多两个；写密集型任务不要重叠委派。
-
-## 审查
-
-不使用 CodeRabbit。使用本地人工审查以及仓库已有的 Maven、Docker Compose 和按需完整链路检查。
+- 只委派边界明确、有验收和验证方式的独立任务；只读检查优先 `luna_checker`，集中实现/诊断优先 `terra_worker`。架构、安全、跨模块决策和最终结论由主代理负责。
+- 最多同时运行两个子代理（用户明确扩大并行度除外），避免重叠写入；主代理检查差异与证据，并独立确认相关项目检查。
+- 不使用 CodeRabbit；使用本地人工审查和项目已有检查。

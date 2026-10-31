@@ -178,5 +178,5 @@ python deploy/production/package.py --with-images
 [DS 3.4.0 Worker 配置](https://github.com/apache/dolphinscheduler/blob/3.4.0/dolphinscheduler-worker/src/main/resources/application.yaml)、
 [Master 配置](https://github.com/apache/dolphinscheduler/blob/3.4.0/dolphinscheduler-master/src/main/resources/application.yaml)、
 [官方分进程 Compose](https://github.com/apache/dolphinscheduler/blob/3.4.0/deploy/docker/docker-compose.yml)。
-本次实际执行的构建与链路检查见 [验证记录](VERIFICATION.md)。开发者可用仓库的 `deploy/production/validate_release.py` 对独立的生成包做缩小配额的集成检查。
+历史验证范围和每次交付步骤见 [验证说明](VERIFICATION.md)。开发者可用仓库的 `deploy/production/validate_release.py` 对独立的生成包做缩小配额的集成检查。
 校验和/Compose 解析/健康检查与项目自动化测试均不能代表真实业务全链路和中等数据容量验收，现场按上文步骤验证后再开放生产调度。

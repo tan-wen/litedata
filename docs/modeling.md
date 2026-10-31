@@ -175,56 +175,18 @@ Maven 使用 Testcontainers MySQL 验证迁移、模型和字段持久化、页�
 模型修改和结构差异；从本地 `.env` 或环境读取管理员密码，不输出凭据。可通过 `PLATFORM_URL`
 指定地址。脚本会保留独立的 `ods_model_smoke_*` 表、逻辑模型及记录作为验证证据，不修改业务表。
 
-2026-10-23 验证结果：全量 Maven verify 28 项通过；注释兼容性修正后重新执行建模测试 11 项通过；
-Compose 配置解析通过。当前真实 Doris 4.1.3 冒烟通过保存、DDL 预览、建表、10 个字段的类型/注释
-往返、结构一致、重复建表失败留痕、模型更新、过期预览拦截和结构差异识别。
-成功样例为模型 ID 3、`warehouse.ods_model_smoke_33f49292c1`，保留 v1 成功和 v2 注释变更差异作为证据。
-这些验证覆盖模型结构，不代表加工数据正确性、容量或连续运行验收。
-
-2026-10-27：物理设置扩展后，全量 Maven verify 152 项通过；浏览器 24 组桌面/窄屏、浅深色与四配色检查通过，
-包含条件字段、聚合列对齐、字段增删排序、DIM 约束、保存编辑及校验失败回显。
-真实 Doris 4.1.3 冒烟通过三种表模型、五种聚合函数、日/月/年自动分区、重复写入语义、写入前后结构比对及副本漂移。
-保留模型 ID 35 / 36 / 38 及对应 `dws_config_smoke_*` 表作为验证证据。
-
-字段类型下拉升级后，建模相关 Maven 回归 24 项通过，补充页面选项名称和自定义参数回显断言后的页面回归 12 项通过。
-浏览器验证 14 种类型、参数上下限、字段增删排序、保存编辑、校验失败回显及 24 组主题/窄屏布局通过；
-原物理设置的 24 组布局与条件字段交互回归也通过。
-
-三步向导与自动分桶升级后，全量 Maven verify 157 项通过；浏览器 24 组主题/窄屏布局和五个分层提示通过，
-覆盖逐步校验、回车仅推进、草稿回退、字段约束、失效分区与聚合选择、服务器报错定位、DIM 业务键联动、
-类型参数保留、三种日期分区编辑回显及旧固定桶数保留。真实 Doris 4.1.3 同时通过无分区与日期自动分区的 AUTO 建表，
-以及三模型、五种聚合函数、重复写入语义、写入前后结构核对与副本差异识别；保留模型 ID 44 / 45 / 46 / 47 作为证据。
-
 `model_settings_smoke.py` 针对本地 Compose 环境，使用平台表单和 Doris root 本地测试连接，
 验证三种模型、聚合函数、日/月/年自动分区、重复写入语义、写入前后的结构比对、编辑持久化、BE 副本数预检和注释差异识别。
 脚本只写入自身创建的 `dws_config_smoke_*` 表及对应模型并保留证据，不访问业务数据。
 
-2026-10-28：动态 BE 数量查询的建模相关 Maven verify 36 项通过，覆盖节点状态与标签筛选、空节点列表、
-连接/权限失败脱敏、页面动态上限、节点下线后的保存及建表预检、未知状态下的逻辑模型保存。
-本地 Doris 4.1.3 实测为共 1 个 BE、可用 1 个；浏览器确认副本上限为 1，填写 2 会超限。
-真实 Doris 三模型冒烟通过，包含超额副本保存被拒绝与正常建表、写入、结构核对；保留模型 ID 50 / 51 / 52 作为证据。
-
-步骤导航交互调整后，全量 Maven verify 165 项通过。浏览器验证桌面及 390 / 320 像素窄屏的步骤切换、
-重复点击当前步骤、卡片等高、无横向溢出、长表单底部前进/返回及错误字段定位；可见步骤切换不强制滚动，
-第三步摘要显示当前 BE 状态。验证只编辑浏览器草稿，未保存对既有模型的修改。
+历史验证曾覆盖保存和 DDL 预览、三种表模型和聚合函数、字段类型与回填、自动/手动/动态分区、AUTO/HASH/RANDOM 分桶、
+BE 副本数预检、结构核对与差异识别，以及桌面和窄屏页面交互。真实 Doris 冒烟覆盖建表、写入和回读；这些是过去的验证范围，
+每次发布仍需重新验证，且不代表加工数据正确性、容量或连续运行验收。
 
 官方语法依据：[Doris 4.x CREATE TABLE](https://doris.apache.org/docs/4.x/sql-manual/sql-statements/table-and-view/table/CREATE-TABLE/)、
-[COLUMNS 元数据](https://doris.apache.org/docs/4.x/admin-manual/system-tables/information_schema/columns/)、
+[COLUMNS 元数据](https://doris.apache.org/docs/4.x/admin-manual/system-tables/information_schema/columns/) 和
 [SHOW BACKENDS 节点状态](https://doris.apache.org/docs/4.x/sql-manual/sql-statements/cluster-management/instance-management/SHOW-BACKENDS/)。
-
-2026-10-28 自定义分桶验证：全量 Maven verify 171 项通过，Compose 配置解析与 JavaScript 语法检查通过。
-真实 Doris 4.1.3 冒烟覆盖 UNIQUE / AGGREGATE 的 HASH 子集键、DUPLICATE 的非键列 HASH、RANDOM 固定桶数和 RANDOM AUTO，
-均通过建表、SHOW CREATE 回读、编辑回填及结构核对；修改逻辑分桶方式、键或桶数可识别差异，恢复后重新匹配。
-保留 `dws_bucket_smoke_bf989f689f_*` 五张表作为证据。浏览器验证默认全部键列、自选非键列、HASH 空选拦截、固定 64 桶、
-多键顺序在保存和编辑时保留，以及桌面和窄屏布局。模型 ID 63 仅保存了 UI 验证模型，未执行物理建表。
 
 自定义分桶依据：[Doris 数据分桶](https://doris.apache.org/zh-CN/docs/dev/table-design/data-partitioning/data-bucketing/)。分桶方式和键属于建表定义；修改逻辑设置不会自动调整已有物理表，应新建目标表并迁移数据。
 
 分区语法依据：[自动分区](https://doris.apache.org/zh-CN/docs/dev/table-design/data-partitioning/auto-partitioning/)、[手动分区](https://doris.apache.org/zh-CN/docs/dev/table-design/data-partitioning/manual-partitioning/)、[动态分区](https://doris.apache.org/zh-CN/docs/dev/table-design/data-partitioning/dynamic-partitioning/)。当前平台部署版本为 Doris 4.1.3，dev 文档中其他类型、组合和新版本生命周期属性以引擎实际能力为准。
-
-2026-10-28 分区扩展验证：全量 Maven verify 182 项通过；动态默认策略及副本分配回读收口后，建模专项回归 48 项通过。
-JavaScript / Python 语法与 Compose 配置解析通过。真实 Doris 4.1.3 的六组建表、写入、编辑回填、写入前后核对，以及范围、
-枚举和动态策略漂移检查通过；保留模型 ID 64 / 65 / 66 / 67 / 68 / 70 及 `dwd_partition_smoke_226d1a69_*` 表作为证据。
-模型 70 另通过动态 replication_num 与 Doris replication_allocation 等价核对，以及移除 start 后的策略差异识别和恢复核对。
-浏览器通过动态完整 PROPERTIES 保存、错误原文回填、第三步定位、RANGE/LIST 条目切换与 AUTO LIST 固定分桶约束；
-UI 验证模型 69 保留动态配置，未执行物理建表。

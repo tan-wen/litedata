@@ -49,7 +49,6 @@ DS 3.4.0 的官方 SQL 仅在目标库没有任何表时导入；已有库先检
 开源工程现位于独立的 `litedata` 目录，Java 根包为 `com.litedata`，
 Maven 坐标为 `com.litedata:litedata`，应用产物为 `target/litedata-0.1.0-SNAPSHOT.jar`。
 本地 `.env` 和 `deploy/runtime/` 随工作目录迁移保留，并继续由 Git 忽略。
-历史原型、设计原稿和 Excel 计划保留在原 `bigdata` 目录。
 
 Compose 默认项目名由 `data-platform` 调整为 `litedata`。命名卷和网络也会使用新的项目前缀，
 已有 `data-platform_*` 数据卷不会自动附加到新项目。已有环境必须先备份数据库和 Doris 数据，
@@ -64,9 +63,12 @@ worker 启动时把内部执行凭证写入 root-only 的 `/run/litedata-worker.
 使 DS 经 `sudo -i` 切换执行身份时仍可读取；源库凭据不会写入工作流定义。
 
 runner claim 取得不可变上下界，409 时不执行。DataX 读取 `[lowerBound, upperBound)`，
-最多 45 分钟并写入已登记的 ODS UNIQUE 模型。
+首批从 1970-01-01 开始，水位列须为非空且带前导索引的 DATETIME/TIMESTAMP，源端每次新增/更新须刷新它。
+DataX 最多执行 45 分钟，写入已登记的 ODS UNIQUE 模型。
 DataX 成功后回调推进水位；失败或超时回调失败，回调会重试。清洗、关联和汇总通过独立 SQL 任务执行，失败不会回退同步水位。
-重复完成请求幂等。超出五分钟的迟到和硬删除不属于时间水位可完整捕获的范围。
+重复完成请求幂等，目标依赖业务主键覆盖。源端提交延迟须在重放窗口以内；硬删除、任意晚提交及历史水位回写无法完整捕获，
+需软删除标记或业务对账、显式补数，不具备 CDC 语义。独立加工只允许 warehouse 内单条 INSERT SELECT；
+通常会重算整张上游表，容量验收须包含其成本。具体 SQL 限制和失效汇总行处理见 [数据加工](sql-transforms.md)。
 
 DataX 使用独立 Java 8；DS 保留镜像运行时；平台使用 Java 25。
 mysqlreader 的 5.1 旧驱动由 Connector/J 8.4 替换以支持 MySQL 8 默认认证。
@@ -107,21 +109,31 @@ DS 控制台在 <http://localhost:12345/dolphinscheduler>，运行日志由 DS �
 清空 active_run_id 并保留 watermark。随后由平台重新提交。
 首版尚未提供经过 DS 状态核验的自动恢复按钮。
 
-## 验证状态
+## 验证与验收
 
-- 平台测试已扩展到建模与独立 SQL 加工；2026-10-23 使用 JDK 25 执行 `./mvnw.cmd verify`，
-  44 项 Java 测试全部通过，执行器另有 7 项 Python 测试通过。
-- 目录和包名迁移后的检查结果记录在 [CHANGELOG](../CHANGELOG.md)。
-- 迁移前曾完成平台 HTTP 登录、工作台、健康接口与 DS MySQL schema 非破坏性重复初始化验证；
-  这些检查不等同于完整引擎验收。
-- 2026-10-23 已构建并运行当前自定义引擎镜像，通过平台“立即运行”验证一条演示源订单管道：
-  DS SHELL → DataX → Doris ODS → INSERT SELECT → ADS → worker 成功回调；
-  平台运行记录为 SUCCESS，ODS/ADS 各 2 行，水位推进且运行锁释放。
-  失败尝试保留 FAILED 记录且未推进水位；修正导入地址后重新执行成功。
-- 上述两行演示任务不代表完整验收。失败修复后的自动重试、容器重启后的完整恢复、
-  连续七天运行及百万行压测仍待独立验证。
-- 后续独立 SQL 加工已实测纯 ODS 同步 → DWD → DWS → ADS → 只读 API，包含一次真实定时触发、
-  调度停用及上游失败阻断下游。操作、边界及证据见 [数据加工](sql-transforms.md)。
+开发检查命令见 [CONTRIBUTING](../CONTRIBUTING.md#环境与验证)。真实环境启动后，按范围选择：
+
+| 范围 | 入口 |
+| --- | --- |
+| 订单同步、加工和 API | `py -3 deploy/smoke.py` |
+| 多源和自动 ODS | [数据源验证](data-sources.md#部署与验证) |
+| 建表、分桶和分区 | [建模验证](modeling.md#验证) |
+| 独立 SQL、依赖工作流 | [加工验证](sql-transforms.md#升级与验证) |
+| 调度与节点日志 | [调度验证](scheduling-operations.md#验证) |
+| 生产交付及重启持久化 | [生产验证说明](../deploy/production/VERIFICATION.md) |
+
+Linux/macOS 将 `py -3` 换成 `python3`。冒烟会创建隔离测试资源并保留结果，运行前阅读对应说明。
+历史小数据验证覆盖演示同步、多层加工、API、真实定时启停和上游失败阻断；这些记录不是当前代码的重新验收结果。
+
+每次交付按实际环境验证并记录以下结果，不把单测、配置解析或任务提交接受视为全链路通过：
+
+1. 平台：迁移、登录/角色、凭据解密与源连接。
+2. 同步及加工：小样本对账、新增/更新、失败重试与幂等；同步成功才推进水位，后续加工失败不回退它。
+3. 调度及恢复：真实定时、超时、重试、实例/日志，以及中断后确认执行停止再恢复。
+4. API：发布/下线、参数与分页、凭证轮换、拒绝访问、限流/超时和调用审计。
+5. 容量及稳定性（仍待验收）：同环境百万行新增/更新，记录同步及全层加工耗时、CPU/内存/磁盘和源/ODS/结果对账；每批在下一小时窗口前完成，再连续观察七天。生产数据量、并发及备份恢复另按 [生产说明](../deploy/production/README.md#验证监控与容量验收) 验证。
+
+压测 fixture 为 `deploy/benchmark.sql`，仅在隔离演示源使用；未取得实测证据前不宣称容量、吞吐或稳定性达标。
 
 ## 官方依据
 

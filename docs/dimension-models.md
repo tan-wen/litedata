@@ -35,8 +35,4 @@ Flyway `V11__dimension_models.sql` 仅为平台模型表新增业务键、展示
 
 Maven 回归覆盖维度校验、保存/编辑、表单、DIM 分层分页筛选、元数据与血缘，以及 DIM → DWD 加工依赖。Doris 和 DS 在这些集成测试中为 mock；真实引擎验证使用独立的[化工园区 DIM 示例](../examples/chemical-park-dim/README.md)，包括属性更新后成员数保持不变、事实宽表重算及恢复数据后的 API 对账。[原版示例](../examples/chemical-park/README.md)保留直接关联 ODS 企业档案的流程。
 
-2026-10-26 首次 DIM 验证（独立示例拆分前）：JDK 25 下 `mvnw verify` 141 项通过，示例 Python 测试 10 项通过，Compose 配置解析通过。Doris 4.1.3 / DS 3.4.0 下，前缀 `cp_dim261026a` 的七模型、三同步、四加工链路完成五轮运行；DIM 始终为 3 个成员，DWD 纠错后为 24 行，SCD1 名称更新与恢复、维度和事实引用质量、10 个指标及 5 个 API 对账通过。维度字段血缘贯通指标 → DWD → DIM → ODS → 业务源。新增维度表单的分层切换、业务键必填和展示字段候选在脱敏后的服务端渲染页面中完成浏览器交互验证。
-
-本次报告位于本地 `output/chemical-park/cp_dim261026a/report.json`，维度及交互检查记录位于 `output/dim-lineage-check.json`；均不纳入版本控制。本次验证不包含 SCD2、生产容量、连续运行及自动定时触发。
-
-同日，独立 DIM 示例以新前缀 `cpdim_resin261026b` 再次完成五轮引擎运行、SCD1 实测证据、维度血缘与 10 指标 / 5 API 对账；新报告与专属看板位于 `output/chemical-park-dim/cpdim_resin261026b/`。独立版本 15 项测试、保留原版 10 项测试通过；使用方法与原版对照见[DIM 完整示例](../examples/chemical-park-dim/README.md)。
+历史实测覆盖独立 DIM 示例的多轮同步/加工、SCD1 更新与恢复、成员数不变、维度及事实引用质量、指标/API 对账和维度字段血缘；生成报告与看板保存在 Git 忽略的 `output/`。这些记录不包括 SCD2、生产容量、连续运行或自动定时触发的验收，每次发布仍需按示例重新验证。

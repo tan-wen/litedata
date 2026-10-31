@@ -47,8 +47,7 @@ docker compose build platform dolphinscheduler
 
 `mvnw verify` 覆盖 JDBC 地址与驱动、真实 PostgreSQL 模式/水位/索引校验和原 MySQL 集成回归；`py -3 -m unittest discover -s deploy/tests -v` 检查四类 reader、SQL引用、固定微秒边界及输入拒绝。worker 镜像构建检查四类 reader 产物和驱动依赖。自动化通过不能替代 PostgreSQL、SQL Server、Oracle 各自的 DataX→Doris 实库链路验收。
 
-`python deploy/ods_sync_smoke.py` 验证自动 ODS 接入全链路，会生成唯一名称的合成来源表、模型、管道和只读服务；不会启用定时，测试资源保留供查看。2026-10-29 实测通过：从预览直接创建 ODS 并执行 DolphinScheduler→DataX→Doris→API，核对大小写字段映射、键列前置后的字段对应、中文和 emoji、金额小数及 DATETIME(6) 微秒；源表加列后阻止再次运行，随后恢复测试表结构。全量 Maven 回归203项通过，最终相关59项及页面回退10项复测通过，Python runner 11项通过；新增自动建模链路尚未完成 PostgreSQL、SQL Server、Oracle 实库验收。
+`python deploy/ods_sync_smoke.py` 验证自动 ODS 全链路，创建唯一名称的合成来源、模型、管道及只读服务；不启用定时，保留测试资源供查看。覆盖字段映射、中文/emoji、金额与微秒精度、复合键、分桶分区、重复同步幂等及源结构漂移拦截。脚本按浏览器方式提交重复键名，保留复合主键。
 
-同日四步向导迭代验证：相关 Maven 回归72项及最终 ODS 专项13项复测通过；浏览器核对来源表联动、步骤切换、配置回显、AUTO LIST 固定分桶约束和修改设置后的重新确认。真实冒烟使用来源复合主键中的稳定业务日期做 AUTO RANGE 分区、订单键做 HASH 分桶并指定3个桶，自动建表、同步、API值核对和源结构漂移拦截均通过；连续两次同步后 API 仍只返回同一条完整业务记录，覆盖写入与已有自动分区的结构核对也通过实测。当前测试脚本按浏览器方式提交重复键名，以完整保留复合主键。
-
-2026-10-25 验证：全量 `mvnw clean verify` 123项通过；时间列精度调整后相关专项35项通过；替换工作流名称回归10项通过；Python runner测试9项通过；平台及worker镜像构建、Compose配置校验通过。真实 MySQL→DataX→Doris→API 冒烟成功；独立 PostgreSQL→DataX→Doris 传输核对数值和微秒精度成功，临时源容器与目标表已清理。真实 DS 每分钟定时触发成功，暂停后改为每20分钟并重新发布，数据库核对引擎 Cron 与配置一致、保留水位，测试调度已暂停。SQL Server、Oracle 未进行对应实库全链路验收；浏览器浅深主题与交互未单独复测。
+历史实测覆盖 MySQL 自动 ODS → DS/DataX → Doris → API、配置向导交互、自定义周期发布与保留水位；另有 PostgreSQL → DataX → Doris 独立传输及数值/微秒精度验证。
+自动 ODS 模式尚未完成 PostgreSQL、SQL Server、Oracle 实库验收；SQL Server、Oracle 的完整同步链路也未验收。历史通过范围不能代替每次发布的实库、浏览器与容量验证。

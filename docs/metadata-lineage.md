@@ -30,4 +30,4 @@ Flyway `V5__metadata_catalog.sql` 新增采集范围、表和字段快照，不�
 
 `MetadataIntegrationTest` 使用真实 Testcontainers MySQL 验证 V5、版本、回滚、同名表隔离、分页、权限、页面和血缘；采集边界 mock。`JdbcMetadataCollectorTest` 验证 JDBC 参数绑定、范围、资源释放和上限；`LineageSqlTest` 验证 CTE/JOIN/UNION 与不支持语句。真实 Doris/MySQL 结构采集与浏览器交互需要在实际环境另行验证，不等同于 DataX / DolphinScheduler 全链路验收。
 
-2026-10-23 本地验证：`mvnw verify` 全部73项测试通过；Compose 配置解析通过。已实测 Doris 7张表及 MySQL 演示库结构采集、字段详情、北京时间展示、图缩放/拖动、方向/层数、任务链接、浅深主题、四套配色和移动导航。本地平台仅重建应用服务，V5 已加载，采集已登记数据源后订单链路显示7个表节点、6条关系、0条解析警告，健康检查为 UP；未执行同步、加工或容量验收。
+历史实测覆盖 Doris/MySQL 结构采集、字段详情、表级图的缩放/拖动和方向/层数、任务跳转及主题/移动布局。该范围不含同步、加工或容量验收，每次发布仍需在实际环境重新验证。

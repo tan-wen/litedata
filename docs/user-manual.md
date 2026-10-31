@@ -1,10 +1,8 @@
 # LiteData 平台操作手册
 
-> 版本：2026-10-26；适用平台：0.1.0-SNAPSHOT。包含 39 个图文步骤。截图来自实际运行界面；未提交表单和既有结果均在步骤中注明。
+> 维护日期：2026-10-31；适用平台：0.1.0-SNAPSHOT，共 39 个图文步骤。截图采集于 2026-10-26，部分页面已调整；当前建模流程见 [数据建模](modeling.md)，依赖与运行入口见 [工作流说明](sql-transforms.md)。截图用于操作参考，不作为当前版本的验证证据。
 
-[打开可搜索的网页版](LiteData平台操作手册.html)
-
-[下载 PDF 版（45 页）](manual/LiteData平台操作手册.pdf)
+手册维护源为本 Markdown 和截图；HTML/PDF 导出件放本地 `output/manual/`，不纳入版本控制。
 
 ## 使用前提
 
@@ -361,15 +359,15 @@
 
 **操作**：
 
-1. 在“上游依赖”选择直接上游加工任务和同步管道。
-2. 使用筛选框按名称或目标表定位，勾选真实依赖。
-3. 保存后检查系统展开的完整依赖链，不能只依赖 SQL 文本中的表名。
+1. 在“工作流”新建工作流，选择末端加工任务并打开画布。
+2. 从画布目录添加同步管道和加工任务，通过端口或上下游选择框连接直接依赖。
+3. 核对完整链路并保存，所有节点须连接到末端；不能只依赖 SQL 文本中的表名。
 
 **示例**：DWD 明细依赖公共企业维度加工，以及 utility / production 的 ODS 同步。
 
 **结果检查**：依赖链包含必需上游，并拒绝循环依赖；同一条链中的共享节点执行一次。
 
-**操作提醒**：筛选不会改变已经勾选的选项。配置人需显式声明依赖；平台不会按 SQL 自动推断并触发所有上游。
+**操作提醒**：依赖由工作流画布统一维护，任务编辑页只维护 SQL 和目标。共享任务的依赖变更影响所有引用工作流；平台不会按 SQL 自动推断所有上游。下图为旧表单，当前入口以画布为准。
 
 ![步骤 17：声明直接上游依赖](manual/screenshots/17.png)
 
@@ -381,15 +379,15 @@
 
 **操作**：
 
-1. 进入末端任务“依赖 / 运行”。
+1. 打开工作流画布，保存依赖及周期配置。
 2. 核对同步、DIM、DWD、DWS、ADS 的执行顺序。
-3. 点击“运行整条依赖链”，通过运行实例和 SQL 记录确认全部成功。
+3. 点击“运行”，通过运行实例、运行图和节点记录确认全部成功。
 
 **示例**：园区末端看板任务：cpdim_resin261026b_ads_park_7d；上游包含三条同步及四层加工。
 
 **结果检查**：本次整链重跑全部声明上游；历史成功不能替代本次执行。
 
-**操作提醒**：截图为既有依赖链和记录，本次未重跑。建议只在末端启用定时；独立下游 SQL 失败不会回退已成功同步的水位。
+**操作提醒**：下图为历史依赖页，当前从工作流画布运行或启停定时。避免共享上游重复调度；独立下游 SQL 失败不会回退已成功同步的水位。
 
 ![步骤 18：查看依赖链并运行整链](manual/screenshots/18.png)
 
@@ -828,17 +826,4 @@
 
 ## 资料索引
 
-- [README.md](../README.md)：能力范围、启动、订单演示与 API 边界
-- [docs/ui-guide.md](ui-guide.md)：布局、主题与外观
-- [docs/data-sources.md](data-sources.md)：源类型及水位约束
-- [docs/modeling.md](modeling.md)：建模、DDL、结构核对
-- [docs/dimension-models.md](dimension-models.md)：DIM 与 SCD1 语义
-- [docs/sql-transforms.md](sql-transforms.md)：依赖链、整链运行、版本及互斥
-- [docs/scheduling-operations.md](scheduling-operations.md)：Cron、实例和脱敏日志
-- [docs/metadata-lineage.md](metadata-lineage.md)：结构采集、表级血缘
-- [docs/asset-directory.md](asset-directory.md)：资产检索与治理描述
-- [docs/data-quality.md](data-quality.md)：18 类质量规则与结果
-- [docs/metrics.md](metrics.md)：三类指标、版本与字段血缘
-- [docs/mcp.md](mcp.md)：用户 Key、scope 与资源白名单
-- [examples/chemical-park-dim/README.md](../examples/chemical-park-dim/README.md)：园区 DIM 完整示例及合成数据
-- [src/main/resources/templates/](../src/main/resources/templates/)：实际按钮、表单、页面与路由
+启动及订单演示见 [README](../README.md)，各模块操作与限制见 [文档索引](README.md)。

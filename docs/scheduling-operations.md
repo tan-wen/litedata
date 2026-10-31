@@ -48,8 +48,6 @@ python deploy/scheduling_smoke.py
 
 冒烟只读验证现有已执行任务的实例与日志，不新建任务、不触发运行、不启用调度。没有可读真实实例时会明确失败，不将空页面当成日志验收成功。
 
-2026-10-24 验证：全量 Maven verify 113 项通过，随后新增的历史链路绑定专项 1 项通过，节点展示排序调整后平台集成回归 17 项通过。真实 DS 3.4.0 环境读取同步与 SQL 两类节点日志并验证首段/续段偏移；历史日志已不可用的实例返回明确降级提示。浏览器验证周期切换、三次预览、上游筛选、日志加载/重置/检索、浅深主题和 390px 移动布局，无脚本错误。未触发新的业务任务或启用定时。
-
-状态自动更新改造的相关 Java 测试 25 项通过，包含结束状态、失败重试、晚到节点、VIEWER 状态读取及跨资源拒绝。真实 DS 已完成实例的状态接口读取通过；浏览器使用受控状态响应验证运行中到成功、关闭日志追踪仍更新状态、结束后停止轮询、手动刷新不重载、故障恢复、等待节点到派发及重试后日志重读。浏览器保留已有检索条件及日志，无脚本错误；本轮未触发新的业务执行。
+历史实测覆盖 DS 同步/SQL 两类日志、分段偏移、日志不可用时的降级提示，以及浏览器周期预览、日志操作和主题/窄屏布局。状态轮询曾以受控响应验证成功结束、等待派发、失败重试、故障恢复及检索条件保留；该交互检查未触发新的业务任务或启用定时，不能代替真实运行验收。
 
 交互参考 [DataWorks 周期任务运维](https://help.aliyun.com/zh/dataworks/user-guide/perform-basic-maintenance-operations-on-auto-triggered-nodes)与 [DolphinScheduler 任务实例](https://apache.googlesource.com/dolphinscheduler/+/refs/tags/3.4.0/docs/docs/en/guide/project/task-instance.md)。API 按 DS 3.4.0 的 WorkflowInstanceController、LoggerController 实现核对。
