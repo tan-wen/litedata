@@ -38,7 +38,7 @@ public class WorkflowController {
     @GetMapping("/{id}/edit") String edit(@PathVariable long id,Model model) { return form(model,workflows.require(id),id); }
     @GetMapping("/{id}") String canvas(@PathVariable long id,Model model) {
         var workflow=workflows.summary(id); model.addAttribute("workflow",workflow); model.addAttribute("rootTask",tasks.require(workflow.rootTaskId()));
-        model.addAttribute("schedules",TransformService.SCHEDULES); return "workflow-canvas";
+        return "workflow-canvas";
     }
     @PostMapping String create(@ModelAttribute("draft") ProcessingWorkflow draft,BindingResult errors,Model model,Principal principal,RedirectAttributes redirect) {
         return metadata(null,draft,errors,model,principal,redirect);

@@ -27,7 +27,12 @@ public final class PageBreadcrumbs {
             case "source-form" -> form(items,model,"sources","resourceId","name","新增数据源","编辑数据源",true);
             case "model-form" -> form(items,model,"models","modelId","name","新增模型","编辑模型",false);
             case "pipeline-form" -> form(items,model,"pipelines","resourceId","name","创建同步管道","编辑同步管道",true);
-            case "transform-form" -> form(items,model,"transforms","taskId","name","新增数据加工","编辑数据加工",false);
+            case "transform-form" -> {
+                if("list".equals(model.get("returnTo"))) {
+                    items.add(link("数据加工",Objects.toString(model.get("listReturnPath"),"/transforms")));
+                    items.add(current(model.get("taskId")==null?"新增数据加工":"编辑数据加工"));
+                } else form(items,model,"transforms","taskId","name","新增数据加工","编辑数据加工",false);
+            }
             case "workflow-form" -> form(items,model,"workflows","workflowId","name","新建工作流","编辑工作流信息",false);
             case "workflow-canvas" -> detail(items,model,"workflows","workflow");
             case "service-form" -> form(items,model,"services","resourceId","name","创建数据服务","编辑数据服务",true);

@@ -1,6 +1,7 @@
 package com.litedata.pipeline;
 
 import com.litedata.model.SqlTask;
+import com.litedata.scheduling.SchedulePreview;
 import com.litedata.store.*;
 import com.litedata.transform.*;
 import java.util.*;
@@ -72,8 +73,7 @@ public class PipelineTransformMigration {
             String name="迁移加工-"+id+"-"+pipeline.getName();
             task.setName(name.substring(0,Math.min(100,name.length())));
             task.setModelId(model.getId()); task.setSqlText(sql);
-            task.setCronExpression(TransformService.SCHEDULES.containsKey(pipeline.getCronExpression())
-                    ?pipeline.getCronExpression():"0 0 * * * ?");
+            task.setCronExpression(SchedulePreview.validate(pipeline.getCronExpression()));
         }
         var upstream=new ArrayList<>(task.getUpstreamPipelineIds()==null?List.<Long>of():task.getUpstreamPipelineIds());
         upstream.add(id); task.setUpstreamPipelineIds(upstream);

@@ -2,6 +2,7 @@ package com.litedata.workflow;
 
 import com.litedata.model.SqlTask;
 import com.litedata.service.QueryPage;
+import com.litedata.scheduling.SchedulePreview;
 import com.litedata.store.*;
 import com.litedata.transform.*;
 import java.nio.charset.StandardCharsets;
@@ -95,7 +96,7 @@ public class WorkflowService {
         sql.lockGraph(); var workflow=require(id); version(workflow,input.version());
         var root=tasks.require(workflow.getRootTaskId());
         if(!Objects.equals(tasks.graph(root.getId()).hash(),input.graphHash())) throw conflict();
-        if(!TransformService.SCHEDULES.containsKey(Objects.toString(input.cronExpression(),""))) throw new IllegalArgumentException("请选择支持的调度周期");
+        String cron=SchedulePreview.validate(input.cronExpression());
         if(input.nodes()==null || input.nodes().isEmpty() || input.nodes().size()>100 || input.edges()==null || input.edges().size()>10000)
             throw new IllegalArgumentException("工作流须包含1到100个节点");
         var nodes=new LinkedHashMap<String,Node>();
@@ -126,7 +127,7 @@ public class WorkflowService {
             current.getUpstreamPipelineIds().forEach(v->actual.add("pipeline-"+v));
             if(!actual.equals(upstream.get(key))) changed.add(ref);
         }
-        boolean cronChanged=!root.getCronExpression().equals(input.cronExpression());
+        boolean cronChanged=!root.getCronExpression().equals(cron);
         // Check all affected chains before applying any edge, under the shared graph lock.
         for(long ref:changed) tasks.ensureEditable(ref);
         if(cronChanged && !changed.contains(root.getId())) tasks.ensureEditable(root.getId());
@@ -137,7 +138,7 @@ public class WorkflowService {
             }
             if(!cronChanged || ref!=root.getId()) sql.changed(ref);
         }
-        if(cronChanged) sql.cron(root.getId(),input.cronExpression());
+        if(cronChanged) sql.cron(root.getId(),cron);
         tasks.graph(root.getId());
         var positions=input.positions()==null?Map.<String,Position>of():input.positions();
         if(positions.size()>100) throw new IllegalArgumentException("布局节点过多");

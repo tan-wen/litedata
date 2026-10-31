@@ -32,6 +32,15 @@ class PageBreadcrumbsTest {
         assertThat(PageBreadcrumbs.forView("model-form",create)).extracting(PageBreadcrumbs.Item::label).containsExactly("工作台","数据建模","新增模型");
     }
 
+    @Test void transformEditorBreadcrumbsFollowItsEntryPoint() {
+        var list=model(); list.put("returnTo","list"); list.put("listReturnPath","/transforms?pageNum=2&pageSize=50");
+        assertThat(PageBreadcrumbs.forView("transform-form",list)).extracting(PageBreadcrumbs.Item::href)
+                .containsExactly("/","/transforms?pageNum=2&pageSize=50",null);
+        var detail=model(); detail.put("returnTo","detail");
+        assertThat(PageBreadcrumbs.forView("transform-form",detail)).extracting(PageBreadcrumbs.Item::href)
+                .containsExactly("/","/transforms","/transforms/7",null);
+    }
+
     @Test void historicalLineagePreservesTheVersionAndSchedulerNodesPreserveTaskIdentity() {
         var history=model(); history.put("backPath","/metrics/7/versions/3");
         assertThat(PageBreadcrumbs.forView("metric-lineage",history)).extracting(PageBreadcrumbs.Item::href)

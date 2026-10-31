@@ -16,12 +16,26 @@ class SchedulePreviewTest {
         Clock clock=Clock.fixed(Instant.parse("2026-10-24T17:59:59Z"),ZoneOffset.UTC);
         for(String cron : java.util.List.of("0 */15 * * * ?", "0 0 */3 * * ?", "0 30 8 * * ?", "0 0 9 ? * MON-FRI"))
             assertEquals(3,SchedulePreview.preview(cron,clock).nextTimes().size());
+        assertEquals("自定义 Cron（北京时间）",SchedulePreview.preview("0 */5 * * * ?",clock).description());
         assertEquals("自定义 Cron（北京时间）",SchedulePreview.preview("0 0 9 ? * MON-FRI",clock).description());
         assertThrows(IllegalArgumentException.class,()->SchedulePreview.preview("*/5 * * * * ?",clock));
         assertThrows(IllegalArgumentException.class,()->SchedulePreview.preview("0 0 * * *",clock));
         assertThrows(IllegalArgumentException.class,()->SchedulePreview.preview("0 0 9 * * *",clock));
         assertThrows(IllegalArgumentException.class,()->SchedulePreview.preview("0 0 0 31 2 ?",clock));
         assertEquals("2026-10-26T09:00+08:00",SchedulePreview.preview("0 0 9 ? * 2",clock).nextTimes().getFirst());
+    }
+    @Test void previewsCustomQuartzSchedulesInShanghaiWithOneUnifiedDescription() {
+        Clock clock=Clock.fixed(Instant.parse("2026-10-24T17:59:59Z"),ZoneOffset.UTC);
+        var preview=SchedulePreview.preview(" 0  0  9  ?  *  MON-FRI ",clock);
+        assertEquals("0 0 9 ? * MON-FRI",preview.cron());
+        assertEquals("自定义 Cron（北京时间）",preview.description());
+        assertEquals(java.util.List.of("2026-10-26T09:00+08:00","2026-10-27T09:00+08:00","2026-10-28T09:00+08:00"),preview.nextTimes());
+    }
+    @Test void previewsRemainingOccurrencesWhenAValidYearRestrictedCronHasFewerThanThree() {
+        Clock clock=Clock.fixed(Instant.parse("2026-10-24T17:59:59Z"),ZoneOffset.UTC);
+        var preview=SchedulePreview.preview("0 0 9 1 1 ? 2099",clock);
+        assertEquals(java.util.List.of("2099-01-01T09:00+08:00"),preview.nextTimes());
+        assertTrue(preview.description().contains("仅剩 1 次"));
     }
     @Test void suppressesSensitiveLinesAndConnectionStringsWithoutDestroyingUsefulProgress() {
         String text="INFO task started\n{\"password\":\"sample-secret\"}\nTOKEN=other-secret\njdbc:mysql://warehouse/db?password=third-secret\nconnect jdbc:mysql://warehouse/db\nINFO task completed\n";

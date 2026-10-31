@@ -1,6 +1,7 @@
 package com.litedata.web;
 
 import com.litedata.model.SqlTask;
+import com.litedata.service.QueryPage;
 import com.litedata.store.PlatformMapper;
 import com.litedata.modeling.ModelingService;
 import com.litedata.transform.*;
@@ -33,6 +34,18 @@ public class TransformController {
     @ModelAttribute("activeNav") String activeNav() { return "transforms"; }
     @ModelAttribute("canEdit") boolean canEdit(HttpServletRequest request) { return request.isUserInRole("ADMIN") || request.isUserInRole("DEVELOPER"); }
     @ModelAttribute("canManageUsers") boolean canManageUsers(HttpServletRequest request) { return request.isUserInRole("ADMIN"); }
+    @ModelAttribute void navigation(@RequestParam Map<String,String> params,Model model) {
+        // Accept a source marker, never a client-provided redirect URL.
+        String returnTo="detail".equals(params.get("returnTo"))?"detail":"list";
+        model.addAttribute("returnTo",returnTo);
+        String listPath="/transforms";
+        if("list".equals(returnTo) && (params.containsKey("pageNum") || params.containsKey("pageSize"))) {
+            var page=QueryPage.parse(params,20);
+            model.addAttribute("returnPageNum",page.pageNum()); model.addAttribute("returnPageSize",page.pageSize());
+            listPath+="?pageNum="+page.pageNum()+"&pageSize="+page.pageSize();
+        }
+        model.addAttribute("listReturnPath",listPath);
+    }
     @InitBinder("draft") void bind(WebDataBinder binder) {
         binder.setAutoGrowCollectionLimit(100);
         binder.setAllowedFields("name","modelId","sqlText","cronExpression","version","upstreamTaskIds","upstreamPipelineIds");
@@ -69,10 +82,9 @@ public class TransformController {
                 if(!request.getParameterMap().containsKey("upstreamTaskIds") && !request.getParameterMap().containsKey("_upstreamTaskIds")) draft.setUpstreamTaskIds(current.getUpstreamTaskIds());
                 if(!request.getParameterMap().containsKey("upstreamPipelineIds") && !request.getParameterMap().containsKey("_upstreamPipelineIds")) draft.setUpstreamPipelineIds(current.getUpstreamPipelineIds());
             }
-            long saved=tasks.save(id,draft,principal.getName());
+            tasks.save(id,draft,principal.getName());
             redirect.addFlashAttribute("success","数据加工已保存，依赖和执行周期请在工作流中维护");
-            if(model.getAttribute("workflowId") instanceof Long workflowId) return "redirect:/workflows/"+workflowId;
-            return "redirect:/transforms/"+saved;
+            return "redirect:"+returnPath(model,id);
         } catch(IllegalArgumentException exception) {
             model.addAttribute("error",exception.getMessage()); return form(model,draft,id);
         } catch(org.springframework.dao.DuplicateKeyException exception) {
@@ -93,9 +105,15 @@ public class TransformController {
         tasks.archive(id,version,principal.getName()); redirect.addFlashAttribute("success","加工任务已归档，保留物理数据和运行记录"); return "redirect:/transforms";
     }
     private String form(Model model,SqlTask draft,Long id) {
-        model.addAttribute("draft",draft); model.addAttribute("taskId",id); model.addAttribute("schedules",TransformService.SCHEDULES);
+        model.addAttribute("draft",draft); model.addAttribute("taskId",id);
+        model.addAttribute("backPath",returnPath(model,id));
         model.addAttribute("models",models.list("","").stream().filter(m->!"ODS".equals(m.getLayer())).toList());
         model.addAttribute("upstreamTasks",tasks.list().stream().filter(t->!Objects.equals(t.getId(),id)).toList());
         model.addAttribute("pipelines",platform.pipelines()); return "transform-form";
+    }
+    private String returnPath(Model model,Long id) {
+        if(model.getAttribute("workflowId") instanceof Long workflowId) return "/workflows/"+workflowId;
+        if(id!=null && "detail".equals(model.getAttribute("returnTo"))) return "/transforms/"+id;
+        return Objects.toString(model.getAttribute("listReturnPath"),"/transforms");
     }
 }

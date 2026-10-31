@@ -205,6 +205,63 @@ class TransformIntegrationTest {
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("SUCCESS")));
     }
 
+    @Test void taskEditorReturnsToItsListOrDetailEntryPointAndPreservesListPaging() throws Exception {
+        long id=task("dwd_navigation",List.of()); task("dwd_navigation_later",List.of());
+        var before=tasks.require(id);
+        String listPath="/transforms?pageNum=2&pageSize=1";
+
+        mvc.perform(get("/transforms").param("pageNum","2").param("pageSize","1").with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("href=\"/transforms/"+id+"/edit?returnTo=list&amp;pageNum=2&amp;pageSize=1\">编辑</a>")));
+        mvc.perform(get("/transforms/"+id+"/edit").param("returnTo","list").param("pageNum","2").param("pageSize","1")
+                        .with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("returnTo","list"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("backPath",listPath))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("href=\"/transforms?pageNum=2&amp;pageSize=1\">取消</a>")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("name=\"returnTo\" value=\"list\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("name=\"pageNum\" value=\"2\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("name=\"pageSize\" value=\"1\"")));
+        mvc.perform(post("/transforms/"+id).with(user("dev").roles("DEVELOPER")).with(csrf())
+                        .param("returnTo","list").param("pageNum","2").param("pageSize","1")
+                        .param("name",before.getName()).param("modelId",Long.toString(before.getModelId()))
+                        .param("sqlText",before.getSqlText()+" ").param("version",Integer.toString(before.getVersion())))
+                .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl(listPath));
+
+        var saved=tasks.require(id);
+        mvc.perform(get("/transforms/"+id).with(user("dev").roles("DEVELOPER")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("href=\"/transforms/"+id+"/edit?returnTo=detail\">编辑任务</a>")));
+        mvc.perform(get("/transforms/"+id+"/edit").param("returnTo","detail").with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("returnTo","detail"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("backPath","/transforms/"+id))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("href=\"/transforms/"+id+"\">取消</a>")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("name=\"returnTo\" value=\"detail\"")));
+        mvc.perform(post("/transforms/"+id).with(user("dev").roles("DEVELOPER")).with(csrf())
+                        .param("returnTo","detail").param("name",saved.getName()).param("modelId",Long.toString(saved.getModelId()))
+                        .param("sqlText",saved.getSqlText()+" ").param("version",Integer.toString(saved.getVersion())))
+                .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/transforms/"+id));
+    }
+
+    @Test void taskEditorDefaultsUnknownOriginsToTheListAndKeepsNavigationAfterValidationFailure() throws Exception {
+        long id=task("dwd_navigation_invalid",List.of());
+        var before=tasks.require(id);
+        mvc.perform(get("/transforms/"+id+"/edit").param("returnTo","https://untrusted.example").with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("returnTo","list"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("backPath","/transforms"));
+        mvc.perform(post("/transforms/"+id).with(user("dev").roles("DEVELOPER")).with(csrf())
+                        .param("returnTo","https://untrusted.example").param("name",before.getName())
+                        .param("modelId",Long.toString(before.getModelId())).param("sqlText",before.getSqlText()+" ")
+                        .param("version",Integer.toString(before.getVersion())))
+                .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/transforms"));
+
+        mvc.perform(post("/transforms/"+id).with(user("dev").roles("DEVELOPER")).with(csrf())
+                        .param("returnTo","list").param("pageNum","2").param("pageSize","1")
+                        .param("name","kept_navigation_name").param("modelId","not-a-number")
+                        .param("sqlText",before.getSqlText()).param("version",Integer.toString(tasks.require(id).getVersion())))
+                .andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attributeExists("error"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("backPath","/transforms?pageNum=2&pageSize=1"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("draft",org.hamcrest.Matchers.hasProperty("name",org.hamcrest.Matchers.is("kept_navigation_name"))));
+    }
+
     @Test void rejectsStaleModelsAndProtectsModelsAndTasksInUse() throws Exception {
         long upstream=task("dwd_orders",List.of()),root=task("ads_orders",List.of(upstream));
         long modelId=tasks.require(upstream).getModelId();

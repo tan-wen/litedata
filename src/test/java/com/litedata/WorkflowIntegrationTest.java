@@ -140,6 +140,10 @@ class WorkflowIntegrationTest {
     @Test void taskEditorInWorkflowContextPreservesGraphFieldsAndReturnsToCanvas() throws Exception {
         long upstream=task("dwd_editor",List.of()), root=task("ads_editor",List.of(upstream)); long workflow=workflow("editor",root,"");
         var before=tasks.require(root);
+        mvc.perform(get("/transforms/"+root+"/edit").param("workflowId",Long.toString(workflow)).with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("backPath","/workflows/"+workflow))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("href=\"/workflows/"+workflow+"\">取消</a>")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("name=\"workflowId\" value=\""+workflow+"\"")));
         mvc.perform(post("/transforms/"+root).with(user("dev").roles("DEVELOPER")).with(csrf())
                         .param("workflowId",Long.toString(workflow)).param("name",before.getName())
                         .param("modelId",Long.toString(before.getModelId())).param("sqlText",before.getSqlText()+" ")

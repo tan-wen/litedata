@@ -4,6 +4,7 @@ import com.litedata.model.*;
 import com.litedata.modeling.*;
 import com.litedata.store.*;
 import com.litedata.pipeline.PipelineService;
+import com.litedata.scheduling.SchedulePreview;
 import com.litedata.service.QueryPage;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -16,8 +17,6 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class TransformService {
-    public static final Map<String,String> SCHEDULES = Collections.unmodifiableMap(new LinkedHashMap<>(Map.of(
-            "0 0 * * * ?", "每小时整点", "0 */5 * * * ?", "每 5 分钟", "0 0 2 * * ?", "每天 02:00（北京时间）")));
     public record PlannedNode(String key,String name,String kind,long refId,int version,List<String> upstreamKeys,String tableName) {}
     public record Graph(List<PlannedNode> nodes,String hash) {}
     private final SqlTaskMapper mapper;
@@ -50,7 +49,7 @@ public class TransformService {
         input=definition;
         if(input.getName()==null || input.getName().isBlank() || input.getName().trim().length()>100)
             throw new IllegalArgumentException("任务名称不能为空，最长100字符");
-        if(!SCHEDULES.containsKey(input.getCronExpression())) throw new IllegalArgumentException("请选择支持的调度周期");
+        input.setCronExpression(SchedulePreview.validate(input.getCronExpression()));
         if(input.getModelId()==null) throw new IllegalArgumentException("请选择目标模型");
         var model=models.require(input.getModelId());
         if("ODS".equals(model.getLayer())) throw new IllegalArgumentException("数据加工目标请选择 DIM、DWD、DWS 或 ADS 模型；ODS 使用同步管道接入");
