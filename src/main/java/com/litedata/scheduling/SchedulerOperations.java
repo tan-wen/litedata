@@ -30,12 +30,11 @@ public class SchedulerOperations {
             name=item.getName(); current=item.getDefinitionCode(); back="/pipelines";
         } else if(type.equals("transform")) {
             var item=tasks.task(id); if(item==null) throw missing();
-            name=item.getName(); current=item.getDefinitionCode(); back="/transforms/"+id;
+            name=item.getName(); current=null; back="/transforms/"+id;
         } else if(type.equals("workflow")) {
             var workflow=workflows.workflow(id); if(workflow==null) throw missing();
-            var item=tasks.task(workflow.getRootTaskId()); if(item==null) throw missing();
-            var codes=new LinkedHashSet<Long>(); if(item.getDefinitionCode()!=null) codes.add(item.getDefinitionCode());
-            codes.addAll(workflows.snapshotCodes(item.getId()));
+            var codes=new LinkedHashSet<Long>(); if(workflow.getDefinitionCode()!=null) codes.add(workflow.getDefinitionCode());
+            codes.addAll(workflows.snapshotCodes(id));
             return new Resource(type,id,workflow.getName(),"/workflows/"+id,List.copyOf(codes));
         } else throw missing();
         var codes=new LinkedHashSet<Long>(); if(current!=null) codes.add(current);
@@ -59,13 +58,11 @@ public class SchedulerOperations {
     }
     public List<WorkflowService.Node> graph(Resource resource,long code) {
         checkCode(resource,code);
-        long root;
-        if(resource.type().equals("workflow")) {
-            var workflow=workflows.workflow(resource.id()); if(workflow==null) throw missing(); root=workflow.getRootTaskId();
-        } else if(resource.type().equals("transform")) root=resource.id();
-        else return null;
-        return snapshots.read(root,code);
+        if(resource.type().equals("workflow")) return snapshots.read(resource.id(),code);
+        if(resource.type().equals("transform")) return snapshots.readLegacy(resource.id(),code);
+        return null;
     }
+
     public LogPage log(Resource resource,long instanceId,long taskId,int offset,int limit,String actor) {
         if(offset<0 || offset>1_000_000 || limit<1 || limit>1000) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"日志偏移须在0到1000000之间，每次读取1到1000行");
         instance(resource,instanceId);

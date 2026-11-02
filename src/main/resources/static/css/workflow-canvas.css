@@ -16,3 +16,8 @@
 .workflow-node-meta { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 .workflow-list-filters { display:flex; flex-wrap:wrap; align-items:flex-end; gap:1rem; }
 .workflow-actions > form { margin:0; }
+.workflow-empty { position:absolute; inset:7rem 2rem auto; max-width:32rem; text-align:center; }
+.workflow-node-warning { display:block; margin-top:.45rem; font-size:.75rem; font-weight:600; }
+.workflow-sql-dialog { width:min(44rem,calc(100vw - 2rem)); max-height:calc(100vh - 2rem); padding:0; border:0; background:transparent; color:inherit; }
+.workflow-sql-dialog::backdrop { background:rgb(0 0 0 / .42); }
+.workflow-sql-dialog .card { margin:0; max-height:calc(100vh - 2rem); overflow:auto; }

@@ -49,7 +49,7 @@ class TransformIntegrationTest {
     @Autowired MockMvc mvc;
     @Autowired JdbcTemplate jdbc;
     @Autowired TransformService tasks;
-    @Autowired TransformScheduler scheduler;
+    @Autowired com.litedata.workflow.WorkflowService workflows;
     @Autowired ModelingService models;
     @Autowired SqlTaskMapper mapper;
     @Autowired SourceService sources;
@@ -60,7 +60,7 @@ class TransformIntegrationTest {
     @MockitoBean DolphinWorkflowClient engine;
 
     @BeforeEach void clean() throws Exception {
-        for(String table:List.of("pipeline_transform_archive","sql_task_run","sql_task_dependency","sql_pipeline_dependency","sql_task","model_execution","model_field","data_model","pipeline_run","pipeline","data_source","audit_event")) jdbc.update("DELETE FROM "+table);
+        for(String table:List.of("pipeline_transform_archive","sql_task_run","processing_workflow_snapshot","processing_workflow","sql_task_dependency","sql_pipeline_dependency","sql_task","model_execution","model_field","data_model","pipeline_run","pipeline","data_source","audit_event")) jdbc.update("DELETE FROM "+table);
         reset(gateway,engine);
         when(gateway.inspect(anyString())).thenReturn(new DorisModelGateway.Schema(List.of(new DorisModelGateway.Column("id","bigint(20)",false,"")),List.of("id"),List.of("id"),1));
         when(engine.configured()).thenReturn(true); when(engine.create(anyString(),anyString(),anyList())).thenReturn(88L);
@@ -139,32 +139,6 @@ class TransformIntegrationTest {
         assertThatThrownBy(()->tasks.claim(id,1,id,hash)).isInstanceOf(ResponseStatusException.class);
     }
 
-    @Test void publishesOnlyFixedWorkerCommandsAndPersistsScheduleBeforeOnlining() {
-        long upstream=task("dwd_orders",List.of()),root=task("ads_orders",List.of(upstream));
-        scheduler.run(root,1,"dev");
-        @SuppressWarnings("unchecked") ArgumentCaptor<List<DolphinWorkflowClient.Node>> nodes=ArgumentCaptor.forClass(List.class);
-        verify(engine).create(anyString(),anyString(),nodes.capture());
-        assertThat(nodes.getValue()).hasSize(2);
-        assertThat(nodes.getValue().getLast().script()).contains("run_sql_task.py --task-id "+root,"--root-id "+root,"--graph-hash").doesNotContain("INSERT","password");
-        var order=inOrder(engine); order.verify(engine).publish(88L); order.verify(engine).start(88L);
-        scheduler.schedule(root,1,"dev"); assertThat(tasks.require(root).getStatus()).isEqualTo("SCHEDULED");
-        assertThatIllegalArgumentException().isThrownBy(()->tasks.save(upstream,tasks.require(upstream),"dev")).withMessageContaining("停用");
-        scheduler.pause(root,1,"dev"); assertThat(tasks.require(root).getStatus()).isEqualTo("PAUSED");
-        tasks.save(upstream,tasks.require(upstream),"dev"); scheduler.schedule(root,1,"dev");
-        verify(engine,times(2)).create(anyString(),anyString(),anyList()); verify(engine).offline(77);
-    }
-
-    @Test void keepsHistoricalWorkflowBindingsForEveryNodeWhenTheChainChanges() {
-        long upstream=task("dwd_history",List.of()),root=task("ads_history",List.of(upstream));
-        when(engine.create(anyString(),anyString(),anyList())).thenReturn(88L,99L);
-        scheduler.run(root,1,"dev");
-        var edit=tasks.require(upstream); edit.setName("changed-upstream"); tasks.save(upstream,edit,"dev");
-        scheduler.run(root,1,"dev");
-        assertThat(platform.workflowCodes("transform",root)).containsExactlyInAnyOrder(88L,99L);
-        assertThat(platform.workflowCodes("transform",upstream)).containsExactlyInAnyOrder(88L,99L);
-        assertThat(tasks.require(root).getDefinitionCode()).isEqualTo(99L);
-    }
-
     @Test void cannotEditOrArchiveARootWhileItsUpstreamNodeIsRunning() {
         long upstream=task("dwd_orders",List.of()),root=task("ads_orders",List.of(upstream));
         long runId=(Long)tasks.claim(upstream,1,root,tasks.graph(root).hash()).get("runId");
@@ -173,16 +147,6 @@ class TransformIntegrationTest {
         tasks.finish(runId,false);
         tasks.save(root,tasks.require(root),"dev");
         assertThat(tasks.require(root).getVersion()).isEqualTo(2);
-    }
-
-    @Test void onlineFailureKeepsPendingScheduleForSafeRetry() {
-        long id=task("dwd_orders",List.of()); doThrow(new IllegalStateException("engine unavailable")).when(engine).online(77);
-        assertThatIllegalStateException().isThrownBy(()->scheduler.schedule(id,1,"dev"));
-        assertThat(tasks.require(id).getScheduleId()).isEqualTo(77);
-        assertThat(tasks.require(id).getStatus()).isEqualTo("SCHEDULE_PENDING");
-        doNothing().when(engine).online(77); scheduler.schedule(id,1,"dev");
-        verify(engine,times(1)).createSchedule(88L,"0 0 * * * ?");
-        assertThat(tasks.require(id).getStatus()).isEqualTo("SCHEDULED");
     }
 
     @Test void rendersPagesAndEnforcesRolesCsrfAndInternalToken() throws Exception {
@@ -326,14 +290,14 @@ class TransformIntegrationTest {
     @Test void reusesIdenticalSqlButRejectsScheduledConsumersAndCyclesTransactionally() {
         long replacement=task("dwd_legacy",List.of());
         long pipeline=legacyPipeline("legacy","insert into dwd_legacy\n SELECT id  FROM ods_orders");
-        jdbc.update("UPDATE sql_task SET status='SCHEDULED',schedule_id=6 WHERE id=?",replacement);
-        assertThatIllegalArgumentException().isThrownBy(()->migration.migrate(pipeline,"dev")).withMessageContaining("停用");
-        jdbc.update("UPDATE sql_task SET status='PAUSED' WHERE id=?",replacement);
+        long replacementFlow=scheduledWorkflow(replacement,6);
+        assertThatIllegalArgumentException().isThrownBy(()->migration.migrate(pipeline,"dev")).withMessageContaining("暂停");
+        jdbc.update("UPDATE processing_workflow SET status='PAUSED' WHERE id=?",replacementFlow);
         long consumer=task("ads_consumer",List.of());
         var edit=tasks.require(consumer); edit.setUpstreamPipelineIds(List.of(pipeline)); tasks.save(consumer,edit,"dev");
-        jdbc.update("UPDATE sql_task SET status='SCHEDULED',schedule_id=8 WHERE id=?",consumer);
-        assertThatIllegalArgumentException().isThrownBy(()->migration.migrate(pipeline,"dev")).withMessageContaining("停用");
-        jdbc.update("UPDATE sql_task SET status='PAUSED' WHERE id=?",consumer);
+        long consumerFlow=scheduledWorkflow(consumer,8);
+        assertThatIllegalArgumentException().isThrownBy(()->migration.migrate(pipeline,"dev")).withMessageContaining("暂停");
+        jdbc.update("UPDATE processing_workflow SET status='PAUSED' WHERE id=?",consumerFlow);
         var target=tasks.require(replacement); target.setUpstreamTaskIds(List.of(consumer)); tasks.save(replacement,target,"dev");
         int version=tasks.require(replacement).getVersion();
         assertThatIllegalArgumentException().isThrownBy(()->migration.migrate(pipeline,"dev")).withMessageContaining("循环");
@@ -402,6 +366,12 @@ class TransformIntegrationTest {
         return models.save(null,model,"dev");
     }
 
+    private long scheduledWorkflow(long task,int schedule) {
+        var draft=new com.litedata.workflow.ProcessingWorkflow(); draft.setName("scheduled-"+task);
+        long id=workflows.metadata(null,draft,"dev"); var view=workflows.view(id);
+        workflows.save(id,new com.litedata.workflow.WorkflowService.Save(view.version(),view.graphHash(),view.cronExpression(),workflows.expand(id,"sql-"+task),List.of(),Map.of()),"dev");
+        jdbc.update("UPDATE processing_workflow SET status='SCHEDULED',schedule_id=? WHERE id=?",schedule,id); return id;
+    }
     private long task(String table,List<Long> upstream) {
         long modelId=model(table,table.startsWith("dim")?"DIM":table.startsWith("ads")?"ADS":table.startsWith("dws")?"DWS":"DWD");
         var task=new SqlTask(); task.setName(table); task.setModelId(modelId); task.setSqlText("INSERT INTO "+table+" SELECT id FROM ods_orders"); task.setUpstreamTaskIds(upstream);

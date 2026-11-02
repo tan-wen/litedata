@@ -50,8 +50,12 @@ def claim_task(args):
     deadline = time.monotonic() + 300
     while True:
         try:
-            return platform_request(f"/internal/sql-tasks/{args.task_id}/claim",
-                                    {"version": args.version, "rootId": args.root_id, "graphHash": args.graph_hash})
+            payload = {"version": args.version, "graphHash": args.graph_hash}
+            if getattr(args, "workflow_id", None) is not None:
+                payload["workflowId"] = args.workflow_id
+            else:
+                payload["rootId"] = args.root_id
+            return platform_request(f"/internal/sql-tasks/{args.task_id}/claim", payload)
         except RuntimeError as error:
             cause = error.__cause__
             if not isinstance(cause, HTTPError) or cause.code != 423 or time.monotonic() >= deadline:
@@ -63,7 +67,9 @@ def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--task-id", type=int, required=True)
     parser.add_argument("--version", type=int, required=True)
-    parser.add_argument("--root-id", type=int, required=True)
+    scope = parser.add_mutually_exclusive_group(required=True)
+    scope.add_argument("--root-id", type=int)  # Existing published definitions remain executable.
+    scope.add_argument("--workflow-id", type=int)
     parser.add_argument("--graph-hash", required=True)
     args = parser.parse_args(argv)
     run_id = None

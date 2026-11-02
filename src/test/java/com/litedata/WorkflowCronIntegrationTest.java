@@ -52,7 +52,7 @@ class WorkflowCronIntegrationTest {
     private final JsonMapper json=JsonMapper.builder().build();
 
     @BeforeEach void prepare() throws Exception {
-        for(String table:List.of("pipeline_transform_archive","processing_workflow_snapshot","processing_workflow","sql_task_run","sql_task_dependency","sql_pipeline_dependency","sql_task","model_execution","model_field","data_model","pipeline_run","pipeline","data_source","audit_event")) jdbc.update("DELETE FROM "+table);
+        for(String table:List.of("sql_task_run","pipeline_transform_archive","workflow_definition_snapshot","processing_workflow_snapshot","processing_workflow","sql_task_dependency","sql_pipeline_dependency","sql_task","model_execution","model_field","data_model","pipeline_run","pipeline","data_source","audit_event")) jdbc.update("DELETE FROM "+table);
         reset(doris,engine,monitor);
         when(doris.inspect(anyString())).thenReturn(new DorisModelGateway.Schema(List.of(new DorisModelGateway.Column("id","bigint",false,"")),List.of("id"),List.of("id"),1));
         when(engine.configured()).thenReturn(true); when(engine.create(anyString(),anyString(),anyList())).thenReturn(901L); when(engine.createSchedule(anyLong(),anyString())).thenReturn(92);
@@ -93,7 +93,7 @@ class WorkflowCronIntegrationTest {
                         .param("workflowId",Long.toString(id)).param("name",before.getName()).param("modelId",Long.toString(before.getModelId()))
                         .param("sqlText",before.getSqlText()+" ").param("version",Integer.toString(tasks.require(root).getVersion())))
                 .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/workflows/"+id));
-        assertThat(tasks.require(root).getCronExpression()).isEqualTo(custom);
+        assertThat(workflows.require(id).getCronExpression()).isEqualTo(custom);
     }
 
     @Test void legacyPipelineMigrationPreservesItsCustomCron() {
@@ -104,7 +104,7 @@ class WorkflowCronIntegrationTest {
         long pipeline=pipelines.create("migration",platform.sources().getFirst().getId(),"orders","updated_at","ods_migration","",cron);
         jdbc.update("UPDATE pipeline SET transform_sql=? WHERE id=?","INSERT INTO ads_migration SELECT id FROM ods_migration",pipeline);
         long task=migration.migrate(pipeline,"dev");
-        assertThat(tasks.require(task).getCronExpression()).isEqualTo(cron);
+        assertThat(workflows.forTask(task)).singleElement().satisfies(w->assertThat(w.getCronExpression()).isEqualTo(cron));
     }
 
     @Test void rejectsInvalidCronWithoutChangingGraphTaskOrWorkflowVersionsAndRequiresPauseBeforeCronChange() throws Exception {
@@ -113,13 +113,13 @@ class WorkflowCronIntegrationTest {
         var input=save(initial,"0 */15 * * * ?",nodes,List.of(new WorkflowService.Edge("sql-"+upstream,"sql-"+root)));
         var configured=workflows.save(id,input,"dev");
         int taskVersion=tasks.require(root).getVersion(), workflowVersion=workflows.require(id).getVersion();
-        List<Long> dependencies=tasks.require(root).getUpstreamTaskIds();
+        var dependencies=edgesFrom(configured);
         for(String invalid:List.of("","0 0 * * *","1 0 * * * ?","0 0 9 * * *","0 0 9 ? * ?","0 0 0 31 2 ?")) {
             var invalidInput=save(configured,invalid);
             mvc.perform(post("/workflows/"+id+"/graph").with(user("dev").roles("DEVELOPER")).with(csrf()).contentType("application/json")
                             .content(json.writeValueAsString(invalidInput)))
                     .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").isNotEmpty());
-            assertThat(tasks.require(root).getUpstreamTaskIds()).isEqualTo(dependencies);
+            assertThat(edgesFrom(workflows.view(id))).isEqualTo(dependencies);
             assertThat(tasks.require(root).getVersion()).isEqualTo(taskVersion);
             assertThat(workflows.require(id).getVersion()).isEqualTo(workflowVersion);
         }
@@ -129,7 +129,7 @@ class WorkflowCronIntegrationTest {
         mvc.perform(post("/workflows/"+id+"/graph").with(user("dev").roles("DEVELOPER")).with(csrf()).contentType("application/json")
                         .content(json.writeValueAsString(save(scheduled,"0 0 10 ? * MON-FRI"))))
                 .andExpect(status().isBadRequest());
-        assertThat(tasks.require(root).getCronExpression()).isEqualTo("0 */15 * * * ?");
+        assertThat(workflows.require(id).getCronExpression()).isEqualTo("0 */15 * * * ?");
         mvc.perform(post("/workflows/"+id+"/pause").with(user("dev").roles("DEVELOPER")).with(csrf())
                         .param("version",Integer.toString(scheduled.version())).param("graphHash",scheduled.graphHash())).andExpect(status().is3xxRedirection());
         var paused=workflows.view(id);
@@ -138,7 +138,37 @@ class WorkflowCronIntegrationTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.cronExpression").value("0 0 10 ? * MON-FRI"));
     }
 
-    private long workflow(String name,long root) { var value=new ProcessingWorkflow(); value.setName(name); value.setRootTaskId(root); return workflows.metadata(null,value,"dev"); }
+    @Test void pausedCronChangeCreatesANewScheduleWithoutChangingSqlOrGraph() {
+        long root=task("ads_new_schedule"); long id=workflow("new-schedule",root); var view=workflows.view(id);
+        when(engine.createSchedule(anyLong(),anyString())).thenReturn(92,93);
+        workflows.execute(id,view.version(),view.graphHash(),"schedule","dev");
+        workflows.execute(id,view.version(),"","pause","dev");
+        var paused=workflows.view(id); int sqlVersion=tasks.require(root).getVersion();
+        var changed=workflows.save(id,save(paused,"0 30 8 ? * MON-FRI"),"dev");
+        assertThat(changed.scheduleId()).isNull(); assertThat(changed.graphHash()).isEqualTo(paused.graphHash());
+        assertThat(tasks.require(root).getVersion()).isEqualTo(sqlVersion);
+        workflows.execute(id,changed.version(),changed.graphHash(),"schedule","dev");
+        assertThat(workflows.require(id).getScheduleId()).isEqualTo(93);
+        verify(engine).createSchedule(901L,"0 30 8 ? * MON-FRI"); verify(engine).offline(92);
+        verify(engine,times(1)).create(anyString(),anyString(),anyList());
+    }
+
+    @Test void onlineFailureRetainsPendingScheduleForRetry() {
+        long id=workflow("retry",task("ads_retry")); var view=workflows.view(id);
+        doThrow(new IllegalStateException("test offline engine")).when(engine).online(92);
+        assertThatIllegalStateException().isThrownBy(()->workflows.execute(id,view.version(),view.graphHash(),"schedule","dev"));
+        assertThat(workflows.require(id).getStatus()).isEqualTo("SCHEDULE_PENDING");
+        assertThat(workflows.require(id).getScheduleId()).isEqualTo(92);
+        doNothing().when(engine).online(92);
+        workflows.execute(id,view.version(),view.graphHash(),"schedule","dev");
+        assertThat(workflows.require(id).getStatus()).isEqualTo("SCHEDULED");
+        verify(engine,times(1)).createSchedule(anyLong(),anyString());
+    }
+
+    private long workflow(String name,long root) {
+        var value=new ProcessingWorkflow(); value.setName(name); long id=workflows.metadata(null,value,"dev");
+        var view=workflows.view(id); workflows.save(id,save(view,view.cronExpression(),workflows.expand(id,"sql-"+root),List.of()),"dev"); return id;
+    }
     private WorkflowService.Save save(WorkflowService.View view,String cron) { return save(view,cron,view.nodes(),edgesFrom(view)); }
     private WorkflowService.Save save(WorkflowService.View view,String cron,List<WorkflowService.Node> nodes,List<WorkflowService.Edge> edges) { return new WorkflowService.Save(view.version(),view.graphHash(),cron,nodes,edges,Map.of()); }
     private List<WorkflowService.Edge> edgesFrom(WorkflowService.View view) { return view.nodes().stream().flatMap(n->n.upstreamKeys().stream().map(key->new WorkflowService.Edge(key,n.key()))).toList(); }

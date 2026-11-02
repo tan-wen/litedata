@@ -109,6 +109,17 @@ class SqlTaskRunnerTest(unittest.TestCase):
         self.assertEqual(5, sleep.call_args.args[0])
         self.assertEqual("new-hash", self.runner.platform_request.call_args.args[1]["graphHash"])
 
+    def test_workflow_claim_uses_workflow_id_without_legacy_root(self):
+        args = types.SimpleNamespace(task_id=8, version=3, root_id=None, workflow_id=21, graph_hash="workflow-hash")
+        expected = (None, {"runId": 29, "sql": SECRET_SQL, "targetTable": "orders"})
+        self.runner.platform_request.return_value = expected
+
+        self.assertEqual(expected, self.runner.claim_task(args))
+
+        self.assertEqual("/internal/sql-tasks/8/claim", self.runner.platform_request.call_args.args[0])
+        self.assertEqual({"version": 3, "workflowId": 21, "graphHash": "workflow-hash"},
+                         self.runner.platform_request.call_args.args[1])
+
     def test_old_hash_409_exits_without_waiting_or_reusing_claim(self):
         old_hash = RuntimeError("conflict")
         old_hash.__cause__ = HTTPError("http://platform/internal", 409, SECRET_RESPONSE, None, None)

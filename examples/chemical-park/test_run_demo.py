@@ -3,7 +3,7 @@ import datetime as dt
 import unittest
 from unittest.mock import Mock, patch
 
-from run_demo import Client, Demo, DemoFailure
+from run_demo import Client, Demo, DemoFailure, identifier, workflow_node
 from scenario import build_scenario
 
 
@@ -17,6 +17,18 @@ class RunnerContractTest(unittest.TestCase):
         page = '<form action="/transforms" method="post"><input name="_csrf" value="test-csrf"><input name="version" value="4"></form>'
         client.post(page, "/transforms", {"upstreamPipelineIds": [1, 2, 3]})
         client.request.assert_called_once_with("POST", "/transforms", {"_csrf": "test-csrf", "version": "4", "upstreamPipelineIds": [1, 2, 3]})
+
+    def test_workflow_node_requires_the_single_expand_response_node(self):
+        node = {"key": "sql-7", "name": "ads"}
+        self.assertEqual(node, workflow_node({"nodes": [node]}, "sql-7"))
+        with self.assertRaisesRegex(DemoFailure, "工作流无法加载节点"):
+            workflow_node({"node": node}, "sql-7")
+        with self.assertRaisesRegex(DemoFailure, "工作流无法加载节点"):
+            workflow_node({"nodes": [node, node]}, "sql-7")
+
+    def test_identifier_reads_transform_id_from_list_edit_link(self):
+        page = "<table><tr><td>cp_demo ADS</td><td><a href=\"/transforms/42/edit\">编辑</a></td></tr></table>"
+        self.assertEqual(42, identifier(page, "cp_demo ADS", "transforms", "edit"))
 
     def test_datetime_check_detects_real_eight_hour_shift(self):
         demo = Demo.__new__(Demo)

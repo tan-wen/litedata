@@ -1,7 +1,7 @@
 package com.litedata.pipeline;
 
 import com.litedata.model.SqlTask;
-import com.litedata.scheduling.SchedulePreview;
+import com.litedata.workflow.*;
 import com.litedata.store.*;
 import com.litedata.transform.*;
 import java.util.*;
@@ -21,11 +21,13 @@ public class PipelineTransformMigration {
     private final TransformSqlPolicy policy;
     private final PipelineService pipelines;
     private final JdbcTemplate jdbc;
+    private final WorkflowMapper workflows;
+    private final WorkflowGraph graphs;
 
     public PipelineTransformMigration(PlatformMapper platform, ModelMapper models, SqlTaskMapper mapper,
-            TransformService tasks, TransformSqlPolicy policy, PipelineService pipelines, JdbcTemplate jdbc) {
+            TransformService tasks, TransformSqlPolicy policy, PipelineService pipelines, JdbcTemplate jdbc,WorkflowMapper workflows,WorkflowGraph graphs) {
         this.platform=platform; this.models=models; this.mapper=mapper; this.tasks=tasks;
-        this.policy=policy; this.pipelines=pipelines; this.jdbc=jdbc;
+        this.policy=policy; this.pipelines=pipelines; this.jdbc=jdbc; this.workflows=workflows; this.graphs=graphs;
     }
 
     public Long migratedTaskId(long id) {
@@ -49,6 +51,9 @@ public class PipelineTransformMigration {
             throw new IllegalArgumentException("请先暂停同步管道定时调度后迁移");
         pipelines.requireOdsTarget(pipeline.getTargetTable());
 
+        var owners=workflows.forPipeline(id);
+        if(owners.stream().anyMatch(w->Set.of("SCHEDULED","SCHEDULE_PENDING").contains(w.getStatus())))
+            throw new IllegalArgumentException("请先暂停引用此管道的工作流调度后迁移");
         String target=target(sql);
         var model=models.modelByTable(target);
         if(model==null) throw new IllegalArgumentException("请先登记旧 SQL 的目标模型："+target);
@@ -73,7 +78,6 @@ public class PipelineTransformMigration {
             String name="迁移加工-"+id+"-"+pipeline.getName();
             task.setName(name.substring(0,Math.min(100,name.length())));
             task.setModelId(model.getId()); task.setSqlText(sql);
-            task.setCronExpression(SchedulePreview.validate(pipeline.getCronExpression()));
         }
         var upstream=new ArrayList<>(task.getUpstreamPipelineIds()==null?List.<Long>of():task.getUpstreamPipelineIds());
         upstream.add(id); task.setUpstreamPipelineIds(upstream);
@@ -86,6 +90,24 @@ public class PipelineTransformMigration {
             var dependencies=new ArrayList<>(consumer.getUpstreamTaskIds()); dependencies.add(taskId);
             consumer.setUpstreamTaskIds(dependencies);
             tasks.save(dependent,consumer,actor); // Includes cycle checks; any conflict rolls back the entire migration.
+        }
+        if(owners.isEmpty()) {
+            var workflow=new ProcessingWorkflow(); String workflowName="迁移工作流-"+id+"-"+pipeline.getName();
+            workflow.setName(workflowName.substring(0,Math.min(100,workflowName.length()))); workflows.insert(workflow);
+            workflows.node(workflow.getId(),"pipeline-"+id,null,id);
+            workflows.node(workflow.getId(),"sql-"+taskId,taskId,null);
+            workflows.edge(workflow.getId(),"pipeline-"+id,"sql-"+taskId);
+            workflows.graph(workflow.getId(),null,pipeline.getCronExpression());
+        } else for(var workflow:owners) {
+            workflows.retireLegacy(workflow.getId());
+            String taskKey="sql-"+taskId,pipeKey="pipeline-"+id;
+            if(!workflows.nodeKeys(workflow.getId()).contains(taskKey)) workflows.node(workflow.getId(),taskKey,taskId,null);
+            var edges=workflows.edges(workflow.getId()); workflows.deleteEdges(workflow.getId());
+            var newEdges=new LinkedHashSet<WorkflowService.Edge>();
+            for(var edge:edges) newEdges.add(edge.from().equals(pipeKey) && !edge.to().equals(taskKey)?new WorkflowService.Edge(taskKey,edge.to()):edge);
+            newEdges.add(new WorkflowService.Edge(pipeKey,taskKey));
+            for(var edge:newEdges) workflows.edge(workflow.getId(),edge.from(),edge.to());
+            graphs.graph(workflow.getId()); workflows.graph(workflow.getId(),workflow.getPositionsJson(),workflow.getCronExpression());
         }
         jdbc.update("INSERT INTO pipeline_transform_archive(pipeline_id,sql_text,task_id) VALUES(?,?,?)",id,originalSql,taskId);
         if(pipeline.getDefinitionCode()!=null) platform.rememberWorkflow("pipeline",id,pipeline.getDefinitionCode());

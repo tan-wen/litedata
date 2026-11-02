@@ -8,12 +8,7 @@ public class SqlTask {
     private String modelName;
     private String layer;
     private String sqlText;
-    private String cronExpression = "0 0 * * * ?";
     private int version;
-    private String status;
-    private Long definitionCode;
-    private String definitionHash;
-    private Integer scheduleId;
     private Long activeRunId;
     private boolean archived;
     private java.util.List<Long> upstreamTaskIds = new java.util.ArrayList<>();
@@ -32,18 +27,8 @@ public class SqlTask {
     public void setLayer(String layer) { this.layer = layer; }
     public String getSqlText() { return sqlText; }
     public void setSqlText(String sqlText) { this.sqlText = sqlText; }
-    public String getCronExpression() { return cronExpression; }
-    public void setCronExpression(String cronExpression) { this.cronExpression = cronExpression; }
     public int getVersion() { return version; }
     public void setVersion(int version) { this.version = version; }
-    public String getStatus() { return status; }
-    public void setStatus(String status) { this.status = status; }
-    public Long getDefinitionCode() { return definitionCode; }
-    public void setDefinitionCode(Long definitionCode) { this.definitionCode = definitionCode; }
-    public String getDefinitionHash() { return definitionHash; }
-    public void setDefinitionHash(String definitionHash) { this.definitionHash = definitionHash; }
-    public Integer getScheduleId() { return scheduleId; }
-    public void setScheduleId(Integer scheduleId) { this.scheduleId = scheduleId; }
     public Long getActiveRunId() { return activeRunId; }
     public void setActiveRunId(Long activeRunId) { this.activeRunId = activeRunId; }
     public boolean isArchived() { return archived; }

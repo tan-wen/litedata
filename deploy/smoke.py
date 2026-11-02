@@ -55,6 +55,8 @@ class PageParser(HTMLParser):
                 inputs[values["name"]] = values.get("value", "")
         elif tag == "tr":
             self._row = {"cells": [], "actions": []}
+        elif tag == "a" and self._row is not None and values.get("href"):
+            self._row["actions"].append(values["href"].split("?", 1)[0])
         elif tag in ("td", "th") and self._row is not None:
             self._cell = []
         elif tag == "code":
@@ -106,6 +108,44 @@ class Client:
             return error.code, error.read().decode("utf-8", "replace")
         except URLError as error:
             raise SmokeFailure("platform HTTP endpoint is unavailable") from error
+
+
+def request_json(client: Client, method: str, path: str, body: dict | None = None, page: str = "") -> dict:
+    headers = {"Accept": "application/json"}
+    data = None
+    if body is not None:
+        token = next((form["inputs"].get("_csrf") for form in parse(page).forms if form["inputs"].get("_csrf")), None)
+        if not token:
+            raise SmokeFailure("CSRF form is absent")
+        headers.update({"Content-Type": "application/json", "X-CSRF-TOKEN": token})
+        data = json.dumps(body).encode()
+    request = Request(urljoin(BASE_URL, path), data=data, headers=headers, method=method)
+    try:
+        with client.opener.open(request, timeout=30) as response:
+            if response.status != 200:
+                raise SmokeFailure("workflow API did not confirm request")
+            return json.load(response)
+    except HTTPError as error:
+        raise SmokeFailure("workflow API rejected request: " + str(error.code)) from error
+
+
+def create_workflow(client: Client, name: str, keys: list[str], edges: list[dict], cron: str = "0 0 * * * ?") -> str:
+    _, page = client.request("GET", "/workflows/new")
+    status, page = post_form(client, page, "/workflows", {"name": name, "description": "Isolated smoke fixture"})
+    require_success(status, page, "工作流已保存")
+    identifier = resource_id(page, "/workflows", "run")
+    view = request_json(client, "GET", f"/workflows/{identifier}/graph")
+    nodes = [request_json(client, "GET", f"/workflows/{identifier}/expand?" + urlencode({"key": key}))["nodes"][0] for key in keys]
+    request_json(client, "POST", f"/workflows/{identifier}/graph", {
+        "version": view["version"], "graphHash": view["graphHash"], "cronExpression": cron,
+        "nodes": nodes, "edges": edges, "positions": {}}, page)
+    return identifier
+
+
+def workflow_action(client: Client, identifier: str, action: str) -> tuple[int, str]:
+    _, page = client.request("GET", f"/workflows/{identifier}")
+    view = request_json(client, "GET", f"/workflows/{identifier}/graph")
+    return post_form(client, page, f"/workflows/{identifier}/{action}", {"version": str(view["version"]), "graphHash": view["graphHash"]})
 
 
 def parse(html: str) -> PageParser:
@@ -180,9 +220,9 @@ def create_transform(client: Client, name: str, model_id: str, sql: str, pipelin
     if status != 200:
         raise SmokeFailure("transform create page is unavailable")
     status, page = post_form(client, page, "/transforms", {"name": name, "modelId": model_id, "sqlText": sql,
-        "cronExpression": "0 0 * * * ?", "upstreamPipelineIds": pipeline_id})
+        })
     require_success(status, page, "数据加工已保存")
-    return resource_id(page, "/transforms", "run")
+    return id_from_row(page, name, "/edit")
 
 
 def api_query(client: Client, slug: str, token: str) -> tuple[int, str]:
@@ -247,11 +287,10 @@ def main() -> dict[str, object]:
     pipeline_id = id_from_row(pipelines, pipeline_name, "/run")
     transform_id = create_transform(client, transform_name, ads_model_id,
         f"INSERT INTO {ads_table} SELECT id,customer_name,amount,updated_at FROM {ods_table}", pipeline_id)
-    status, transform_page = client.request("GET", f"/transforms/{transform_id}")
-    if status != 200:
-        raise SmokeFailure("transform detail page is unavailable")
-    status, pipelines = post_form(client, transform_page, f"/transforms/{transform_id}/run", {})
-    require_success(status, pipelines, "DolphinScheduler 已接受整条依赖链")
+    workflow_id = create_workflow(client, transform_name, [f"pipeline-{pipeline_id}", f"sql-{transform_id}"],
+        [{"from": f"pipeline-{pipeline_id}", "to": f"sql-{transform_id}"}])
+    status, pipelines = workflow_action(client, workflow_id, "run")
+    require_success(status, pipelines, "已提交整条工作流")
 
     deadline = time.monotonic() + POLL_TIMEOUT_SECONDS
     run_succeeded = False
@@ -305,7 +344,7 @@ def main() -> dict[str, object]:
     if status != 200 or json.loads(result).get("data", [{}])[0].get("customer_name") != "Ada":
         raise SmokeFailure("rotated credential cannot query the published API")
     return {"status": "success", "counts": {"models": 2, "sources": 1, "pipelines": 1, "transforms": 1, "services": 1, "apiRows": 1},
-            "resources": {"odsModelId": int(ods_model_id), "adsModelId": int(ads_model_id), "pipelineId": int(pipeline_id), "transformId": int(transform_id)}}
+            "resources": {"odsModelId": int(ods_model_id), "adsModelId": int(ads_model_id), "pipelineId": int(pipeline_id), "transformId": int(transform_id), "workflowId": int(workflow_id)}}
 
 
 if __name__ == "__main__":

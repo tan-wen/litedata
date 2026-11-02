@@ -3,7 +3,8 @@ package com.litedata.model;
 public class SqlTaskRun {
     private Long id;
     private long taskId;
-    private long rootTaskId;
+    private Long rootTaskId;
+    private Long workflowId;
     private int taskVersion;
     private String targetTable;
     private String sqlText;
@@ -17,8 +18,10 @@ public class SqlTaskRun {
     public void setId(Long id) { this.id = id; }
     public long getTaskId() { return taskId; }
     public void setTaskId(long taskId) { this.taskId = taskId; }
-    public long getRootTaskId() { return rootTaskId; }
-    public void setRootTaskId(long rootTaskId) { this.rootTaskId = rootTaskId; }
+    public Long getRootTaskId() { return rootTaskId; }
+    public void setRootTaskId(Long rootTaskId) { this.rootTaskId = rootTaskId; }
+    public Long getWorkflowId() { return workflowId; }
+    public void setWorkflowId(Long workflowId) { this.workflowId = workflowId; }
     public int getTaskVersion() { return taskVersion; }
     public void setTaskVersion(int taskVersion) { this.taskVersion = taskVersion; }
     public String getTargetTable() { return targetTable; }

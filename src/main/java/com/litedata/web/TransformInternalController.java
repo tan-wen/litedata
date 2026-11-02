@@ -21,7 +21,7 @@ public class TransformInternalController {
     ResponseEntity<Map<String,Object>> claim(@PathVariable long id,@RequestHeader(value="X-Internal-Token",required=false) String credential,
             @RequestBody Claim request) {
         authorize(credential);
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(tasks.claim(id,request.version(),request.rootId(),request.graphHash()));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(tasks.claim(id,request.version(),request.rootId(),request.workflowId(),request.graphHash()));
     }
     @PostMapping("/runs/{runId}/finish")
     Map<String,String> finish(@PathVariable long runId,@RequestHeader(value="X-Internal-Token",required=false) String credential,@RequestBody Finish request) {
@@ -31,6 +31,6 @@ public class TransformInternalController {
         if(credential==null || !MessageDigest.isEqual(token,credential.getBytes(StandardCharsets.UTF_8)))
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"执行节点凭证无效");
     }
-    public record Claim(int version,long rootId,String graphHash) {}
+    public record Claim(int version,Long rootId,Long workflowId,String graphHash) {}
     public record Finish(boolean success) {}
 }

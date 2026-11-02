@@ -4,7 +4,7 @@ import com.litedata.model.*;
 import com.litedata.modeling.*;
 import com.litedata.store.*;
 import com.litedata.pipeline.PipelineService;
-import com.litedata.scheduling.SchedulePreview;
+import com.litedata.workflow.WorkflowGraph;
 import com.litedata.service.QueryPage;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -25,10 +25,12 @@ public class TransformService {
     private final TransformSqlPolicy policy;
     private final DorisModelGateway gateway;
     private final PipelineService pipelines;
+    private final WorkflowMapper workflows;
+    private final WorkflowGraph workflowGraphs;
 
-    public TransformService(SqlTaskMapper mapper,PlatformMapper platform,ModelingService models,TransformSqlPolicy policy,DorisModelGateway gateway,PipelineService pipelines) {
+    public TransformService(SqlTaskMapper mapper,PlatformMapper platform,ModelingService models,TransformSqlPolicy policy,DorisModelGateway gateway,PipelineService pipelines,WorkflowMapper workflows,WorkflowGraph workflowGraphs) {
         this.mapper=mapper; this.platform=platform; this.models=models; this.policy=policy; this.gateway=gateway;
-        this.pipelines=pipelines;
+        this.pipelines=pipelines; this.workflows=workflows; this.workflowGraphs=workflowGraphs;
     }
     public List<SqlTask> list() { return mapper.tasks(); }
     public long count() { return mapper.countTasks(); }
@@ -49,7 +51,6 @@ public class TransformService {
         input=definition;
         if(input.getName()==null || input.getName().isBlank() || input.getName().trim().length()>100)
             throw new IllegalArgumentException("任务名称不能为空，最长100字符");
-        input.setCronExpression(SchedulePreview.validate(input.getCronExpression()));
         if(input.getModelId()==null) throw new IllegalArgumentException("请选择目标模型");
         var model=models.require(input.getModelId());
         if("ODS".equals(model.getLayer())) throw new IllegalArgumentException("数据加工目标请选择 DIM、DWD、DWS 或 ADS 模型；ODS 使用同步管道接入");
@@ -75,6 +76,7 @@ public class TransformService {
     @Transactional
     public void archive(long id,int version,String actor) {
         mapper.lockGraph(); var task=required(mapper.lockTask(id)); checkVersion(task,version); ensureEditable(id);
+        if(!workflows.forTask(id).isEmpty()) throw new IllegalArgumentException("任务仍被工作流引用，请先从工作流移除");
         if(mapper.dependents(id)>0) throw new IllegalArgumentException("该任务仍被下游引用，请先移除依赖");
         mapper.archive(id); platform.audit(actor,"SQL_TASK_ARCHIVE",Long.toString(id),"SUCCESS");
     }
@@ -123,13 +125,8 @@ public class TransformService {
                     : platform.pipeline(node.refId()).getActiveRunId()!=null;
             if(active) throw new IllegalArgumentException("依赖链正在运行，请等待完成后编辑或归档");
         }
-        for(var root:mapper.tasks()) {
-            boolean scheduled=Set.of("SCHEDULED","SCHEDULE_PENDING").contains(root.getStatus());
-            var graph=graph(root.getId());
-            boolean contains=graph.nodes().stream().anyMatch(n->n.kind().equals("SQL") && n.refId()==taskId);
-            if(contains && scheduled) throw new IllegalArgumentException("任务被已启用调度的链路引用，请先停用调度："+root.getName());
-            if(contains && root.getActiveRunId()!=null) throw new IllegalArgumentException("下游链路正在运行，请等待完成");
-        }
+        var scheduled=workflows.scheduledForTask(taskId);
+        if(!scheduled.isEmpty()) throw new IllegalArgumentException("任务被已启用调度的工作流引用，请先暂停："+scheduled.getFirst().getName());
     }
 
     public void preflight(Graph graph) {
@@ -164,15 +161,22 @@ public class TransformService {
 
     @Transactional
     public Map<String,Object> claim(long id,int version,long rootId,String hash) {
+        return claim(id,version,rootId,null,hash);
+    }
+    @Transactional
+    public Map<String,Object> claim(long id,int version,Long rootId,Long workflowId,String hash) {
         mapper.lockGraph();
-        var graph=graph(rootId);
+        if((rootId==null)==(workflowId==null)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"必须指定工作流或旧版链路编号");
+        if(rootId!=null && workflows.retiredLegacy(rootId,hash)>0)
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"旧版链路已更新，请从工作流重新发布");
+        var graph=workflowId==null?graph(rootId):workflowGraphs.graph(workflowId);
         if(!graph.hash().equals(hash) || graph.nodes().stream().noneMatch(n->n.kind().equals("SQL") && n.refId()==id))
             throw new ResponseStatusException(HttpStatus.CONFLICT,"加工链配置已变化，请重新发布");
         var task=required(mapper.lockTask(id));
         if(task.getVersion()!=version) throw new ResponseStatusException(HttpStatus.CONFLICT,"任务版本已变化，请重新发布");
         if(task.getActiveRunId()!=null) throw new ResponseStatusException(HttpStatus.LOCKED,"任务已有运行实例");
         var model=verifiedModel(task.getModelId()); var validated=policy.validate(task.getSqlText(),model.getTableName());
-        var run=new SqlTaskRun(); run.setTaskId(id); run.setRootTaskId(rootId); run.setTaskVersion(version);
+        var run=new SqlTaskRun(); run.setTaskId(id); run.setRootTaskId(rootId); run.setWorkflowId(workflowId); run.setTaskVersion(version);
         run.setTargetTable(model.getTableName()); run.setSqlText(validated.sql());
         mapper.insertRun(run); mapper.activeRun(id,run.getId());
         return Map.of("runId",run.getId(),"sql",validated.sql(),"targetTable",model.getTableName(),"taskVersion",version);

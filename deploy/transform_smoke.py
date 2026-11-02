@@ -8,7 +8,7 @@ import time
 import uuid
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
-from smoke import Client, SmokeFailure, load_dotenv, parse, post_form, require_success, id_from_row, generated_key
+from smoke import Client, SmokeFailure, load_dotenv, parse, post_form, require_success, id_from_row, generated_key, create_workflow, workflow_action
 
 
 def checked(status, page, text):
@@ -42,32 +42,28 @@ def model(client, table, layer, definitions):
     return identifier
 
 
-def task(client, name, model_id, sql, upstream=None, pipeline=None):
+def task(client, name, model_id, sql):
     _, page = client.request("GET", "/transforms/new")
-    fields = {"name": name, "modelId": model_id, "sqlText": sql, "cronExpression": "0 */5 * * * ?"}
-    if upstream:
-        fields["upstreamTaskIds"] = upstream
-    if pipeline:
-        fields["upstreamPipelineIds"] = pipeline
-    status, page = post_form(client, page, "/transforms", fields)
+    status, page = post_form(client, page, "/transforms", {"name": name, "modelId": model_id, "sqlText": sql})
     checked(status, page, "数据加工已保存")
-    return resource_id(page, "/transforms", "run")
+    return id_from_row(page, name, "/edit")
 
 
 def runs(client, root):
-    _, page = client.request("GET", f"/transforms/{root}")
     result = []
-    for row in parse(page).rows:
-        cells = row["cells"]
-        if len(cells) == 6 and str(cells[0]).isdigit() and cells[3] in ("RUNNING", "SUCCESS", "FAILED"):
-            result.append({"id": int(cells[0]), "task": cells[1].split(" / ")[0], "status": cells[3]})
+    for task_id in root:
+        _, page = client.request("GET", f"/transforms/{task_id}")
+        for row in parse(page).rows:
+            cells = row["cells"]
+            if len(cells) == 6 and str(cells[0]).isdigit() and cells[3] in ("RUNNING", "SUCCESS", "FAILED"):
+                result.append({"id": int(cells[0]), "task": cells[1].split(" / ")[0], "status": cells[3]})
     return page, result
 
 
-def wait_runs(client, root, names, count, timeout):
+def wait_runs(client, task_ids, names, count, timeout):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        _, records = runs(client, root)
+        _, records = runs(client, task_ids)
         if any(row["status"] == "FAILED" for row in records):
             raise SmokeFailure("SQL node failed during success scenario")
         if all(sum(row["task"] == name and row["status"] == "SUCCESS" for row in records) >= count for name in names):
@@ -76,11 +72,11 @@ def wait_runs(client, root, names, count, timeout):
     raise SmokeFailure("SQL DAG did not complete within timeout")
 
 
-def engine_instances(root):
+def engine_instances(workflow_id):
     project = os.environ["DOLPHINSCHEDULER_PROJECT_CODE"]
     port = os.environ.get("DOLPHINSCHEDULER_PORT", "12345")
     base = os.environ.get("SMOKE_DS_URL", f"http://localhost:{port}/dolphinscheduler")
-    query = urlencode({"pageNo": 1, "pageSize": 20, "searchVal": f"platform-sql-{root}-"})
+    query = urlencode({"pageNo": 1, "pageSize": 20, "searchVal": f"platform-workflow-{workflow_id}-"})
     request = Request(f"{base}/projects/{project}/workflow-instances?{query}", headers={"token": os.environ["DOLPHINSCHEDULER_TOKEN"]})
     with urlopen(request, timeout=20) as response:
         data = json.load(response)
@@ -129,15 +125,18 @@ def main():
     checked(status, page, "ODS 同步管道已保存")
     pipeline_id = id_from_row(page, pipeline_name, "/run")
     dwd_sql = f"INSERT INTO {dwd} SELECT id,customer_name,amount,updated_at FROM {ods} WHERE id IN (1,2)"
-    dwd_id = task(client, dwd, dwd_model, dwd_sql, pipeline=pipeline_id)
-    dws_id = task(client, dws, dws_model, f"INSERT INTO {dws} SELECT customer_name,SUM(amount),COUNT(*) FROM {dwd} GROUP BY customer_name", upstream=dwd_id)
-    root = task(client, ads, ads_model, f"INSERT INTO {ads} SELECT customer_name,total_amount,order_count FROM {dws}", upstream=dws_id)
-    _, page = client.request("GET", f"/transforms/{root}")
-    status, page = post_form(client, page, f"/transforms/{root}/run", {})
-    checked(status, page, "DolphinScheduler 已接受整条依赖链")
+    dwd_id = task(client, dwd, dwd_model, dwd_sql)
+    dws_id = task(client, dws, dws_model, f"INSERT INTO {dws} SELECT customer_name,SUM(amount),COUNT(*) FROM {dwd} GROUP BY customer_name")
+    root = task(client, ads, ads_model, f"INSERT INTO {ads} SELECT customer_name,total_amount,order_count FROM {dws}")
+    task_ids = [dwd_id, dws_id, root]
+    workflow_id = create_workflow(client, "flow-" + suffix, [f"pipeline-{pipeline_id}", *[f"sql-{tid}" for tid in task_ids]],
+        [{"from": f"pipeline-{pipeline_id}", "to": f"sql-{dwd_id}"}, {"from": f"sql-{dwd_id}", "to": f"sql-{dws_id}"},
+         {"from": f"sql-{dws_id}", "to": f"sql-{root}"}], "0 */5 * * * ?")
+    status, page = workflow_action(client, workflow_id, "run")
+    checked(status, page, "已提交整条工作流")
     names = [dwd, dws, ads]
-    wait_runs(client, root, names, 1, 300)
-    print(json.dumps({"stage": "manual-dag-success", "rootTaskId": int(root)}), flush=True)
+    wait_runs(client, task_ids, names, 1, 300)
+    print(json.dumps({"stage": "manual-dag-success", "workflowId": int(workflow_id), "taskId": int(root)}), flush=True)
     status, page = client.request("GET", "/services")
     if status != 200 or 'href="/services/new"' not in page:
         raise SmokeFailure("service list does not provide the create page")
@@ -158,47 +157,42 @@ def main():
     expected = {"Ada": (120.5, 1), "Linus": (88.0, 1)}
     if status != 200 or {row["customer_name"]: (float(row["total_amount"]), int(row["order_count"])) for row in rows} != expected or {key: response.get(key) for key in ("count", "pageNum", "pageSize", "hasMore")} != {"count": 2, "pageNum": 1, "pageSize": 100, "hasMore": False}:
         raise SmokeFailure("ADS aggregation did not match demo source")
-    _, page = client.request("GET", f"/transforms/{root}")
-    status, page = post_form(client, page, f"/transforms/{root}/schedule", {})
-    checked(status, page, "整条依赖链的定时调度已启用")
-    print(json.dumps({"stage": "timer-enabled-awaiting-trigger", "rootTaskId": int(root)}), flush=True)
+    status, page = workflow_action(client, workflow_id, "schedule")
+    checked(status, page, "工作流定时调度已启用")
+    print(json.dumps({"stage": "timer-enabled-awaiting-trigger", "workflowId": int(workflow_id), "taskId": int(root)}), flush=True)
     try:
-        wait_runs(client, root, names, 2, 420)
+        wait_runs(client, task_ids, names, 2, 420)
     finally:
-        _, page = client.request("GET", f"/transforms/{root}")
-        status, page = post_form(client, page, f"/transforms/{root}/pause", {})
+        status, page = workflow_action(client, workflow_id, "pause")
         checked(status, page, "定时调度已停用")
     print(json.dumps({"stage": "timer-trigger-success-and-paused"}), flush=True)
-    before = {int(item["id"]) for item in engine_instances(root)}
+    before = {int(item["id"]) for item in engine_instances(workflow_id)}
     _, edit = client.request("GET", f"/transforms/{dwd_id}/edit")
     status, page = post_form(client, edit, f"/transforms/{dwd_id}", {"name": dwd, "modelId": dwd_model,
-        "sqlText": f"INSERT INTO {dwd} SELECT id,customer_name,amount,updated_at FROM missing_flow_{suffix}",
-        "cronExpression": "0 */5 * * * ?", "upstreamPipelineIds": pipeline_id})
+        "sqlText": f"INSERT INTO {dwd} SELECT id,customer_name,amount,updated_at FROM missing_flow_{suffix}"})
     checked(status, page, "数据加工已保存")
-    _, page = client.request("GET", f"/transforms/{root}")
-    status, page = post_form(client, page, f"/transforms/{root}/run", {})
-    checked(status, page, "DolphinScheduler 已接受整条依赖链")
+    status, page = workflow_action(client, workflow_id, "run")
+    checked(status, page, "已提交整条工作流")
     deadline = time.monotonic() + 300
     failed = False
     while time.monotonic() < deadline:
-        fresh = [item for item in engine_instances(root) if int(item["id"]) not in before]
+        fresh = [item for item in engine_instances(workflow_id) if int(item["id"]) not in before]
         if fresh and fresh[0].get("state") in (6, "FAILURE", "FAILED"):
             failed = True
             break
         time.sleep(5)
     if not failed:
         raise SmokeFailure("failed upstream workflow did not reach DS FAILURE")
-    _, records = runs(client, root)
+    _, records = runs(client, task_ids)
     if not any(row["task"] == dwd and row["status"] == "FAILED" for row in records):
         raise SmokeFailure("upstream failure missing from platform history")
     if any(sum(row["task"] == name for row in records) != 2 for name in (dws, ads)):
         raise SmokeFailure("downstream ran after upstream failure")
     # Restore the task for further manual trials, keeping failure evidence and the timer paused.
     _, edit = client.request("GET", f"/transforms/{dwd_id}/edit")
-    status, page = post_form(client, edit, f"/transforms/{dwd_id}", {"name": dwd, "modelId": dwd_model, "sqlText": dwd_sql,
-        "cronExpression": "0 */5 * * * ?", "upstreamPipelineIds": pipeline_id})
+    status, page = post_form(client, edit, f"/transforms/{dwd_id}", {"name": dwd, "modelId": dwd_model, "sqlText": dwd_sql})
     checked(status, page, "数据加工已保存")
-    return {"status": "success", "rootTaskId": int(root), "tables": names,
+    return {"status": "success", "workflowId": int(workflow_id), "taskId": int(root), "tables": names,
             "checks": ["pure-ods-sync", "manual-real-dag", "dwd-dws-ads-results", "actual-timer-trigger", "pause", "upstream-failure-gates-downstream"]}
 
 

@@ -12,7 +12,6 @@ import com.litedata.model.*;
 import com.litedata.modeling.*;
 import com.litedata.pipeline.PipelineService;
 import com.litedata.scheduling.DolphinMonitorClient;
-import com.litedata.scheduling.SchedulerOperations;
 import com.litedata.store.*;
 import com.litedata.transform.*;
 import com.litedata.workflow.*;
@@ -26,172 +25,173 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.junit.jupiter.*;
 import org.testcontainers.mysql.MySQLContainer;
-import tools.jackson.databind.json.JsonMapper;
 
-/** Real Flyway/MySQL MVC coverage; Doris and DolphinScheduler are isolated boundaries. */
-@SpringBootTest
-@AutoConfigureMockMvc
-@Testcontainers
+/** Workflow-local DAG and scheduling ownership backed by real Flyway/MySQL. */
+@SpringBootTest @AutoConfigureMockMvc @Testcontainers
 class WorkflowIntegrationTest {
-    @Container static final MySQLContainer MYSQL=new MySQLContainer("mysql:8.4")
-            .withDatabaseName("platform").withUsername("platform").withPassword("workflow-test-password");
+    @Container static final MySQLContainer MYSQL=new MySQLContainer("mysql:8.4").withDatabaseName("platform").withUsername("platform").withPassword("workflow-test-password");
     @DynamicPropertySource static void properties(DynamicPropertyRegistry r) {
         r.add("spring.datasource.url",MYSQL::getJdbcUrl); r.add("spring.datasource.username",MYSQL::getUsername); r.add("spring.datasource.password",MYSQL::getPassword);
-        r.add("platform.encryption-key",()->"MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=");
-        r.add("platform.internal-token",()->"workflow-test-internal-token-0123456789"); r.add("platform.admin-password",()->"WorkflowAdminPassword2026");
+        r.add("platform.encryption-key",()->"MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="); r.add("platform.internal-token",()->"workflow-test-internal-token-0123456789"); r.add("platform.admin-password",()->"WorkflowAdminPassword2026");
         r.add("platform.doris.jdbc-url",MYSQL::getJdbcUrl); r.add("platform.doris.username",MYSQL::getUsername); r.add("platform.doris.password",MYSQL::getPassword);
     }
-    @Autowired MockMvc mvc; @Autowired JdbcTemplate jdbc; @Autowired WorkflowService workflows; @Autowired WorkflowMapper mapper;
-    @Autowired TransformService tasks; @Autowired ModelingService models; @Autowired SourceService sources; @Autowired PipelineService pipelines; @Autowired PlatformMapper platform; @Autowired SchedulerOperations schedulerOperations;
+    @Autowired JdbcTemplate jdbc; @Autowired MockMvc mvc; @Autowired WorkflowService workflows; @Autowired TransformService tasks; @Autowired ModelingService models; @Autowired SourceService sources; @Autowired PipelineService pipelines; @Autowired PlatformMapper platform;
+    @Autowired com.litedata.scheduling.SchedulerOperations operations;
+    private final tools.jackson.databind.json.JsonMapper json=tools.jackson.databind.json.JsonMapper.builder().build();
     @MockitoBean DorisModelGateway doris; @MockitoBean DolphinWorkflowClient engine; @MockitoBean DolphinMonitorClient monitor;
-    private final JsonMapper json=JsonMapper.builder().build();
-
     @BeforeEach void prepare() throws Exception {
-        for(String table:List.of("processing_workflow_snapshot","processing_workflow","sql_task_run","sql_task_dependency","sql_pipeline_dependency","sql_task","model_execution","model_field","data_model","pipeline_run","pipeline","data_source","audit_event")) jdbc.update("DELETE FROM "+table);
-        reset(doris,engine,monitor);
-        when(doris.inspect(anyString())).thenReturn(new DorisModelGateway.Schema(List.of(new DorisModelGateway.Column("id","bigint",false,"")),List.of("id"),List.of("id"),1));
-        when(engine.configured()).thenReturn(true); when(engine.create(anyString(),anyString(),anyList())).thenReturn(801L); when(engine.createSchedule(anyLong(),anyString())).thenReturn(91);
+        for(String table:List.of("sql_task_run","workflow_definition_snapshot","processing_workflow_snapshot","processing_workflow_edge","processing_workflow_node","processing_workflow","pipeline_transform_archive","sql_task_dependency","sql_pipeline_dependency","sql_task","model_execution","model_field","data_model","pipeline_run","pipeline","data_source","audit_event")) jdbc.update("DELETE FROM "+table);
+        reset(doris,engine,monitor); when(doris.inspect(anyString())).thenReturn(new DorisModelGateway.Schema(List.of(new DorisModelGateway.Column("id","bigint",false,"")),List.of("id"),List.of("id"),1));
+        when(engine.configured()).thenReturn(true); when(engine.create(anyString(),anyString(),anyList())).thenReturn(801L,802L); when(engine.createSchedule(anyLong(),anyString())).thenReturn(91);
+    }
+    @Test void createsEmptyWorkflowThenBuildsIndependentMultiOutputCanvas() {
+        long flow=workflow("月末加工"); var empty=workflows.view(flow); assertThat(empty.nodes()).isEmpty();
+        long a=task("dwd_orders"), b=task("ads_orders"), c=task("ads_inventory");
+        var saved=workflows.save(flow,save(empty,List.of(node(flow,a),node(flow,b),node(flow,c)),edges("sql-"+a,"sql-"+b,"sql-"+a,"sql-"+c)),"dev");
+        assertThat(saved.nodes()).hasSize(3); assertThat(saved.nodes().stream().filter(n->n.upstreamKeys().isEmpty())).hasSize(1);
+        long other=workflow("另一个流程"); var second=workflows.save(other,save(workflows.view(other),List.of(node(other,b)),List.of()),"dev");
+        assertThat(second.nodes()).extracting(WorkflowService.Node::key).containsExactly("sql-"+b);
+        var reduced=workflows.save(flow,save(saved,List.of(node(flow,a),node(flow,b)),edges("sql-"+a,"sql-"+b)),"dev");
+        assertThat(reduced.nodes()).hasSize(2); assertThat(tasks.require(c).getId()).isEqualTo(c);
+    }
+    @Test void inlineSqlSaveAndScheduleAreWorkflowOwned() throws Exception {
+        long flow=workflow("画布开发"); var blank=workflows.view(flow); long model=model("dwd_inline","DWD");
+        var created=workflows.saveTask(flow,new WorkflowService.TaskSave(blank.version(),blank.graphHash(),null,0,"画布 SQL",model,"INSERT INTO dwd_inline SELECT id FROM ods_orders"),"dev");
+        long id=created.nodes().getFirst().refId(); assertThat(workflows.task(flow,id).sqlText()).contains("dwd_inline");
+        mvc.perform(get("/workflows/"+flow+"/sql-tasks/"+id).with(user("viewer").roles("VIEWER"))).andExpect(status().isOk()).andExpect(jsonPath("$.id").value(id));
+        mvc.perform(post("/workflows/"+flow+"/sql-tasks").with(user("viewer").roles("VIEWER")).with(csrf()).contentType("application/json").content("{}")) .andExpect(status().isForbidden());
+        workflows.execute(flow,created.version(),created.graphHash(),"schedule","dev");
+        assertThat(workflows.require(flow).getStatus()).isEqualTo("SCHEDULED"); assertThat(workflows.require(flow).getScheduleId()).isEqualTo(91);
+        var scheduled=workflows.view(flow);
+        assertThatIllegalArgumentException().isThrownBy(()->workflows.save(flow,new WorkflowService.Save(scheduled.version(),scheduled.graphHash(),"0 */5 * * * ?",scheduled.nodes(),List.of(),Map.of()),"dev")).withMessageContaining("暂停");
+        workflows.execute(flow,workflows.view(flow).version(),"","pause","dev"); assertThat(workflows.require(flow).getStatus()).isEqualTo("PAUSED");
+    }
+    @Test void pipelineStandaloneScheduleIsVisibleButWorkflowUsesItsOwnCron() {
+        long pipe=pipeline("ods_orders"); jdbc.update("UPDATE pipeline SET schedule_id=44,status='SCHEDULED' WHERE id=?",pipe);
+        long sql=task("dwd_orders"); long flow=workflow("含同步"); var view=workflows.view(flow);
+        var saved=workflows.save(flow,save(view,List.of(workflows.expand(flow,"pipeline-"+pipe).getFirst(),node(flow,sql)),edges("pipeline-"+pipe,"sql-"+sql)),"dev");
+        assertThat(saved.nodes().stream().filter(n->n.key().equals("pipeline-"+pipe)).findFirst().orElseThrow().standaloneScheduled()).isTrue();
+        workflows.execute(flow,saved.version(),saved.graphHash(),"schedule","dev");
+        verify(engine).createSchedule(801L,saved.cronExpression());
+    }
+    @Test void protectsGraphEndpointsWithRolesAndCsrf() throws Exception {
+        long flow=workflow("权限"); String body="{\"version\":1,\"graphHash\":\"x\",\"cronExpression\":\"0 0 * * * ?\",\"nodes\":[],\"edges\":[]}";
+        mvc.perform(get("/workflows/"+flow).with(user("viewer").roles("VIEWER"))).andExpect(status().isOk());
+        mvc.perform(post("/workflows/"+flow+"/graph").with(user("viewer").roles("VIEWER")).with(csrf()).contentType("application/json").content(body)).andExpect(status().isForbidden());
+        mvc.perform(post("/workflows/"+flow+"/graph").with(user("dev").roles("DEVELOPER")).contentType("application/json").content(body)).andExpect(status().isForbidden());
+    }
+    @Test void rejectsCyclesAndPipelineDownstreamWithoutChangingStoredCanvas() {
+        long flow=workflow("图校验"), pipe=pipeline("ods_graph"), a=task("dwd_graph"), b=task("ads_graph");
+        var base=workflows.view(flow); var nodes=List.of(workflows.expand(flow,"pipeline-"+pipe).getFirst(),node(flow,a),node(flow,b));
+        var saved=workflows.save(flow,save(base,nodes,edges("pipeline-"+pipe,"sql-"+a,"sql-"+a,"sql-"+b)),"dev");
+        assertThatIllegalArgumentException().isThrownBy(()->workflows.save(flow,save(saved,nodes,edges("sql-"+a,"pipeline-"+pipe)),"dev")).withMessageContaining("同步");
+        assertThatIllegalArgumentException().isThrownBy(()->workflows.save(flow,save(saved,nodes,edges("sql-"+a,"sql-"+b,"sql-"+b,"sql-"+a)),"dev")).withMessageContaining("循环");
+        assertThat(workflows.view(flow).graphHash()).isEqualTo(saved.graphHash());
+    }
+    @Test void taskPageHasNoStandaloneScheduleActions() throws Exception {
+        long id=task("dwd_page");
+        mvc.perform(get("/transforms/"+id).with(user("dev").roles("DEVELOPER"))).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("调度周期"))))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("启用调度"))));
+        for(String action:List.of("run","schedule","pause")) mvc.perform(post("/transforms/"+id+"/"+action).with(user("dev").roles("DEVELOPER")).with(csrf())).andExpect(status().isNotFound());
+    }
+    @Test void staleCanvasAndInlineSqlEditsAreRejectedWithoutPartialWrites() throws Exception {
+        long flow=workflow("并发"); long sql=task("dwd_stale");
+        var view=workflows.save(flow,save(workflows.view(flow),List.of(node(flow,sql)),List.of()),"dev");
+        var task=workflows.task(flow,sql);
+        var input=new WorkflowService.TaskSave(view.version(),view.graphHash(),sql,task.version(),task.name(),task.modelId(),"INSERT INTO dwd_stale SELECT id FROM ods_orders WHERE id>0");
+        mvc.perform(post("/workflows/"+flow+"/sql-tasks").with(user("dev").roles("DEVELOPER")).with(csrf()).contentType("application/json").content(json.writeValueAsString(input)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.nodes[0].version").value(task.version()+1));
+        mvc.perform(post("/workflows/"+flow+"/sql-tasks").with(user("dev").roles("DEVELOPER")).with(csrf()).contentType("application/json").content(json.writeValueAsString(input)))
+                .andExpect(status().isConflict());
+        mvc.perform(post("/workflows/"+flow+"/graph").with(user("dev").roles("DEVELOPER")).with(csrf()).contentType("application/json").content(json.writeValueAsString(save(view,view.nodes(),List.of()))))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.message").isNotEmpty());
+        var current=workflows.view(flow); int version=tasks.require(sql).getVersion();
+        var invalid=new WorkflowService.TaskSave(current.version(),current.graphHash(),sql,version,task.name(),task.modelId(),"DELETE FROM dwd_stale");
+        mvc.perform(post("/workflows/"+flow+"/sql-tasks").with(user("dev").roles("DEVELOPER")).with(csrf()).contentType("application/json").content(json.writeValueAsString(invalid)))
+                .andExpect(status().isBadRequest());
+        assertThat(tasks.require(sql).getVersion()).isEqualTo(version);
+        assertThat(workflows.require(flow).getVersion()).isEqualTo(current.version());
+        long foreign=task("ads_foreign");
+        mvc.perform(get("/workflows/"+flow+"/sql-tasks/"+foreign).with(user("dev").roles("DEVELOPER"))).andExpect(status().isNotFound());
     }
 
-    @Test void createsNamedWorkflowsAndPagesDatabaseResults() throws Exception {
-        long first=workflow("orders-close",task("ads_orders",List.of()),"订单月末");
-        workflow("inventory-close",task("ads_inventory",List.of()),"库存月末");
-        assertThat(workflows.count("orders")).isEqualTo(1);
-        assertThat(workflows.list("close",new com.litedata.service.QueryPage(2,1))).extracting(ProcessingWorkflow::getName).containsExactly("orders-close");
-        mvc.perform(get("/workflows").param("keyword","inventory").with(user("viewer").roles("VIEWER")))
-                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("inventory-close")))
-                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("orders-close"))));
-        mvc.perform(get("/workflows/"+first).with(user("viewer").roles("VIEWER"))).andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("workflow-canvas")));
-        mvc.perform(get("/workflows/new").with(user("dev").roles("DEVELOPER"))).andExpect(status().isOk());
-        mvc.perform(get("/workflows/"+first+"/edit").with(user("dev").roles("DEVELOPER"))).andExpect(status().isOk());
-        mvc.perform(get("/workflows/new").with(user("viewer").roles("VIEWER"))).andExpect(status().isForbidden());
-        mvc.perform(get("/workflows/"+first+"/edit").with(user("viewer").roles("VIEWER"))).andExpect(status().isForbidden());
-    }
-
-    @Test void savesDiamondAndPipelineDependenciesThenRemovingNodeKeepsTask() {
-        long pipeline=pipeline("ods"); long a=task("dwd_a",List.of()), b=task("dws_b",List.of(a)), c=task("dws_c",List.of(a)), root=task("ads_root",List.of(b,c));
-        long id=workflow("diamond",root,""); var view=workflows.view(id);
-        var canvas=new ArrayList<>(view.nodes()); canvas.add(workflows.expand(id,"pipeline-"+pipeline).getFirst());
-        var input=save(view,canvas,edges("sql-"+a,"sql-"+b,"sql-"+a,"sql-"+c,"sql-"+b,"sql-"+root,"sql-"+c,"sql-"+root,"pipeline-"+pipeline,"sql-"+a));
-        var saved=workflows.save(id,input,"dev");
-        assertThat(saved.nodes()).extracting(WorkflowService.Node::key).contains("pipeline-"+pipeline,"sql-"+a,"sql-"+b,"sql-"+c,"sql-"+root);
-        var reduced=workflows.save(id,save(saved,saved.nodes().stream().filter(n->!n.key().equals("sql-"+c)).toList(),edges("pipeline-"+pipeline,"sql-"+a,"sql-"+a,"sql-"+b,"sql-"+b,"sql-"+root)),"dev");
-        assertThat(reduced.nodes()).extracting(WorkflowService.Node::key).doesNotContain("sql-"+c);
-        assertThat(tasks.require(c).getId()).isEqualTo(c); // removed from this canvas, not archived/deleted
-    }
-
-    @Test void rejectsCycleOrphansAndPipelineDownstreamWithoutPartialWrites() {
-        long pipe=pipeline("source"); long a=task("dwd_a",List.of()), root=task("ads_root",List.of(a)); long id=workflow("guard",root,""); var view=workflows.view(id);
-        var baseline=tasks.graph(root).hash();
-        assertThatIllegalArgumentException().isThrownBy(()->workflows.save(id,save(view,view.nodes(),List.of(new WorkflowService.Edge("sql-"+root,"sql-"+a),new WorkflowService.Edge("sql-"+a,"sql-"+root))),"dev"));
-        var withPipeline=new ArrayList<>(view.nodes()); withPipeline.add(workflows.expand(id,"pipeline-"+pipe).getFirst());
-        assertThatIllegalArgumentException().isThrownBy(()->workflows.save(id,save(view,withPipeline,List.of(new WorkflowService.Edge("sql-"+root,"pipeline-"+pipe))),"dev"));
-        var orphan=new WorkflowService.Node("sql-"+a,"a","SQL",a,tasks.require(a).getVersion(),List.of(),"dwd_a","","",tasks.graph(a).hash());
-        assertThatIllegalArgumentException().isThrownBy(()->workflows.save(id,save(view,List.of(view.nodes().stream().filter(n->n.key().equals("sql-"+root)).findFirst().orElseThrow(),orphan),List.of()),"dev"));
-        assertThat(tasks.graph(root).hash()).isEqualTo(baseline);
-    }
-
-    @Test void rejectsStaleVersionOrGraphJsonAndReturnsJsonErrors() throws Exception {
-        long root=task("ads_root",List.of()); long id=workflow("stale",root,""); var view=workflows.view(id);
-        var stale=save(view,view.nodes(),List.of());
-        var rename=draft("renamed",root,""); rename.setVersion(view.version());
-        workflows.metadata(id,rename,"dev");
-        assertThatThrownBy(()->workflows.save(id,stale,"dev")).isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
-                .extracting(e->((org.springframework.web.server.ResponseStatusException)e).getStatusCode().value()).isEqualTo(409);
-        var current=workflows.view(id); var changed=tasks.require(root);
-        changed.setSqlText("INSERT INTO ads_root SELECT id FROM ods_orders WHERE id > 0"); tasks.save(root,changed,"dev");
-        assertThatThrownBy(()->workflows.save(id,save(current,current.nodes(),List.of()),"dev")).isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
-                .extracting(e->((org.springframework.web.server.ResponseStatusException)e).getStatusCode().value()).isEqualTo(409);
-        String body=json.writeValueAsString(stale);
-        mvc.perform(post("/workflows/"+id+"/graph").with(user("dev").roles("DEVELOPER")).with(csrf()).contentType("application/json").content(body))
-                .andExpect(status().isConflict()).andExpect(jsonPath("$.message").isNotEmpty()).andExpect(header().string("Cache-Control",org.hamcrest.Matchers.containsString("no-store")));
-        mvc.perform(post("/workflows/"+id+"/graph").with(user("viewer").roles("VIEWER")).with(csrf()).contentType("application/json").content(body)).andExpect(status().isForbidden());
-        mvc.perform(post("/workflows/"+id+"/graph").with(user("dev").roles("DEVELOPER")).contentType("application/json").content(body)).andExpect(status().isForbidden());
-    }
-
-    @Test void scheduledSharedUpstreamCannotChangeButLayoutOnlySaveKeepsSqlVersions() {
-        long shared=task("dwd_shared",List.of()), root=task("ads_root",List.of(shared)); long id=workflow("scheduled",root,""); var view=workflows.view(id);
-        workflows.execute(id,view.version(),view.graphHash(),"schedule","dev");
-        var current=workflows.view(id); int rootVersion=tasks.require(root).getVersion(),sharedVersion=tasks.require(shared).getVersion();
-        var layoutOnly=new WorkflowService.Save(current.version(),current.graphHash(),current.cronExpression(),current.nodes(),edgesFrom(current),Map.of("sql-"+root,new WorkflowService.Position(120,80)));
-        workflows.save(id,layoutOnly,"dev");
-        assertThat(tasks.require(root).getVersion()).isEqualTo(rootVersion); assertThat(tasks.require(shared).getVersion()).isEqualTo(sharedVersion);
-        var noShared=workflows.view(id);
-        assertThatIllegalArgumentException().isThrownBy(()->workflows.save(id,save(noShared,noShared.nodes().stream().filter(n->!n.key().equals("sql-"+shared)).toList(),List.of()),"dev"));
-    }
-
-    @Test void workflowRunScheduleAndPauseOperateCurrentCompleteRootGraph() throws Exception {
-        long a=task("dwd_a",List.of()), root=task("ads_root",List.of(a)); long id=workflow("operate",root,""); var view=workflows.view(id);
-        mvc.perform(post("/workflows/"+id+"/run").with(user("dev").roles("DEVELOPER")).with(csrf()).param("version",String.valueOf(view.version())).param("graphHash",view.graphHash()))
-                .andExpect(status().is3xxRedirection());
-        verify(engine).create(anyString(),eq("ads_root"),argThat(nodes->nodes.size()==2)); verify(engine).start(801L);
-        view=workflows.view(id);
-        mvc.perform(post("/workflows/"+id+"/schedule").with(user("dev").roles("DEVELOPER")).with(csrf()).param("version",String.valueOf(view.version())).param("graphHash",view.graphHash())).andExpect(status().is3xxRedirection());
-        view=workflows.view(id);
-        jdbc.update("UPDATE sql_task SET sql_text=CONCAT(sql_text,' ') WHERE id=?",root); // simulate a now-stale canvas after a model/graph change
-        mvc.perform(post("/workflows/"+id+"/pause").with(user("dev").roles("DEVELOPER")).with(csrf()).param("version",String.valueOf(view.version())).param("graphHash",view.graphHash())).andExpect(status().is3xxRedirection());
-        verify(engine).offline(91);
-    }
-
-    @Test void taskEditorInWorkflowContextPreservesGraphFieldsAndReturnsToCanvas() throws Exception {
-        long upstream=task("dwd_editor",List.of()), root=task("ads_editor",List.of(upstream)); long workflow=workflow("editor",root,"");
-        var before=tasks.require(root);
-        mvc.perform(get("/transforms/"+root+"/edit").param("workflowId",Long.toString(workflow)).with(user("dev").roles("DEVELOPER")))
-                .andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("backPath","/workflows/"+workflow))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("href=\"/workflows/"+workflow+"\">取消</a>")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("name=\"workflowId\" value=\""+workflow+"\"")));
-        mvc.perform(post("/transforms/"+root).with(user("dev").roles("DEVELOPER")).with(csrf())
-                        .param("workflowId",Long.toString(workflow)).param("name",before.getName())
-                        .param("modelId",Long.toString(before.getModelId())).param("sqlText",before.getSqlText()+" ")
-                        .param("version",Integer.toString(before.getVersion())))
-                .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/workflows/"+workflow));
-        var saved=tasks.require(root);
-        assertThat(saved.getCronExpression()).isEqualTo(before.getCronExpression());
-        assertThat(saved.getUpstreamTaskIds()).containsExactly(upstream);
-        assertThat(saved.getUpstreamPipelineIds()).isEmpty();
-    }
-
-    @Test void preservesHistoricalRunGraphsAndOnlyExposesInstancesForTheirWorkflow() {
-        long upstream=task("dwd_history",List.of()), root=task("ads_history",List.of(upstream)); long id=workflow("history",root,"");
-        when(engine.create(anyString(),anyString(),anyList())).thenReturn(801L,802L);
-        var first=workflows.view(id); workflows.execute(id,first.version(),first.graphHash(),"run","dev");
-        var before=schedulerOperations.resource("workflow",id);
-        assertThat(schedulerOperations.graph(before,801L)).extracting(WorkflowService.Node::key).containsExactly("sql-"+upstream,"sql-"+root);
-        var current=workflows.view(id);
-        workflows.save(id,save(current,List.of(current.nodes().stream().filter(n->n.key().equals("sql-"+root)).findFirst().orElseThrow()),List.of()),"dev");
-        var second=workflows.view(id); workflows.execute(id,second.version(),second.graphHash(),"run","dev");
-        var resource=schedulerOperations.resource("workflow",id);
+    @Test void snapshotsKeepHistoricalTopologyAndRejectForeignInstances() {
+        long a=task("dwd_history"),b=task("ads_history"),flow=workflow("历史图");
+        var first=workflows.save(flow,save(workflows.view(flow),List.of(node(flow,a),node(flow,b)),edges("sql-"+a,"sql-"+b)),"dev");
+        workflows.execute(flow,first.version(),first.graphHash(),"run","dev");
+        var second=workflows.save(flow,save(workflows.view(flow),List.of(node(flow,b)),List.of()),"dev");
+        workflows.execute(flow,second.version(),second.graphHash(),"run","dev");
+        var resource=operations.resource("workflow",flow);
         assertThat(resource.codes()).contains(801L,802L);
-        assertThat(schedulerOperations.graph(resource,801L)).extracting(WorkflowService.Node::key).containsExactly("sql-"+upstream,"sql-"+root);
-        assertThat(schedulerOperations.graph(resource,802L)).extracting(WorkflowService.Node::key).containsExactly("sql-"+root);
-        when(monitor.instance(51L)).thenReturn(new DolphinMonitorClient.Workflow(51L,801L,"history","SUCCESS","","",1));
-        assertThat(schedulerOperations.instance(resource,51L).definitionCode()).isEqualTo(801L);
-        when(monitor.instance(52L)).thenReturn(new DolphinMonitorClient.Workflow(52L,999L,"foreign","SUCCESS","","",1));
-        assertThatThrownBy(()->schedulerOperations.instance(resource,52L)).isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
-                .extracting(e->((org.springframework.web.server.ResponseStatusException)e).getStatusCode().value()).isEqualTo(404);
+        assertThat(operations.graph(resource,801L)).extracting(WorkflowService.Node::key).containsExactly("sql-"+a,"sql-"+b);
+        assertThat(operations.graph(resource,802L)).extracting(WorkflowService.Node::key).containsExactly("sql-"+b);
+        when(monitor.instance(52L)).thenReturn(new com.litedata.scheduling.DolphinMonitorClient.Workflow(52L,999L,"foreign","SUCCESS","","",1));
+        assertThatThrownBy(()->operations.instance(resource,52L)).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        verify(engine,times(2)).create(anyString(),anyString(),argThat(nodes->nodes.stream().allMatch(n->n.script().contains("--workflow-id "+flow)&&!n.script().contains("INSERT"))));
     }
 
-    @Test void legacyDefinitionWithoutSnapshotIsReusedWithoutInventingHistoricalGraph() {
-        long root=task("ads_legacy",List.of()); long id=workflow("legacy",root,""); var view=workflows.view(id);
-        jdbc.update("UPDATE sql_task SET definition_code=?,definition_hash=? WHERE id=?",734L,view.graphHash(),root);
-        workflows.execute(id,view.version(),view.graphHash(),"run","dev");
-        verify(engine,never()).create(anyString(),anyString(),anyList()); verify(engine).start(734L);
-        var resource=schedulerOperations.resource("workflow",id);
-        assertThat(resource.codes()).containsExactly(734L);
-        assertThat(mapper.snapshotCodes(root)).isEmpty();
-        assertThat(schedulerOperations.graph(resource,734L)).isNull();
+    @Test void sharedSqlIsProtectedByScheduledWorkflowWhileOtherGraphsStayIndependent() {
+        long shared=task("dwd_shared"),sink=task("ads_shared"),owner=workflow("owner"),other=workflow("other");
+        var active=workflows.save(owner,save(workflows.view(owner),List.of(node(owner,shared),node(owner,sink)),edges("sql-"+shared,"sql-"+sink)),"dev");
+        workflows.execute(owner,active.version(),active.graphHash(),"schedule","dev");
+        var second=workflows.save(other,save(workflows.view(other),List.of(node(other,shared),node(other,sink)),List.of()),"dev");
+        int version=tasks.require(shared).getVersion();
+        assertThatIllegalArgumentException().isThrownBy(()->workflows.saveTask(other,new WorkflowService.TaskSave(second.version(),second.graphHash(),shared,version,"changed",tasks.require(shared).getModelId(),tasks.require(shared).getSqlText()),"dev"));
+        var layout=new WorkflowService.Save(active.version(),active.graphHash(),active.cronExpression(),active.nodes(),edges("sql-"+shared,"sql-"+sink),Map.of("sql-"+sink,new WorkflowService.Position(200,50)));
+        var saved=workflows.save(owner,layout,"dev");
+        assertThat(saved.graphHash()).isEqualTo(active.graphHash()); assertThat(tasks.require(shared).getVersion()).isEqualTo(version);
+        assertThat(workflows.view(other).nodes()).allMatch(n->n.upstreamKeys().isEmpty());
+        assertThat(workflows.view(owner).nodes()).anyMatch(n->n.upstreamKeys().contains("sql-"+shared));
     }
 
-    private ProcessingWorkflow draft(String name,long root,String description) { var value=new ProcessingWorkflow(); value.setName(name); value.setRootTaskId(root); value.setDescription(description); return value; }
-    private long workflow(String name,long root,String description) { return workflows.metadata(null,draft(name,root,description),"dev"); }
-    private WorkflowService.Save save(WorkflowService.View view,List<WorkflowService.Node> nodes,List<WorkflowService.Edge> edges) { return new WorkflowService.Save(view.version(),view.graphHash(),view.cronExpression(),nodes,edges,Map.of()); }
-    private List<WorkflowService.Edge> edges(String... values) { var result=new ArrayList<WorkflowService.Edge>(); for(int i=0;i<values.length;i+=2) result.add(new WorkflowService.Edge(values[i],values[i+1])); return result; }
-    private List<WorkflowService.Edge> edgesFrom(WorkflowService.View view) { return view.nodes().stream().flatMap(n->n.upstreamKeys().stream().map(key->new WorkflowService.Edge(key,n.key()))).toList(); }
-    private long pipeline(String name) { sources.create("source-"+name,MYSQL.getJdbcUrl(),MYSQL.getUsername(),MYSQL.getPassword()); models.save(null,model("ods_"+name,"ODS"),"dev"); pipelines.create(name,platform.sources().getFirst().getId(),"orders","updated_at","ods_"+name,"","0 0 * * * ?"); return platform.pipelines().getFirst().getId(); }
-    private long task(String table,List<Long> upstream) { long model=models.save(null,model(table,table.startsWith("ads")?"ADS":table.startsWith("dws")?"DWS":"DWD"),"dev"); var task=new SqlTask(); task.setName(table); task.setModelId(model); task.setSqlText("INSERT INTO "+table+" SELECT id FROM ods_orders"); task.setUpstreamTaskIds(upstream); return tasks.save(null,task,"dev"); }
-    private DataModel model(String table,String layer) { var value=new DataModel(); value.setName(table);value.setTableName(table);value.setSubjectArea("测试");value.setLayer(layer);var field=new ModelField();field.setName("id");field.setDataType("BIGINT");field.setKeyColumn(true);value.setFields(List.of(field));return value; }
+    @Test void workflowClaimBindsRunToWorkflowAndRejectsChangedGraph() {
+        long sql=task("dwd_claim"),flow=workflow("claim");
+        var view=workflows.save(flow,save(workflows.view(flow),List.of(node(flow,sql)),List.of()),"dev");
+        long run=((Number)tasks.claim(sql,tasks.require(sql).getVersion(),null,flow,view.graphHash()).get("runId")).longValue();
+        var mapperRun=jdbc.queryForMap("SELECT workflow_id,root_task_id FROM sql_task_run WHERE id=?",run);
+        assertThat(mapperRun).containsEntry("workflow_id",flow).containsEntry("root_task_id",null);
+        tasks.finish(run,true);
+        var removed=workflows.save(flow,save(workflows.view(flow),List.of(),List.of()),"dev");
+        assertThatThrownBy(()->tasks.claim(sql,tasks.require(sql).getVersion(),null,flow,view.graphHash())).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        assertThatIllegalArgumentException().isThrownBy(()->workflows.execute(flow,removed.version(),removed.graphHash(),"run","dev"));
+    }
+
+    @Test void emptyCreationHasNoRootAndPauseWorksEvenForBrokenSql() throws Exception {
+        mvc.perform(get("/workflows/new").with(user("dev").roles("DEVELOPER"))).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("rootTaskId"))));
+        mvc.perform(post("/workflows").with(user("dev").roles("DEVELOPER")).with(csrf()).param("name","empty-form"))
+                .andExpect(status().is3xxRedirection());
+        long sql=task("dwd_broken"),flow=workflow("broken"); var saved=workflows.save(flow,save(workflows.view(flow),List.of(node(flow,sql)),List.of()),"dev");
+        workflows.execute(flow,saved.version(),saved.graphHash(),"schedule","dev");
+        jdbc.update("UPDATE sql_task SET sql_text='broken sql' WHERE id=?",sql);
+        workflows.execute(flow,saved.version(),"stale-hash","pause","dev");
+        assertThat(workflows.require(flow).getStatus()).isEqualTo("PAUSED"); verify(engine).offline(91);
+    }
+
+    @Test void untouchedUpgradeReusesOnlineDefinitionAndLegacyWorkersUntilTopologyChanges() {
+        long sql=task("dwd_upgrade"),flow=workflow("upgrade");
+        var view=workflows.save(flow,save(workflows.view(flow),List.of(node(flow,sql)),List.of()),"dev");
+        String oldHash=tasks.graph(sql).hash();
+        jdbc.update("INSERT INTO workflow_legacy_binding(workflow_id,root_task_id,graph_hash) VALUES(?,?,?)",flow,sql,oldHash);
+        jdbc.update("UPDATE processing_workflow SET definition_code=734,definition_hash=?,schedule_id=91,status='SCHEDULED' WHERE id=?",oldHash,flow);
+        workflows.execute(flow,view.version(),view.graphHash(),"run","dev");
+        verify(engine).start(734L); verify(engine,never()).create(anyString(),anyString(),anyList()); verify(engine,never()).offline(anyInt());
+        assertThat(workflows.require(flow).getStatus()).isEqualTo("SCHEDULED");
+        assertThat(operations.graph(operations.resource("workflow",flow),734L)).isNull();
+        long run=((Number)tasks.claim(sql,1,sql,oldHash).get("runId")).longValue(); tasks.finish(run,true);
+        workflows.execute(flow,view.version(),"","pause","dev");
+        workflows.save(flow,save(workflows.view(flow),List.of(),List.of()),"dev");
+        assertThatThrownBy(()->tasks.claim(sql,1,sql,oldHash)).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+    }
+
+    private long workflow(String name) { var w=new ProcessingWorkflow(); w.setName(name); return workflows.metadata(null,w,"dev"); }
+    private WorkflowService.Node node(long w,long id) { return workflows.expand(w,"sql-"+id).getFirst(); }
+    private WorkflowService.Save save(WorkflowService.View v,List<WorkflowService.Node> n,List<WorkflowService.Edge> e) { return new WorkflowService.Save(v.version(),v.graphHash(),v.cronExpression(),n,e,Map.of()); }
+    private List<WorkflowService.Edge> edges(String... v) { var e=new ArrayList<WorkflowService.Edge>(); for(int i=0;i<v.length;i+=2)e.add(new WorkflowService.Edge(v[i],v[i+1])); return e; }
+    private long task(String table) { long m=model(table,table.startsWith("ads")?"ADS":"DWD"); var t=new SqlTask(); t.setName(table);t.setModelId(m);t.setSqlText("INSERT INTO "+table+" SELECT id FROM ods_orders"); return tasks.save(null,t,"dev"); }
+    private long model(String table,String layer) { var m=new DataModel();m.setName(table);m.setTableName(table);m.setSubjectArea("测试");m.setLayer(layer);var f=new ModelField();f.setName("id");f.setDataType("BIGINT");f.setKeyColumn(true);m.setFields(List.of(f));return models.save(null,m,"dev"); }
+    private long pipeline(String target) { sources.create("source-"+target,MYSQL.getJdbcUrl(),MYSQL.getUsername(),MYSQL.getPassword()); model(target,"ODS"); pipelines.create(target,platform.sources().getFirst().getId(),"orders","updated_at",target,"","0 0 * * * ?"); return platform.pipelines().getFirst().getId(); }
 }

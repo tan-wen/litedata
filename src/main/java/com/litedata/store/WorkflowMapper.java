@@ -1,27 +1,46 @@
 package com.litedata.store;
 
-import com.litedata.model.SqlTask;
 import com.litedata.workflow.ProcessingWorkflow;
 import java.util.*;
 import org.apache.ibatis.annotations.*;
 
 @Mapper
 public interface WorkflowMapper {
-    String FROM=" FROM processing_workflow w JOIN sql_task t ON t.id=w.root_task_id WHERE t.archived=FALSE ";
-    String FILTER=" AND (LOWER(w.name) LIKE CONCAT('%',#{keyword},'%') OR LOWER(w.description) LIKE CONCAT('%',#{keyword},'%') OR LOWER(t.name) LIKE CONCAT('%',#{keyword},'%')) ";
-    String COLUMNS="SELECT w.*,t.name root_name,t.cron_expression,t.status ";
+    String FROM=" FROM processing_workflow w WHERE 1=1 ";
+    String FILTER=" AND (LOWER(w.name) LIKE CONCAT('%',#{keyword},'%') OR LOWER(w.description) LIKE CONCAT('%',#{keyword},'%')) ";
     @Select("SELECT COUNT(*)"+FROM+FILTER) long count(String keyword);
-    @Select(COLUMNS+FROM+FILTER+" ORDER BY w.id DESC LIMIT #{limit} OFFSET #{offset}")
+    @Select("SELECT w.*"+FROM+FILTER+" ORDER BY w.id DESC LIMIT #{limit} OFFSET #{offset}")
     List<ProcessingWorkflow> page(@Param("keyword") String keyword,@Param("limit") int limit,@Param("offset") long offset);
-    @Select(COLUMNS+FROM+" AND w.id=#{id}") ProcessingWorkflow workflow(long id);
-    @Select(COLUMNS+FROM+" AND w.root_task_id=#{id}") ProcessingWorkflow forRoot(long id);
-    @Insert("INSERT INTO processing_workflow(name,description,root_task_id) VALUES(#{name},#{description},#{rootTaskId})")
+    @Select("SELECT * FROM processing_workflow WHERE id=#{id}") ProcessingWorkflow workflow(long id);
+    @Select("SELECT w.* FROM processing_workflow w JOIN processing_workflow_node n ON n.workflow_id=w.id WHERE n.task_id=#{id} ORDER BY w.id")
+    List<ProcessingWorkflow> forTask(long id);
+    @Select("SELECT w.* FROM processing_workflow w JOIN processing_workflow_node n ON n.workflow_id=w.id WHERE n.pipeline_id=#{id}")
+    List<ProcessingWorkflow> forPipeline(long id);
+    @Select("SELECT DISTINCT w.* FROM processing_workflow w JOIN processing_workflow_node n ON n.workflow_id=w.id WHERE w.status IN ('SCHEDULED','SCHEDULE_PENDING') AND n.task_id=#{id}")
+    List<ProcessingWorkflow> scheduledForTask(long id);
+    @Select("SELECT COUNT(*) FROM workflow_legacy_binding WHERE root_task_id=#{root} AND (graph_hash IS NULL OR graph_hash<>#{hash})")
+    int retiredLegacy(@Param("root") long root,@Param("hash") String hash);
+    @Update("UPDATE workflow_legacy_binding SET graph_hash=NULL WHERE workflow_id=#{id}") void retireLegacy(long id);
+    record LegacyBinding(long rootTaskId,String graphHash) {}
+    @Select("SELECT root_task_id,graph_hash FROM workflow_legacy_binding WHERE workflow_id=#{id}") LegacyBinding legacyBinding(long id);
+    @Insert("INSERT INTO processing_workflow(name,description) VALUES(#{name},#{description})")
     @Options(useGeneratedKeys=true,keyProperty="id") void insert(ProcessingWorkflow workflow);
     @Update("UPDATE processing_workflow SET name=#{name},description=#{description},version=version+1 WHERE id=#{id}") void metadata(ProcessingWorkflow workflow);
-    @Update("UPDATE processing_workflow SET positions_json=#{positions},version=version+1 WHERE id=#{id}")
-    void graph(@Param("id") long id,@Param("positions") String positions);
-    @Select(SqlTaskMapper.TASK_COLUMNS+"WHERE t.archived=FALSE AND NOT EXISTS(SELECT 1 FROM processing_workflow w WHERE w.root_task_id=t.id) ORDER BY t.id DESC")
-    List<SqlTask> roots();
+    @Update("UPDATE processing_workflow SET positions_json=#{positions},cron_expression=#{cron},version=version+1 WHERE id=#{id}")
+    void graph(@Param("id") long id,@Param("positions") String positions,@Param("cron") String cron);
+    @Update("UPDATE processing_workflow SET definition_code=#{code},definition_hash=#{hash},schedule_id=NULL,status='DRAFT' WHERE id=#{id}")
+    void definition(@Param("id") long id,@Param("code") long code,@Param("hash") String hash);
+    @Update("UPDATE processing_workflow SET schedule_id=#{scheduleId},status=#{status} WHERE id=#{id}")
+    void schedule(@Param("id") long id,@Param("scheduleId") Integer scheduleId,@Param("status") String status);
+    @Select("SELECT node_key FROM processing_workflow_node WHERE workflow_id=#{id} ORDER BY node_key") List<String> nodeKeys(long id);
+    @Select("SELECT from_key `from`,to_key `to` FROM processing_workflow_edge WHERE workflow_id=#{id} ORDER BY from_key,to_key")
+    List<com.litedata.workflow.WorkflowService.Edge> edges(long id);
+    @Delete("DELETE FROM processing_workflow_edge WHERE workflow_id=#{id}") void deleteEdges(long id);
+    @Delete("DELETE FROM processing_workflow_node WHERE workflow_id=#{id}") void deleteNodes(long id);
+    @Insert("INSERT INTO processing_workflow_node(workflow_id,node_key,task_id,pipeline_id) VALUES(#{id},#{key},#{task},#{pipeline})")
+    void node(@Param("id") long id,@Param("key") String key,@Param("task") Long task,@Param("pipeline") Long pipeline);
+    @Insert("INSERT INTO processing_workflow_edge(workflow_id,from_key,to_key) VALUES(#{id},#{from},#{to})")
+    void edge(@Param("id") long id,@Param("from") String from,@Param("to") String to);
     String CATALOG=" FROM (SELECT CONCAT('sql-',t.id) node_key,t.id ref_id,t.name,'SQL' kind,m.table_name "
             +"FROM sql_task t JOIN data_model m ON m.id=t.model_id WHERE t.archived=FALSE UNION ALL "
             +"SELECT CONCAT('pipeline-',p.id),p.id,p.name,'同步',p.target_table FROM pipeline p) n "
@@ -30,10 +49,12 @@ public interface WorkflowMapper {
     @Select("SELECT COUNT(*)"+CATALOG) long catalogCount(String keyword);
     @Select("SELECT node_key `key`,ref_id,name,kind,table_name"+CATALOG+" ORDER BY kind,node_key LIMIT #{limit} OFFSET #{offset}")
     List<CatalogItem> catalog(@Param("keyword") String keyword,@Param("limit") int limit,@Param("offset") long offset);
-    @Insert("INSERT IGNORE INTO processing_workflow_snapshot(definition_code,root_task_id,nodes_json) VALUES(#{code},#{root},#{nodes})")
-    void snapshot(@Param("code") long code,@Param("root") long root,@Param("nodes") String nodes);
+    @Insert("INSERT IGNORE INTO workflow_definition_snapshot(definition_code,workflow_id,nodes_json) VALUES(#{code},#{workflow},#{nodes})")
+    void snapshot(@Param("code") long code,@Param("workflow") long workflow,@Param("nodes") String nodes);
+    @Select("SELECT nodes_json FROM workflow_definition_snapshot WHERE definition_code=#{code} AND workflow_id=#{workflow}")
+    String snapshotJson(@Param("code") long code,@Param("workflow") long workflow);
+    @Select("SELECT definition_code FROM workflow_definition_snapshot WHERE workflow_id=#{id} ORDER BY definition_code DESC")
+    List<Long> snapshotCodes(long id);
     @Select("SELECT nodes_json FROM processing_workflow_snapshot WHERE definition_code=#{code} AND root_task_id=#{root}")
-    String snapshotJson(@Param("code") long code,@Param("root") long root);
-    @Select("SELECT definition_code FROM processing_workflow_snapshot WHERE root_task_id=#{root} ORDER BY definition_code DESC")
-    List<Long> snapshotCodes(long root);
+    String legacySnapshotJson(@Param("code") long code,@Param("root") long root);
 }
