@@ -39,6 +39,10 @@ class PageBreadcrumbsTest {
         var detail=model(); detail.put("returnTo","detail");
         assertThat(PageBreadcrumbs.forView("transform-form",detail)).extracting(PageBreadcrumbs.Item::href)
                 .containsExactly("/","/transforms","/transforms/7",null);
+        assertThat(PageBreadcrumbs.forView("transform-detail",model())).extracting(PageBreadcrumbs.Item::label)
+                .containsExactly("工作台","数据加工","SQL任务","资源名称");
+        assertThat(PageBreadcrumbs.forView("transform-detail",model())).extracting(PageBreadcrumbs.Item::href)
+                .containsExactly("/","/workflows","/transforms",null);
     }
 
     @Test void historicalLineagePreservesTheVersionAndSchedulerNodesPreserveTaskIdentity() {

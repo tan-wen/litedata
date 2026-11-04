@@ -8,7 +8,7 @@ import java.security.MessageDigest;
 import java.util.*;
 import org.springframework.stereotype.Component;
 
-/** Workflow-local membership and edges; SQL definitions can be shared without sharing dependencies. */
+/** Workflow-local SQL ownership, membership and dependencies. Pipelines remain reusable sources. */
 @Component
 public class WorkflowGraph {
     private final WorkflowMapper workflows;
@@ -20,6 +20,7 @@ public class WorkflowGraph {
         this.workflows=workflows; this.tasks=tasks; this.platform=platform; this.models=models; this.policy=policy;
     }
     public TransformService.Graph graph(long id) {
+        if(workflows.workflow(id)==null) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND,"加工流程不存在或已删除");
         var upstream=upstream(workflows.nodeKeys(id),workflows.edges(id));
         var ordered=new ArrayList<String>(); var visited=new HashSet<String>();
         for(String key:upstream.keySet()) visit(key,upstream,new HashSet<>(),visited,ordered);
@@ -35,6 +36,7 @@ public class WorkflowGraph {
         long id=parse(key);
         if(key.startsWith("sql-")) {
             var task=tasks.task(id); if(task==null) throw new IllegalArgumentException("数据加工不存在或已归档");
+            if(!Objects.equals(task.getWorkflowId(),workflowId)) throw new IllegalArgumentException("SQL 任务仅属于其创建流程，不能跨流程引用");
             var model=models.preview(task.getModelId()); policy.validate(task.getSqlText(),model.model().getTableName());
             String fingerprint=task.getId()+"|"+task.getName()+"|"+task.getVersion()+"|"+task.getSqlText()+"|"+model.hash();
             return new WorkflowService.Node(key,task.getName(),"SQL",id,task.getVersion(),upstream,task.getTargetTable(),

@@ -113,7 +113,7 @@ DS 的 Alert 容器可运行不代表告警已送达，需配置邮箱/Webhook �
 
 配置可在 `config/` 调整，修改后 `docker compose up -d --force-recreate 对应服务`。配额、堆和 BE `mem_limit` 必须一起核算。
 只有 `config/` 从不可变文件校验中排除，便于按现场资源调优；JAR、运行时二进制、部署脚本与 Compose 清单均由 SHA256SUMS 校验。
-Docker 标准输出轮转 50MiB×5；Doris 文件日志已配置轮转。DS 模块/任务日志持久化到 DATA_DIR/scheduler/logs，使用发行包自带轮转，并需接入离机日志采集与现场保留策略，
+Docker 标准输出轮转 50MiB×5；Doris 文件日志已配置轮转。DS 模块日志和任务日志分别持久化到 DATA_DIR/scheduler/logs 下的模块目录与 tasks 目录，使用发行包自带轮转，并需接入离机日志采集与现场保留策略，
 不要把原始 DataX 日志作为公开排错附件（可能含源库凭据）。MySQL 慢日志/平台审计表也需定期归档，binlog 7 天不等于已完成备份。
 
 ## 启停、备份和恢复

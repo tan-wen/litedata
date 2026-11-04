@@ -80,6 +80,7 @@ services:
     ports: ["127.0.0.1:${DOLPHINSCHEDULER_PORT}:12345"]
     volumes:
       - ds-data:/tmp/dolphinscheduler
+      - ds-logs:/opt/dolphinscheduler/logs
       - ./deploy/runtime:/opt/platform/runtime
     depends_on:
       mysql: { condition: service_healthy }
@@ -120,4 +121,5 @@ volumes:
   doris-fe-data:
   doris-be-data:
   ds-data:
+  ds-logs:
 

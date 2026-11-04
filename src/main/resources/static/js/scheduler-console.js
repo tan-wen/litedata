@@ -13,22 +13,15 @@
     element.textContent = labels[state] || state || '等待中';
   };
   async function jsonRequest(url, signal) {
-    const response = await fetch(url, { signal, headers: { Accept: 'application/json' }, cache: 'no-store' });
-    if (response.redirected || [401, 403].includes(response.status)) {
-      const error = new Error('登录状态已失效，请刷新页面后重新登录。'); error.stop = true; throw error;
-    }
-    if (!response.headers.get('content-type')?.includes('json')) throw new Error('服务暂不可用，请稍后重试。');
-    const data = await response.json();
-    if (!response.ok) {
-      const error = new Error(data.message || data.detail || '读取失败，请稍后重试。');
-      error.stop = [401, 403, 404].includes(response.status); throw error;
-    }
-    return data;
+    try {
+      return await window.platformFeedback.json(url, { signal, headers: { Accept: 'application/json' }, cache: 'no-store' });
+    } catch (failure) { failure.stop = [401, 403, 404, 410].includes(failure.status); throw failure; }
   }
+
   function createLogReader(element) {
     if (!element) return null;
     const part = key => element.querySelector(`[data-log-${key}]`);
-    const output = part('output'), status = part('status'), count = part('count'), error = part('error');
+    const output = part('output'), status = part('status'), count = part('count');
     const loadButton = part('load'), resetButton = part('reset'), download = part('download');
     const auto = part('auto'), follow = part('follow'), filter = part('filter');
     let url = element.dataset.logUrl || '', selectedId = element.dataset.selectedId || '';
@@ -47,12 +40,12 @@
     }
     function reset() {
       generation++; controller?.abort(); loading = false; offset = 0; lines = [];
-      atEnd = false; retryAt = 0; failures = 0; stopped = false; error.hidden = true; render();
+      atEnd = false; retryAt = 0; failures = 0; stopped = false; window.platformFeedback.clear('scheduler-log'); render();
     }
     async function load() {
       if (loading || !url || document.hidden || stopped) return;
       const current = generation, finalRequest = finalReadNeeded;
-      finalReadNeeded = false; loading = true; controls(); error.hidden = true;
+      finalReadNeeded = false; loading = true; controls();
       const requestController = new AbortController(); controller = requestController;
       const timeout = setTimeout(() => requestController.abort(), 25000);
       status.textContent = '正在读取日志…';
@@ -67,15 +60,14 @@
           lines = lines.slice(-10000); offset = data.nextOffset;
         }
         atEnd = !data.hasMore; if (!hasSnapshot) selectedActive = data.running;
-        failures = 0; retryAt = 0; render();
+        failures = 0; retryAt = 0; window.platformFeedback.clear('scheduler-log'); render();
         status.textContent = data.hasMore ? '仍有后续日志，可继续加载。' : data.running ? '已读到当前末尾，等待新日志。' : '已读到当前日志末尾。';
       } catch (failure) {
         if (current !== generation) return;
         if (finalRequest) finalReadNeeded = true;
         failures++; retryAt = Date.now() + Math.min(30000, 5000 * 2 ** (failures - 1));
         stopped = Boolean(failure.stop);
-        error.textContent = failure.name === 'AbortError' ? '日志读取超时，请重试。' : failure.message;
-        error.hidden = false;
+        if (failures === 1) window.platformFeedback.show(failure.name === 'AbortError' ? '日志读取超时，请重试。' : failure, { key: 'scheduler-log' });
         status.textContent = stopped || !auto.checked ? '读取已暂停，已加载内容保留。' : '日志暂不可用，将自动重试；已加载内容保留。';
       } finally {
         clearTimeout(timeout);
@@ -107,7 +99,7 @@
       }
       if (changed || retried) load(); else automatic();
     }
-    loadButton.addEventListener('click', () => { stopped = false; load(); });
+    loadButton.addEventListener('click', () => { stopped = false; failures = 0; load(); });
     resetButton.addEventListener('click', () => { reset(); load(); });
     filter.addEventListener('input', render);
     follow.addEventListener('change', () => { if (follow.checked) output.scrollTop = output.scrollHeight; });
@@ -126,7 +118,7 @@
   if (!stateBadge) { write(find('scheduler-status'), '状态暂不可用，请点击“刷新状态”重试。'); return; }
   const log = createLogReader(find('log-console'));
   const nav = find('scheduler-nodes'), template = find('scheduler-node-template');
-  const refresh = find('scheduler-refresh'), status = find('scheduler-status'), error = find('scheduler-error');
+  const refresh = find('scheduler-refresh'), status = find('scheduler-status');
   let finished = false, loading = false, active = true, stopped = false, retryAt = 0, failures = 0;
   let controller, timer, generation = 0;
   function renderNodes(nodes, selectedId, labels) {
@@ -211,14 +203,13 @@
       renderNodes(data.nodes, log?.id || '', labels);
       renderCallbacks(data.callbackPage);
       window.dispatchEvent(new CustomEvent('scheduler:snapshot', { detail: data }));
-      finished = data.finished; stopped = false; retryAt = 0; failures = 0; error.hidden = true;
+      finished = data.finished; stopped = false; retryAt = 0; failures = 0; window.platformFeedback.clear('scheduler-status');
       const time = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', timeStyle: 'medium' }).format(new Date(data.updatedAt));
       status.textContent = finished ? `执行已结束 · ${time} 更新` : `每 5 秒自动更新状态 · ${time} 更新`;
     } catch (failure) {
       if (current !== generation || !active) return;
       failures++; retryAt = Date.now() + Math.min(30000, 5000 * 2 ** (failures - 1)); stopped = Boolean(failure.stop);
-      error.textContent = failure.name === 'AbortError' ? '状态读取超时，已保留上次结果。' : failure.message;
-      error.hidden = false;
+      if (failures === 1) window.platformFeedback.show(failure.name === 'AbortError' ? '状态读取超时，已保留上次结果。' : failure, { key: 'scheduler-status' });
       status.textContent = stopped || finished ? '已保留上次状态，请点击“刷新状态”重试。' : '状态暂不可用，将自动重试；上次结果已保留。';
     } finally {
       clearTimeout(timeout);
@@ -231,7 +222,7 @@
     log?.automatic();
   }
   function startTimer() { clearInterval(timer); timer = setInterval(tick, 5000); }
-  refresh.addEventListener('click', () => { stopped = false; refreshStatus(); });
+  refresh.addEventListener('click', () => { stopped = false; failures = 0; refreshStatus(); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden && !finished) tick(); });
   window.addEventListener('pagehide', () => { active = false; generation++; controller?.abort(); loading = false; clearInterval(timer); log?.suspend(); });
   window.addEventListener('pageshow', event => { if (event.persisted) { active = true; startTimer(); refreshStatus(); log?.automatic(); } });

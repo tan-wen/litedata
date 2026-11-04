@@ -19,8 +19,25 @@ public class WorkflowService {
                        String tableName,String editUrl,String engineName,String configHash,boolean standaloneScheduled) {}
     public record Edge(String from,String to) {}
     public record View(long id,String name,String description,int version,String cronExpression,String status,
-                       Integer scheduleId,Long definitionCode,String graphHash,List<Node> nodes,Map<String,Position> positions) {}
-    public record Save(int version,String graphHash,String cronExpression,List<Node> nodes,List<Edge> edges,Map<String,Position> positions) {}
+                       Integer scheduleId,Long definitionCode,String graphHash,List<Node> nodes,Map<String,Position> positions,
+                       boolean reviewRequired,String ownershipNotice) {}
+    public record SqlDraft(String key,Long taskId,int version,String name,Long modelId,String sqlText) {}
+    public record Save(int version,String graphHash,String cronExpression,List<Node> nodes,List<Edge> edges,Map<String,Position> positions,
+                       Boolean acknowledgeOwnershipMigration,List<SqlDraft> sqlDrafts) {
+        public Save(int version,String graphHash,String cronExpression,List<Node> nodes,List<Edge> edges,Map<String,Position> positions) {
+            this(version,graphHash,cronExpression,nodes,edges,positions,false,List.of());
+        }
+        public Save(int version,String graphHash,String cronExpression,List<Node> nodes,List<Edge> edges,Map<String,Position> positions,Boolean acknowledgeOwnershipMigration) {
+            this(version,graphHash,cronExpression,nodes,edges,positions,acknowledgeOwnershipMigration,List.of());
+        }
+    }
+    public record ModelChoice(long id,String name,String tableName,Long taskId) {}
+    public List<ModelChoice> modelChoices(List<com.litedata.model.DataModel> models) {
+        var writers=new HashMap<Long,Long>();
+        for(var t:sql.tasks()) writers.put(t.getModelId(),t.getId());
+        return models.stream().filter(m->!"ODS".equals(m.getLayer()) && "UNIQUE".equals(m.getModelType()))
+                .map(m->new ModelChoice(m.getId(),m.getName(),m.getTableName(),writers.get(m.getId()))).toList();
+    }
     public record TaskSave(int workflowVersion,String graphHash,Long taskId,int version,String name,Long modelId,String sqlText) {}
     public record TaskDefinition(long id,String name,Long modelId,String sqlText,int version) {}
     public record Catalog(List<WorkflowMapper.CatalogItem> items,long total,int pageNum,int pageSize) {}
@@ -56,15 +73,29 @@ public class WorkflowService {
         else { version(require(id),draft.getVersion()); draft.setId(id); mapper.metadata(draft); }
         platform.audit(actor,"WORKFLOW_SAVE",Long.toString(id),"SUCCESS"); return id;
     }
+    @Transactional
+    public void archive(long id,int expected,String actor) {
+        sql.lockGraph(); var workflow=require(id); version(workflow,expected);
+        ensureEditable(workflow);
+        mapper.retireLegacy(id);
+        for(String key:mapper.nodeKeys(id)) if(key.startsWith("sql-")) {
+            long taskId=WorkflowGraph.parse(key); sql.deleteLegacyReferences(taskId); sql.deletePipelineDependencies(taskId);
+        }
+        sql.archiveOwned(id);
+        mapper.archive(id);
+        platform.audit(actor,"WORKFLOW_ARCHIVE",Long.toString(id),"SUCCESS");
+    }
     public View view(long id) {
         var workflow=require(id); var graph=graphs.graph(id);
         var nodes=graph.nodes().stream().map(n->graphs.node(id,n.key(),n.upstreamKeys())).toList();
-        return view(workflow,graph.hash(),nodes,positions(workflow.getPositionsJson()));
+        var positions=new LinkedHashMap<>(positions(workflow.getPositionsJson()));
+        positions.keySet().retainAll(nodes.stream().map(Node::key).toList());
+        return view(workflow,graph.hash(),nodes,positions);
     }
     public View summary(long id) { return view(require(id),"",List.of(),Map.of()); }
     private View view(ProcessingWorkflow w,String hash,List<Node> nodes,Map<String,Position> positions) {
         return new View(w.getId(),w.getName(),w.getDescription(),w.getVersion(),w.getCronExpression(),w.getStatus(),
-                w.getScheduleId(),w.getDefinitionCode(),hash,nodes,positions);
+                w.getScheduleId(),w.getDefinitionCode(),hash,nodes,positions,w.isReviewRequired(),w.getOwnershipNotice());
     }
     public List<Node> expand(long id,String key) { require(id); return List.of(graphs.node(id,key,List.of())); }
     public TaskDefinition task(long workflowId,long taskId) {
@@ -76,14 +107,13 @@ public class WorkflowService {
     public View saveTask(long id,TaskSave input,String actor) {
         sql.lockGraph(); var workflow=require(id); version(workflow,input.workflowVersion()); checkHash(id,input.graphHash());
         ensureEditable(workflow);
+        requireReviewed(workflow);
         if(input.taskId()!=null) task(id,input.taskId());
         else if(mapper.nodeKeys(id).size()>=100) throw new IllegalArgumentException("工作流最多100个节点");
         var draft=input.taskId()==null?new SqlTask():tasks.require(input.taskId());
+        draft.setWorkflowId(id);
         draft.setName(input.name()); draft.setModelId(input.modelId()); draft.setSqlText(input.sqlText()); draft.setVersion(input.version());
         long taskId=tasks.save(input.taskId(),draft,actor);
-        mapper.retireLegacy(id);
-        if(input.taskId()==null) mapper.node(id,"sql-"+taskId,taskId,null);
-        mapper.graph(id,workflow.getPositionsJson(),workflow.getCronExpression());
         platform.audit(actor,"WORKFLOW_SQL_SAVE",id+":"+taskId,"SUCCESS"); return view(id);
     }
     @Transactional
@@ -91,36 +121,103 @@ public class WorkflowService {
         sql.lockGraph(); var workflow=require(id); version(workflow,input.version()); checkHash(id,input.graphHash());
         String cron=SchedulePreview.validate(input.cronExpression());
         if(input.nodes()==null || input.nodes().size()>100) throw new IllegalArgumentException("工作流最多100个节点");
-        var keys=new ArrayList<String>();
-        for(var node:input.nodes()) {
-            if(node==null) throw new IllegalArgumentException("节点无效");
-            var current=graphs.node(id,node.key(),List.of());
-            if(node.version()!=current.version() || !Objects.equals(node.configHash(),current.configHash())) throw conflict();
-            keys.add(node.key());
+        var existingKeys=mapper.nodeKeys(id);
+        var drafts=input.sqlDrafts()==null?List.<SqlDraft>of():input.sqlDrafts();
+        if(drafts.size()>input.nodes().size()) throw new IllegalArgumentException("SQL 草稿必须属于当前画布节点");
+        var definitions=new LinkedHashMap<String,SqlDraft>();
+        for(var draft:drafts) {
+            if(draft==null || draft.key()==null || definitions.putIfAbsent(draft.key(),draft)!=null)
+                throw new IllegalArgumentException("SQL 草稿节点无效或重复");
         }
-        var upstream=WorkflowGraph.upstream(keys,input.edges());
-        boolean changed=!new TreeSet<>(keys).equals(new TreeSet<>(mapper.nodeKeys(id)))
-                || !upstream.equals(WorkflowGraph.upstream(mapper.nodeKeys(id),mapper.edges(id)));
+        var aliases=new LinkedHashMap<String,String>();
+        var prepared=new LinkedHashMap<String,SqlTask>();
+        long provisional=999999999999999999L;
+        var rawKeys=input.nodes().stream().filter(Objects::nonNull).map(Node::key).collect(java.util.stream.Collectors.toSet());
+        for(var node:input.nodes()) {
+            if(node==null || node.key()==null || aliases.containsKey(node.key())) throw new IllegalArgumentException("节点无效或重复");
+            var draft=definitions.get(node.key());
+            if(node.key().startsWith("draft-")) {
+                if(!node.key().matches("draft-[A-Za-z0-9-]{1,64}") || !"SQL".equals(node.kind()) || node.refId()!=0 || node.version()!=0
+                        || draft==null || draft.taskId()!=null || draft.version()!=0)
+                    throw new IllegalArgumentException("新增 SQL 草稿节点无效");
+                String placeholder;
+                do { placeholder="sql-"+provisional--; } while(rawKeys.contains(placeholder) || aliases.containsValue(placeholder));
+                aliases.put(node.key(),placeholder);
+            } else {
+                WorkflowGraph.parse(node.key());
+                if(node.key().startsWith("sql-") && !existingKeys.contains(node.key())) throw new IllegalArgumentException("SQL 任务必须属于当前画布");
+                var current=graphs.node(id,node.key(),List.of());
+                if(node.version()!=current.version() || !Objects.equals(node.configHash(),current.configHash())) throw conflict();
+                if(draft!=null && (!node.key().startsWith("sql-") || !Objects.equals(draft.taskId(),current.refId())))
+                    throw new IllegalArgumentException("SQL 草稿与节点不匹配");
+                if(draft!=null && draft.version()!=current.version()) throw conflict();
+                aliases.put(node.key(),node.key());
+            }
+            if(draft!=null) {
+                var definition=new SqlTask(); definition.setId(draft.taskId()); definition.setWorkflowId(id); definition.setVersion(draft.version());
+                definition.setName(draft.name()); definition.setModelId(draft.modelId()); definition.setSqlText(draft.sqlText());
+                prepared.put(draft.key(),tasks.prepareDefinition(definition));
+            }
+        }
+        if(!aliases.keySet().containsAll(definitions.keySet())) throw new IllegalArgumentException("SQL 草稿必须属于当前画布节点");
+        var validatedEdges=remapEdges(input.edges(),aliases);
+        var upstream=WorkflowGraph.upstream(aliases.values(),validatedEdges);
+        boolean changed=!upstream.equals(WorkflowGraph.upstream(existingKeys,mapper.edges(id)));
         boolean cronChanged=!workflow.getCronExpression().equals(cron);
-        if(changed || cronChanged) ensureEditable(workflow);
+        boolean acknowledged=Boolean.TRUE.equals(input.acknowledgeOwnershipMigration());
+        if(!drafts.isEmpty() && workflow.isReviewRequired() && !acknowledged) requireReviewed(workflow);
+        if(changed || cronChanged || !drafts.isEmpty() || workflow.isReviewRequired() && acknowledged) ensureEditable(workflow);
         var positions=input.positions()==null?Map.<String,Position>of():input.positions();
         if(positions.size()>100) throw new IllegalArgumentException("布局节点过多");
-        var valid=new LinkedHashMap<String,Position>();
         for(var entry:positions.entrySet()) {
             var point=entry.getValue();
-            if(!upstream.containsKey(entry.getKey()) || point==null || !Double.isFinite(point.x()) || !Double.isFinite(point.y())
+            if(!aliases.containsKey(entry.getKey()) || point==null || !Double.isFinite(point.x()) || !Double.isFinite(point.y())
                     || point.x()<0 || point.y()<0 || point.x()>50000 || point.y()>50000) throw new IllegalArgumentException("节点位置无效");
-            valid.put(entry.getKey(),point);
+        }
+        // Check the final set, allowing models/names released elsewhere in the same draft.
+        var names=new HashSet<String>(); var modelIds=new HashSet<Long>();
+        for(String key:aliases.keySet()) if(key.startsWith("sql-") || key.startsWith("draft-")) {
+            var definition=prepared.containsKey(key)?prepared.get(key):sql.task(WorkflowGraph.parse(key));
+            if(!names.add(definition.getName().toLowerCase(Locale.ROOT)) || !modelIds.add(definition.getModelId()))
+                throw new IllegalArgumentException("同一画布中的 SQL 名称和目标模型不能重复");
+        }
+        if(changed || !drafts.isEmpty()) mapper.retireLegacy(id);
+        var removed=new HashSet<>(existingKeys); removed.removeAll(aliases.keySet());
+        for(String key:removed) if(key.startsWith("sql-")) {
+            long taskId=WorkflowGraph.parse(key);
+            sql.deleteLegacyReferences(taskId); sql.deletePipelineDependencies(taskId); sql.archive(taskId);
+        }
+        // Release unique active name/model slots first, so two edited tasks can swap them.
+        // All staging, replacement and graph changes are invisible until this transaction commits.
+        for(var definition:prepared.values()) if(definition.getId()!=null) sql.archive(definition.getId());
+        for(var entry:prepared.entrySet()) {
+            var definition=entry.getValue();
+            if(definition.getId()==null) sql.insert(definition); else sql.replaceDraftDefinition(definition);
+            aliases.put(entry.getKey(),"sql-"+definition.getId());
+            platform.audit(actor,"SQL_TASK_SAVE",Long.toString(definition.getId()),"SUCCESS");
+            platform.audit(actor,"WORKFLOW_SQL_SAVE",id+":"+definition.getId(),"SUCCESS");
         }
         if(changed) {
-            mapper.retireLegacy(id);
             mapper.deleteEdges(id); mapper.deleteNodes(id);
-            for(String key:keys) mapper.node(id,key,key.startsWith("sql-")?WorkflowGraph.parse(key):null,key.startsWith("pipeline-")?WorkflowGraph.parse(key):null);
-            for(var edge:input.edges()) mapper.edge(id,edge.from(),edge.to());
+            for(String key:aliases.values()) mapper.node(id,key,key.startsWith("sql-")?WorkflowGraph.parse(key):null,key.startsWith("pipeline-")?WorkflowGraph.parse(key):null);
+            for(var item:remapEdges(input.edges(),aliases)) mapper.edge(id,item.from(),item.to());
         }
-        if(cronChanged) mapper.schedule(id,null,"DRAFT"); // The old paused schedule contains the old Cron.
+        if(cronChanged) mapper.schedule(id,null,"DRAFT");
+        if(workflow.isReviewRequired() && acknowledged) mapper.acknowledgeOwnership(id);
+        var valid=new LinkedHashMap<String,Position>();
+        positions.forEach((key,point)->valid.put(aliases.get(key),point));
         mapper.graph(id,json.writeValueAsString(valid),cron);
         platform.audit(actor,"WORKFLOW_GRAPH_SAVE",Long.toString(id),"SUCCESS"); return view(id);
+    }
+    private static List<Edge> remapEdges(List<Edge> edges,Map<String,String> aliases) {
+        if(edges==null || edges.size()>10000) throw new IllegalArgumentException("工作流连线无效");
+        var result=new ArrayList<Edge>();
+        for(var edge:edges) {
+            if(edge==null || !aliases.containsKey(edge.from()) || !aliases.containsKey(edge.to()))
+                throw new IllegalArgumentException("连线须连接画布中的节点");
+            result.add(new Edge(aliases.get(edge.from()),aliases.get(edge.to())));
+        }
+        return result;
     }
     private void ensureEditable(ProcessingWorkflow workflow) {
         if(Set.of("SCHEDULED","SCHEDULE_PENDING").contains(workflow.getStatus()))
@@ -134,6 +231,7 @@ public class WorkflowService {
     public void execute(long id,int expected,String graphHash,String action,String actor) {
         sql.lockGraph(); var workflow=require(id); version(workflow,expected);
         if(action.equals("pause")) { scheduler.pause(id,actor); return; }
+        requireReviewed(workflow);
         checkHash(id,graphHash);
         switch(action) {
             case "run" -> scheduler.run(id,actor);
@@ -142,6 +240,9 @@ public class WorkflowService {
         }
     }
     private void checkHash(long id,String hash) { if(!Objects.equals(graphs.graph(id).hash(),hash)) throw conflict(); }
+    private static void requireReviewed(ProcessingWorkflow workflow) {
+        if(workflow.isReviewRequired()) throw new IllegalArgumentException("请先核对迁移后的输入表和依赖，勾选确认并保存画布");
+    }
     @SuppressWarnings("unchecked")
     private Map<String,Position> positions(String value) {
         if(value==null || value.isBlank()) return Map.of();

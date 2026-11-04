@@ -11,6 +11,13 @@ public class ProcessingWorkflow {
     private Long definitionCode;
     private String definitionHash;
     private Integer scheduleId;
+    private boolean archived;
+    private boolean reviewRequired;
+    private String ownershipNotice;
+    public boolean isReviewRequired() { return reviewRequired; }
+    public void setReviewRequired(boolean value) { reviewRequired=value; }
+    public String getOwnershipNotice() { return ownershipNotice; }
+    public void setOwnershipNotice(String value) { ownershipNotice=value; }
     public Long getId() { return id; }
     public void setId(Long value) { this.id=value; }
     public String getName() { return name; }
@@ -31,4 +38,6 @@ public class ProcessingWorkflow {
     public void setDefinitionHash(String value) { this.definitionHash=value; }
     public Integer getScheduleId() { return scheduleId; }
     public void setScheduleId(Integer value) { this.scheduleId=value; }
+    public boolean isArchived() { return archived; }
+    public void setArchived(boolean value) { this.archived=value; }
 }

@@ -13,16 +13,20 @@ public interface SqlTaskMapper {
     @Select(TASK_COLUMNS + "WHERE t.archived=FALSE ORDER BY t.id DESC LIMIT #{limit} OFFSET #{offset}")
     List<SqlTask> taskPage(@Param("limit") int limit, @Param("offset") long offset);
     @Select(TASK_COLUMNS + "WHERE t.id=#{id} AND t.archived=FALSE") SqlTask task(long id);
+    @Select(TASK_COLUMNS + "WHERE t.id=#{id}") SqlTask taskIncludingArchived(long id);
     @Select(TASK_COLUMNS + "WHERE t.id=#{id} AND t.archived=FALSE FOR UPDATE") SqlTask lockTask(long id);
     @Select("SELECT upstream_id FROM sql_task_dependency WHERE task_id=#{id} ORDER BY upstream_id") List<Long> upstreamTasks(long id);
     @Select("SELECT pipeline_id FROM sql_pipeline_dependency WHERE task_id=#{id} ORDER BY pipeline_id") List<Long> upstreamPipelines(long id);
-    @Insert("INSERT INTO sql_task(name,model_id,sql_text) VALUES(#{name},#{modelId},#{sqlText})")
+    @Insert("INSERT INTO sql_task(name,model_id,sql_text,workflow_id) VALUES(#{name},#{modelId},#{sqlText},#{workflowId})")
     @Options(useGeneratedKeys=true,keyProperty="id") void insert(SqlTask task);
     @Update("UPDATE sql_task SET name=#{name},model_id=#{modelId},sql_text=#{sqlText},version=version+1 WHERE id=#{id}")
     void update(SqlTask task);
+    @Update("UPDATE sql_task SET name=#{name},model_id=#{modelId},sql_text=#{sqlText},version=version+1,archived=FALSE WHERE id=#{id}")
+    void replaceDraftDefinition(SqlTask task);
     @Update("UPDATE sql_task SET version=version+1 WHERE id=#{id}") void changed(long id);
     @Delete("DELETE FROM sql_task_dependency WHERE task_id=#{id}") void deleteTaskDependencies(long id);
     @Delete("DELETE FROM sql_pipeline_dependency WHERE task_id=#{id}") void deletePipelineDependencies(long id);
+    @Delete("DELETE FROM sql_task_dependency WHERE task_id=#{id} OR upstream_id=#{id}") void deleteLegacyReferences(long id);
     @Insert("INSERT INTO sql_task_dependency(task_id,upstream_id) VALUES(#{id},#{upstream})")
     void taskDependency(@Param("id") long id,@Param("upstream") long upstream);
     @Insert("INSERT INTO sql_pipeline_dependency(task_id,pipeline_id) VALUES(#{id},#{pipeline})")
@@ -30,6 +34,7 @@ public interface SqlTaskMapper {
     @Update("UPDATE sql_task SET active_run_id=#{runId} WHERE id=#{id}")
     void activeRun(@Param("id") long id,@Param("runId") Long runId);
     @Update("UPDATE sql_task SET archived=TRUE WHERE id=#{id}") void archive(long id);
+    @Update("UPDATE sql_task SET archived=TRUE WHERE workflow_id=#{id}") void archiveOwned(long id);
     @Select("SELECT COUNT(*) FROM sql_task_dependency d JOIN sql_task t ON d.task_id=t.id WHERE d.upstream_id=#{id} AND t.archived=FALSE")
     int dependents(long id);
     @Select("SELECT COUNT(*) FROM sql_task WHERE model_id=#{modelId} AND archived=FALSE") int modelReferences(long modelId);

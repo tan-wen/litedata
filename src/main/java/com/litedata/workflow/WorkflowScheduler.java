@@ -22,13 +22,13 @@ public class WorkflowScheduler {
     }
     @Transactional(noRollbackFor=IllegalStateException.class)
     public void run(long id,String actor) {
-        sql.lockGraph(); var graph=graphs.graph(id); preflight(graph);
+        sql.lockGraph(); requireReviewed(id); var graph=graphs.graph(id); preflight(graph);
         long code=definition(id,graph); engine.publish(code); engine.start(code);
         platform.audit(actor,"WORKFLOW_SUBMIT",Long.toString(id),"ACCEPTED");
     }
     @Transactional(noRollbackFor=IllegalStateException.class)
     public void schedule(long id,String actor) {
-        sql.lockGraph(); var graph=graphs.graph(id); preflight(graph);
+        sql.lockGraph(); requireReviewed(id); var graph=graphs.graph(id); preflight(graph);
         long code=definition(id,graph); engine.publish(code); var workflow=mapper.workflow(id);
         Integer scheduleId=workflow.getScheduleId();
         if(scheduleId==null) {
@@ -48,6 +48,10 @@ public class WorkflowScheduler {
     private void preflight(TransformService.Graph graph) {
         if(graph.nodes().isEmpty()) throw new IllegalArgumentException("请先在画布中添加任务并保存后再运行或启用调度");
         tasks.preflight(graph);
+    }
+    private void requireReviewed(long id) {
+        var workflow=mapper.workflow(id);
+        if(workflow==null || workflow.isReviewRequired()) throw new IllegalArgumentException("加工流程不存在或迁移尚未核对，无法运行或启用调度");
     }
     private long definition(long id,TransformService.Graph graph) {
         if(!engine.configured()) throw new IllegalStateException("调度引擎尚未配置，请先完成引擎初始化");

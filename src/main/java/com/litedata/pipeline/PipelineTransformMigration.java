@@ -51,7 +51,16 @@ public class PipelineTransformMigration {
             throw new IllegalArgumentException("请先暂停同步管道定时调度后迁移");
         pipelines.requireOdsTarget(pipeline.getTargetTable());
 
-        var owners=workflows.forPipeline(id);
+        var dependents=jdbc.queryForList("SELECT d.task_id FROM sql_pipeline_dependency d JOIN sql_task t ON t.id=d.task_id WHERE d.pipeline_id=? AND t.archived=FALSE ORDER BY d.task_id",Long.class,id);
+        var ownerMap=new LinkedHashMap<Long,ProcessingWorkflow>();
+        for(var owner:workflows.forPipeline(id)) ownerMap.put(owner.getId(),owner);
+        // Pre-canvas consumers may have only legacy dependency rows. They still determine the single owner.
+        for(long dependent:dependents) {
+            var owner=workflows.workflow(tasks.require(dependent).getWorkflowId());
+            if(owner!=null) ownerMap.put(owner.getId(),owner);
+        }
+        var owners=new ArrayList<>(ownerMap.values());
+        if(owners.size()>1) throw new IllegalArgumentException("此管道被多个加工流程引用，请先仅保留迁移目标流程中的引用；SQL 不能跨流程复用");
         if(owners.stream().anyMatch(w->Set.of("SCHEDULED","SCHEDULE_PENDING").contains(w.getStatus())))
             throw new IllegalArgumentException("请先暂停引用此管道的工作流调度后迁移");
         String target=target(sql);
@@ -60,16 +69,17 @@ public class PipelineTransformMigration {
         if(!Set.of("DIM","DWD","DWS","ADS").contains(model.getLayer()) || !"UNIQUE".equals(model.getModelType()))
             throw new IllegalArgumentException("旧 SQL 目标须为 DIM、DWD、DWS 或 ADS 的 UNIQUE 模型");
         sql=policy.validate(sql,target).sql();
-        var dependents=jdbc.queryForList("SELECT d.task_id FROM sql_pipeline_dependency d JOIN sql_task t ON t.id=d.task_id WHERE d.pipeline_id=? AND t.archived=FALSE ORDER BY d.task_id",Long.class,id);
         for(long dependent:dependents) tasks.ensureEditable(dependent);
 
-        var existingIds=jdbc.queryForList("SELECT id FROM sql_task WHERE model_id=?",Long.class,model.getId());
+        var existingIds=jdbc.queryForList("SELECT id FROM sql_task WHERE model_id=? AND archived=FALSE",Long.class,model.getId());
         SqlTask task;
         Long taskId=null;
         if(!existingIds.isEmpty()) {
             taskId=existingIds.getFirst();
-            // require rejects archived tasks too; the unique target must never be silently overwritten.
+            // Never overwrite an active writer, even when the target model matches.
             task=tasks.require(taskId);
+            if(!owners.isEmpty() && !Objects.equals(task.getWorkflowId(),owners.getFirst().getId()))
+                throw new IllegalArgumentException("旧 SQL 的目标模型已被其他流程占用，请人工处理后再迁移");
             if(!sameStatement(sql,task.getSqlText()))
                 throw new IllegalArgumentException("旧 SQL 目标已有不同的加工任务，请先人工合并："+target);
             tasks.ensureEditable(taskId);
@@ -78,6 +88,7 @@ public class PipelineTransformMigration {
             String name="迁移加工-"+id+"-"+pipeline.getName();
             task.setName(name.substring(0,Math.min(100,name.length())));
             task.setModelId(model.getId()); task.setSqlText(sql);
+            if(!owners.isEmpty()) task.setWorkflowId(owners.getFirst().getId());
         }
         var upstream=new ArrayList<>(task.getUpstreamPipelineIds()==null?List.<Long>of():task.getUpstreamPipelineIds());
         upstream.add(id); task.setUpstreamPipelineIds(upstream);
@@ -92,20 +103,20 @@ public class PipelineTransformMigration {
             tasks.save(dependent,consumer,actor); // Includes cycle checks; any conflict rolls back the entire migration.
         }
         if(owners.isEmpty()) {
-            var workflow=new ProcessingWorkflow(); String workflowName="迁移工作流-"+id+"-"+pipeline.getName();
-            workflow.setName(workflowName.substring(0,Math.min(100,workflowName.length()))); workflows.insert(workflow);
-            workflows.node(workflow.getId(),"pipeline-"+id,null,id);
-            workflows.node(workflow.getId(),"sql-"+taskId,taskId,null);
+            var workflow=workflows.workflow(tasks.require(taskId).getWorkflowId());
+            if(!workflows.nodeKeys(workflow.getId()).contains("pipeline-"+id)) workflows.node(workflow.getId(),"pipeline-"+id,null,id);
             workflows.edge(workflow.getId(),"pipeline-"+id,"sql-"+taskId);
             workflows.graph(workflow.getId(),null,pipeline.getCronExpression());
         } else for(var workflow:owners) {
             workflows.retireLegacy(workflow.getId());
             String taskKey="sql-"+taskId,pipeKey="pipeline-"+id;
             if(!workflows.nodeKeys(workflow.getId()).contains(taskKey)) workflows.node(workflow.getId(),taskKey,taskId,null);
+            if(!workflows.nodeKeys(workflow.getId()).contains(pipeKey)) workflows.node(workflow.getId(),pipeKey,null,id);
             var edges=workflows.edges(workflow.getId()); workflows.deleteEdges(workflow.getId());
             var newEdges=new LinkedHashSet<WorkflowService.Edge>();
             for(var edge:edges) newEdges.add(edge.from().equals(pipeKey) && !edge.to().equals(taskKey)?new WorkflowService.Edge(taskKey,edge.to()):edge);
             newEdges.add(new WorkflowService.Edge(pipeKey,taskKey));
+            for(long dependent:dependents) if(dependent!=taskId) newEdges.add(new WorkflowService.Edge(taskKey,"sql-"+dependent));
             for(var edge:newEdges) workflows.edge(workflow.getId(),edge.from(),edge.to());
             graphs.graph(workflow.getId()); workflows.graph(workflow.getId(),workflow.getPositionsJson(),workflow.getCronExpression());
         }

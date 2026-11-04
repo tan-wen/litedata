@@ -5,6 +5,7 @@
   <meta name="color-scheme" content="light dark">
   <title>登录 · 数据中台</title>
   <script th:src="@{/js/theme.js}"></script>
+  <script th:src="@{/js/notifications.js}" defer></script>
   <link rel="stylesheet" th:href="@{/vendor/bootstrap/bootstrap.min.css}">
   <link rel="stylesheet" th:href="@{/css/app.css}">
 </head>
@@ -19,8 +20,8 @@
     </section>
     <section class="login-card" aria-labelledby="login-title">
       <div class="mb-7"><h2 id="login-title" class="mb-3">欢迎登录</h2><p class="fg-2 mb-0">登录 LiteData 数据中台，继续管理数据工作。</p></div>
-      <div class="alert theme-danger" role="alert" th:if="${param.error}">用户名或密码错误，请重试。</div>
-      <div class="alert theme-success" role="status" th:if="${param.logout}">你已安全退出。</div>
+      <div hidden data-platform-notification="warning" th:if="${param.error}">用户名或密码错误，请重试。</div>
+      <div hidden data-platform-notification="success" th:if="${param.logout}">你已安全退出。</div>
       <form th:action="@{/login}" method="post">
         <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
         <div class="mb-5"><label class="form-label" for="username">用户名</label><input class="form-control" id="username" name="username" required autofocus autocomplete="username"></div>

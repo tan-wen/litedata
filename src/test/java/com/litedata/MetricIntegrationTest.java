@@ -259,8 +259,10 @@ class MetricIntegrationTest {
         jdbc.update("INSERT INTO data_source(name,jdbc_url,username,encrypted_password) VALUES('演示业务源','jdbc:mysql://example.invalid:3306/demo','source_reader','test-encrypted')");
         long sourceId = jdbc.queryForObject("SELECT id FROM data_source WHERE name='演示业务源'", Long.class);
         jdbc.update("INSERT INTO pipeline(name,source_id,source_table,watermark_column,target_table,transform_sql,cron_expression) VALUES('同步订单',?,'orders','occurred_at','ods_metric_orders','','')", sourceId);
-        jdbc.update("INSERT INTO sql_task(name,model_id,sql_text) VALUES('订单金额换算',?,?)", modelId,
-                "INSERT INTO metric_orders(id,amount,region,status,occurred_at) SELECT o.id,o.net_amount / 100,o.region,o.status,o.occurred_at FROM ods_metric_orders o WHERE o.status <> 'deleted'");
+        jdbc.update("INSERT INTO processing_workflow(name) VALUES('metric-lineage-flow')");
+        long workflowId=jdbc.queryForObject("SELECT LAST_INSERT_ID()",Long.class);
+        jdbc.update("INSERT INTO sql_task(name,model_id,sql_text,workflow_id) VALUES('订单金额换算',?,?,?)", modelId,
+                "INSERT INTO metric_orders(id,amount,region,status,occurred_at) SELECT o.id,o.net_amount / 100,o.region,o.status,o.occurred_at FROM ods_metric_orders o WHERE o.status <> 'deleted'",workflowId);
     }
     private MetricDefinition atomic(String code, String aggregation, String column, String dimensions) {
         var m = definition(code, MetricType.ATOMIC); m.setModelId(modelId); m.setAggregation(aggregation); m.setMeasureColumn(column); m.setDimensions(dimensions); m.setTimeColumn("occurred_at"); return m;

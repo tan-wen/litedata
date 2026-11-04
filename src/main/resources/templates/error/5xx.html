@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title th:text="${status} + ' · 服务暂不可用'">服务暂不可用 · 数据中台</title>
+  <script th:src="@{/js/theme.js}"></script>
+  <link rel="stylesheet" th:href="@{/vendor/bootstrap/bootstrap.min.css}">
+  <link rel="stylesheet" th:href="@{/css/app.css}">
+</head>
+<body class="login-page">
+  <main class="login-card platform-error-card" aria-labelledby="error-title">
+    <p class="page-kicker">LiteData 数据中台</p>
+    <h1 id="error-title" class="page-title mb-3">服务暂不可用</h1>
+    <p class="fg-2 mb-6">服务暂时无法处理该请求，请稍后重试。</p>
+    <p class="small fg-2 mb-6">状态码：<span th:text="${status}">500</span></p>
+    <a class="btn-solid theme-primary" th:href="@{/}">返回工作台</a>
+  </main>
+  <div hidden data-platform-notification="danger" th:attr="data-notification-status=${status}">服务暂时无法处理该请求，请稍后重试。</div>
+  <script type="module" th:src="@{/vendor/bootstrap/bootstrap.bundle.min.js}"></script>
+  <script th:src="@{/js/notifications.js}" defer></script>
+</body>
+</html>

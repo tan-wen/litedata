@@ -18,6 +18,16 @@
 - Bootstrap 6 使用 `btn-solid theme-primary`、`btn-outline theme-secondary` 等组合；响应式类为 `md:col-6`，选择框使用 `form-control`，复选框使用 `check`。不要重新引入 Bootstrap 5 的旧组件类。
 - `static/vendor/bootstrap/SOURCES.md` 记录精确版本、来源和完整性校验；发行文件保留原始内容及 MIT 授权。
 
+## 操作通知与错误
+
+操作成功、操作校验及 4xx/5xx 错误统一使用页面右上角的 Bootstrap Toast，入口为 `static/js/notifications.js` 的 `window.platformFeedback`。通知随主题切换，窄屏保持在视口内；在原生 SQL 编辑对话框打开时也可查看和关闭。
+
+- 使用 `platformFeedback.show(message, { level, key })` 显示通知；固定 `key` 可合并同一操作的重复提示，成功后用 `clear(key)` 清除。
+- JSON 请求用 `platformFeedback.json(url, options)`，或将响应交给 `readJson(response)`。4xx 保留可操作的业务原因；登录过期、无权限和 5xx 使用统一中文提示，不显示原始 HTML、堆栈或数据库异常。
+- 服务端成功/失败通过 `fragments/messages` 输出通知种子。直接访问的 HTML 错误页保留 HTTP 状态并提供返回入口；JSON API 保持原响应契约。
+- 错误和警告保留到手动关闭，成功提示自动关闭。轮询仅在首次失败时通知，已加载的状态和日志仍保留。
+- 字段格式提示、长期说明、迁移核对项及仅显示一次的凭证仍放在对应内容旁。
+
 ## 面包屑导航
 
 - 所有使用后台公共布局的页面由 `fragments/breadcrumb.html` 统一生成面包屑；独立登录页不显示。

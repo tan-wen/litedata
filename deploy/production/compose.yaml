@@ -211,6 +211,7 @@ services:
       - ${DATA_DIR:-./data}/scheduler/resources:/dolphinscheduler
       - ${DATA_DIR:-./data}/scheduler/worker:/tmp/dolphinscheduler
       - ${DATA_DIR:-./data}/scheduler/logs/worker:/opt/dolphinscheduler/worker-server/logs
+      - ${DATA_DIR:-./data}/scheduler/logs/tasks:/opt/dolphinscheduler/logs
     healthcheck:
       test: [CMD-SHELL, 'curl -fsS http://127.0.0.1:1235/actuator/health >/dev/null']
       interval: 15s

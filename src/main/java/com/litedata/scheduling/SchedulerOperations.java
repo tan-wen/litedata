@@ -29,13 +29,13 @@ public class SchedulerOperations {
             var item=platform.pipeline(id); if(item==null) throw missing();
             name=item.getName(); current=item.getDefinitionCode(); back="/pipelines";
         } else if(type.equals("transform")) {
-            var item=tasks.task(id); if(item==null) throw missing();
-            name=item.getName(); current=null; back="/transforms/"+id;
+            var item=tasks.taskIncludingArchived(id); if(item==null) throw missing();
+            name=item.getName(); current=null; back=item.isArchived()?"/workflows":"/transforms/"+id;
         } else if(type.equals("workflow")) {
-            var workflow=workflows.workflow(id); if(workflow==null) throw missing();
+            var workflow=workflows.workflowIncludingArchived(id); if(workflow==null) throw missing();
             var codes=new LinkedHashSet<Long>(); if(workflow.getDefinitionCode()!=null) codes.add(workflow.getDefinitionCode());
             codes.addAll(workflows.snapshotCodes(id));
-            return new Resource(type,id,workflow.getName(),"/workflows/"+id,List.copyOf(codes));
+            return new Resource(type,id,workflow.getName(),workflow.isArchived()?"/workflows":"/workflows/"+id,List.copyOf(codes));
         } else throw missing();
         var codes=new LinkedHashSet<Long>(); if(current!=null) codes.add(current);
         codes.addAll(platform.workflowCodes(type,id));

@@ -211,3 +211,15 @@ html:has(.model-wizard-enhanced) { scrollbar-gutter: stable; }
 [data-aggregate-settings] select { min-width: 180px; }
 @media (max-width: 767.98px) { .model-wizard-steps { grid-template-columns: 1fr; } .model-wizard-steps small { white-space: normal; } }
 @media (max-width: 767.98px) { #metric-lineage-graph { height: 420px; } }
+
+/* Bootstrap Toasts stay at the right edge, including above native SQL dialogs. */
+.platform-notifications { position:fixed; inset:5.25rem 1.25rem auto auto; margin:0; padding:0; border:0; width:min(24rem,calc(100vw - 2rem)); max-width:none; max-height:calc(100dvh - 6.5rem); overflow-y:auto; background:transparent; color:var(--platform-text); z-index:1100; pointer-events:none; }
+.platform-notifications .toast { width:100%; max-width:100%; margin-bottom:.75rem; pointer-events:auto; box-shadow:0 .4rem 1.5rem light-dark(rgb(30 45 70 / .15),rgb(0 0 0 / .35)); }
+.platform-notifications .toast-header { gap:.6rem; }
+.platform-notifications .toast-header strong { min-width:0; overflow-wrap:anywhere; }
+.platform-notifications .toast-body { font-size:.82rem; line-height:1.7; white-space:pre-wrap; overflow-wrap:anywhere; }
+.platform-notifications .notification-status { flex-shrink:0; opacity:.8; }
+.platform-notifications .btn-close { flex-shrink:0; }
+@media (max-width:767.98px) { .platform-notifications { inset:4.75rem 1rem auto auto; max-height:calc(100dvh - 5.75rem); } }
+
+.platform-error-card { width:min(32rem,100%); }

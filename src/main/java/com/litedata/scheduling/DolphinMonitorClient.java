@@ -15,6 +15,9 @@ import tools.jackson.databind.json.JsonMapper;
 /** Read-only, bounded projection of DS APIs. Never return engine parameters or raw errors. */
 @Component
 public class DolphinMonitorClient {
+    public static final class MissingLogException extends IllegalStateException {
+        public MissingLogException() { super("节点日志文件已不存在，可能已被清理或随执行容器重建而丢失。执行状态和平台运行记录仍保留，原日志无法从这些记录恢复。"); }
+    }
     public record Workflow(long id,long definitionCode,String name,String state,String startedAt,String finishedAt,int runTimes) {}
     public record Node(long id,String name,String state,String startedAt,String finishedAt,int retryTimes) {}
     public record Page(long total,List<Workflow> items) {}
@@ -84,7 +87,14 @@ public class DolphinMonitorClient {
                 // DS v2 returns the task entity directly; v1 uses a code/data envelope.
                 if(jsonPost) return result;
                 if(!(result.get("code") instanceof Number code)) throw invalid();
-                if(code.longValue()!=0) throw unavailable();
+                if(code.longValue()!=0) {
+                    // DS 3.4 distinguishes a missing local file only in its log-detail error text.
+                    // Match this narrowly; connection/authentication failures must remain retryable.
+                    String message=Objects.toString(result.get("msg"),"");
+                    if(path.startsWith("/log/") && code.longValue()==10103 && message.contains("The file path:") && message.endsWith("not exists"))
+                        throw new MissingLogException();
+                    throw unavailable();
+                }
                 return result.get("data");
             });
         } catch(IllegalStateException exception) { throw exception; }

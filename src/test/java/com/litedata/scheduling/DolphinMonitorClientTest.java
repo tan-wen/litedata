@@ -95,6 +95,15 @@ class DolphinMonitorClientTest {
         assertTrue(incompatible.getMessage().contains("返回格式不兼容"));
     }
 
+    @Test void missingLogIsPermanentAndDoesNotExposeRemotePathWhileOtherFailuresRetry() {
+        replies.add(new Reply(200,"{\"code\":10103,\"msg\":\"view task instance log error: The file path: /private/secret/127.log not exists\"}"));
+        var missing=assertThrows(DolphinMonitorClient.MissingLogException.class,()->client().log(127,0,200));
+        assertFalse(missing.getMessage().contains("/private"));
+        replies.add(new Reply(200,"{\"code\":10103,\"msg\":\"worker unavailable\"}"));
+        var temporary=assertThrows(IllegalStateException.class,()->client().log(127,0,200));
+        assertFalse(temporary instanceof DolphinMonitorClient.MissingLogException);
+    }
+
     private DolphinMonitorClient client() {
         return new DolphinMonitorClient(new PlatformProperties("key","password","internal",
                 new PlatformProperties.DolphinScheduler("http://localhost:"+server.getAddress().getPort(),"safe-token",9,"tenant"),null));

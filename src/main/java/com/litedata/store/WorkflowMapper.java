@@ -6,17 +6,18 @@ import org.apache.ibatis.annotations.*;
 
 @Mapper
 public interface WorkflowMapper {
-    String FROM=" FROM processing_workflow w WHERE 1=1 ";
+    String FROM=" FROM processing_workflow w WHERE w.archived=FALSE ";
     String FILTER=" AND (LOWER(w.name) LIKE CONCAT('%',#{keyword},'%') OR LOWER(w.description) LIKE CONCAT('%',#{keyword},'%')) ";
     @Select("SELECT COUNT(*)"+FROM+FILTER) long count(String keyword);
     @Select("SELECT w.*"+FROM+FILTER+" ORDER BY w.id DESC LIMIT #{limit} OFFSET #{offset}")
     List<ProcessingWorkflow> page(@Param("keyword") String keyword,@Param("limit") int limit,@Param("offset") long offset);
-    @Select("SELECT * FROM processing_workflow WHERE id=#{id}") ProcessingWorkflow workflow(long id);
-    @Select("SELECT w.* FROM processing_workflow w JOIN processing_workflow_node n ON n.workflow_id=w.id WHERE n.task_id=#{id} ORDER BY w.id")
+    @Select("SELECT * FROM processing_workflow WHERE id=#{id} AND archived=FALSE") ProcessingWorkflow workflow(long id);
+    @Select("SELECT * FROM processing_workflow WHERE id=#{id}") ProcessingWorkflow workflowIncludingArchived(long id);
+    @Select("SELECT w.* FROM processing_workflow w JOIN processing_workflow_node n ON n.workflow_id=w.id WHERE w.archived=FALSE AND n.task_id=#{id} ORDER BY w.id")
     List<ProcessingWorkflow> forTask(long id);
-    @Select("SELECT w.* FROM processing_workflow w JOIN processing_workflow_node n ON n.workflow_id=w.id WHERE n.pipeline_id=#{id}")
+    @Select("SELECT w.* FROM processing_workflow w JOIN processing_workflow_node n ON n.workflow_id=w.id WHERE w.archived=FALSE AND n.pipeline_id=#{id}")
     List<ProcessingWorkflow> forPipeline(long id);
-    @Select("SELECT DISTINCT w.* FROM processing_workflow w JOIN processing_workflow_node n ON n.workflow_id=w.id WHERE w.status IN ('SCHEDULED','SCHEDULE_PENDING') AND n.task_id=#{id}")
+    @Select("SELECT DISTINCT w.* FROM processing_workflow w JOIN processing_workflow_node n ON n.workflow_id=w.id WHERE w.archived=FALSE AND w.status IN ('SCHEDULED','SCHEDULE_PENDING') AND n.task_id=#{id}")
     List<ProcessingWorkflow> scheduledForTask(long id);
     @Select("SELECT COUNT(*) FROM workflow_legacy_binding WHERE root_task_id=#{root} AND (graph_hash IS NULL OR graph_hash<>#{hash})")
     int retiredLegacy(@Param("root") long root,@Param("hash") String hash);
@@ -32,6 +33,10 @@ public interface WorkflowMapper {
     void definition(@Param("id") long id,@Param("code") long code,@Param("hash") String hash);
     @Update("UPDATE processing_workflow SET schedule_id=#{scheduleId},status=#{status} WHERE id=#{id}")
     void schedule(@Param("id") long id,@Param("scheduleId") Integer scheduleId,@Param("status") String status);
+    @Update("UPDATE processing_workflow SET archived=TRUE,version=version+1 WHERE id=#{id}") void archive(long id);
+    @Update("UPDATE processing_workflow SET review_required=FALSE,ownership_notice='' WHERE id=#{id}") void acknowledgeOwnership(long id);
+    @Select("SELECT * FROM processing_workflow WHERE archived=FALSE AND review_required=TRUE AND schedule_id IS NOT NULL AND status<>'PAUSED'")
+    List<ProcessingWorkflow> pendingOwnershipPause();
     @Select("SELECT node_key FROM processing_workflow_node WHERE workflow_id=#{id} ORDER BY node_key") List<String> nodeKeys(long id);
     @Select("SELECT from_key `from`,to_key `to` FROM processing_workflow_edge WHERE workflow_id=#{id} ORDER BY from_key,to_key")
     List<com.litedata.workflow.WorkflowService.Edge> edges(long id);
@@ -41,9 +46,7 @@ public interface WorkflowMapper {
     void node(@Param("id") long id,@Param("key") String key,@Param("task") Long task,@Param("pipeline") Long pipeline);
     @Insert("INSERT INTO processing_workflow_edge(workflow_id,from_key,to_key) VALUES(#{id},#{from},#{to})")
     void edge(@Param("id") long id,@Param("from") String from,@Param("to") String to);
-    String CATALOG=" FROM (SELECT CONCAT('sql-',t.id) node_key,t.id ref_id,t.name,'SQL' kind,m.table_name "
-            +"FROM sql_task t JOIN data_model m ON m.id=t.model_id WHERE t.archived=FALSE UNION ALL "
-            +"SELECT CONCAT('pipeline-',p.id),p.id,p.name,'同步',p.target_table FROM pipeline p) n "
+    String CATALOG=" FROM (SELECT CONCAT('pipeline-',p.id) node_key,p.id ref_id,p.name,'同步' kind,p.target_table table_name FROM pipeline p) n "
             +"WHERE LOWER(CONCAT(n.name,' ',n.table_name)) LIKE CONCAT('%',#{keyword},'%') ";
     record CatalogItem(String key,long refId,String name,String kind,String tableName) {}
     @Select("SELECT COUNT(*)"+CATALOG) long catalogCount(String keyword);

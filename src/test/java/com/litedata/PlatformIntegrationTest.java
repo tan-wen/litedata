@@ -176,6 +176,10 @@ class PlatformIntegrationTest {
                 .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("must-stay-private"))));
         mvc.perform(get(path+"/instances/101/tasks/999/log").with(user("admin").roles("ADMIN"))).andExpect(status().isNotFound());
         mvc.perform(get(log).param("offset","-1").with(user("admin").roles("ADMIN"))).andExpect(status().isBadRequest());
+        when(monitor.log(201,0,200)).thenThrow(new DolphinMonitorClient.MissingLogException());
+        mvc.perform(get(log).with(user("developer").roles("DEVELOPER"))).andExpect(status().isGone())
+                .andExpect(jsonPath("$.code").value("LOG_FILE_MISSING"))
+                .andExpect(header().string("Cache-Control",org.hamcrest.Matchers.containsString("no-store")));
         mvc.perform(get(path).param("workflowCode","999").with(user("admin").roles("ADMIN"))).andExpect(status().isNotFound());
         when(monitor.instance(102)).thenReturn(new DolphinMonitorClient.Workflow(102,999,"foreign","SUCCESS","","",1));
         mvc.perform(get(path+"/instances/102").with(user("admin").roles("ADMIN"))).andExpect(status().isNotFound());
@@ -589,7 +593,9 @@ class PlatformIntegrationTest {
                 jdbc.update("INSERT INTO data_model(table_name,name,subject_area,layer) VALUES(?,?,?,?)",
                         "page_model_"+i,i==1?"Literal_%":"Paged Model "+i,"分页域",i==3?"ADS":"DWD");
                 long modelId=jdbc.queryForObject("SELECT id FROM data_model WHERE table_name=?",Long.class,"page_model_"+i);
-                jdbc.update("INSERT INTO sql_task(name,model_id,sql_text) VALUES(?,?,?)","paged-task-"+i,modelId,"INSERT INTO warehouse.page_model_"+i+" SELECT id FROM warehouse.api_fixture");
+                jdbc.update("INSERT INTO processing_workflow(name) VALUES(?)","paged-flow-"+i);
+                long workflowId=jdbc.queryForObject("SELECT LAST_INSERT_ID()",Long.class);
+                jdbc.update("INSERT INTO sql_task(name,model_id,sql_text,workflow_id) VALUES(?,?,?,?)","paged-task-"+i,modelId,"INSERT INTO warehouse.page_model_"+i+" SELECT id FROM warehouse.api_fixture",workflowId);
             }
             var tables=Map.of("sources","data_source","pipelines","pipeline","services","data_service",
                     "users","app_user","models","data_model","transforms","sql_task");
@@ -630,6 +636,7 @@ class PlatformIntegrationTest {
                     .andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("sources",org.hamcrest.Matchers.hasSize(3)));
         } finally {
             jdbc.update("DELETE FROM sql_task WHERE name LIKE 'paged-task-%'");
+            jdbc.update("DELETE FROM processing_workflow WHERE name LIKE 'paged-flow-%'");
             jdbc.update("DELETE FROM data_model WHERE table_name LIKE 'page_model_%'");
             jdbc.update("DELETE FROM app_user WHERE username LIKE 'paged-user-%'");
         }

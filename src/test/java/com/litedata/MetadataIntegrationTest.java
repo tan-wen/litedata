@@ -46,7 +46,7 @@ class MetadataIntegrationTest {
     @Autowired LineageService lineage;
     @MockitoBean JdbcMetadataCollector collector;
     @BeforeEach void clean() {
-        for(String table:List.of("metadata_column","metadata_table","metadata_scope","sql_task_run","sql_task_dependency","sql_pipeline_dependency","sql_task","model_execution","model_field","data_model","pipeline_run","pipeline","data_source","audit_event")) jdbc.update("DELETE FROM "+table);
+        for(String table:List.of("metadata_column","metadata_table","metadata_scope","sql_task_run","workflow_definition_snapshot","processing_workflow_snapshot","processing_workflow_edge","processing_workflow_node","sql_task_dependency","sql_pipeline_dependency","sql_task","processing_workflow","model_execution","model_field","data_model","pipeline_run","pipeline","data_source","audit_event")) jdbc.update("DELETE FROM "+table);
         reset(collector);
     }
     @Test void collectsVersionedSnapshotsAndKeepsMissingAndFailedStructures() throws Exception {
@@ -156,7 +156,9 @@ class MetadataIntegrationTest {
     private void task(String target,String sql) {
         jdbc.update("INSERT INTO data_model(table_name,name,subject_area,layer) VALUES(?,?,'交易','ADS')",target,target);
         long model=jdbc.queryForObject("SELECT id FROM data_model WHERE table_name=?",Long.class,target);
-        jdbc.update("INSERT INTO sql_task(name,model_id,sql_text) VALUES(?,?,?)",target,model,sql);
+        jdbc.update("INSERT INTO processing_workflow(name) VALUES(?)","metadata-"+target);
+        long workflow=jdbc.queryForObject("SELECT LAST_INSERT_ID()",Long.class);
+        jdbc.update("INSERT INTO sql_task(name,model_id,sql_text,workflow_id) VALUES(?,?,?,?)",target,model,sql,workflow);
     }
     private static Snapshot snapshot(String catalog,String... names) {
         return new Snapshot(catalog,Arrays.stream(names).map(name->new Table(name,"表注释",List.of(new Column("id","bigint",false,true,"业务主键",1)))).toList());

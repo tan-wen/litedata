@@ -5,6 +5,7 @@ import com.litedata.modeling.*;
 import com.litedata.store.*;
 import com.litedata.pipeline.PipelineService;
 import com.litedata.workflow.WorkflowGraph;
+import com.litedata.workflow.ProcessingWorkflow;
 import com.litedata.service.QueryPage;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -44,6 +45,44 @@ public class TransformService {
     @Transactional
     public long save(Long id,SqlTask input,String actor) {
         mapper.lockGraph();
+        input=prepareDefinition(input);
+        if(id==null) {
+            input.setId(null);
+            if(input.getWorkflowId()==null) {
+                var owner=new ProcessingWorkflow();
+                String name=input.getName(); if(name.length()>80) name=name.substring(0,80);
+                owner.setName(name+"-"+UUID.randomUUID().toString().substring(0,8));
+                workflows.insert(owner); input.setWorkflowId(owner.getId());
+            }
+            ensureOwnerEditable(input.getWorkflowId());
+            if(workflows.nodeKeys(input.getWorkflowId()).size()>=100) throw new IllegalArgumentException("工作流最多100个节点");
+            mapper.insert(input); id=input.getId();
+            workflows.node(input.getWorkflowId(),"sql-"+id,id,null);
+        }
+        else {
+            var current=required(mapper.lockTask(id)); checkVersion(current,input.getVersion());
+            if(input.getWorkflowId()!=null && !Objects.equals(input.getWorkflowId(),current.getWorkflowId()))
+                throw new IllegalArgumentException("SQL 任务归属不可变更");
+            input.setWorkflowId(current.getWorkflowId());
+            ensureEditable(id); input.setId(id); mapper.update(input);
+            mapper.deleteTaskDependencies(id); mapper.deletePipelineDependencies(id);
+        }
+        for(long upstream:input.getUpstreamTaskIds()) {
+            if(!Objects.equals(require(upstream).getWorkflowId(),input.getWorkflowId()))
+                throw new IllegalArgumentException("SQL 任务不能跨流程引用");
+        }
+        for(long upstream:input.getUpstreamTaskIds()) mapper.taskDependency(id,upstream);
+        for(long pipeline:input.getUpstreamPipelineIds()) mapper.pipelineDependency(id,pipeline);
+        graph(id); // Cycle detection is in the same transaction as edge replacement.
+        var owner=workflows.workflow(input.getWorkflowId());
+        workflows.retireLegacy(owner.getId());
+        workflows.graph(owner.getId(),owner.getPositionsJson(),owner.getCronExpression());
+        platform.audit(actor,"SQL_TASK_SAVE",Long.toString(id),"SUCCESS");
+        return id;
+    }
+
+    /** Validates a definition without persisting it, for atomic workflow draft saves. */
+    public SqlTask prepareDefinition(SqlTask input) {
         // Callers inside a transaction may pass a MyBatis-cached task. Graph validation
         // reloads its dependency lists, so keep the requested edits in a separate object.
         var definition=new SqlTask();
@@ -58,19 +97,8 @@ public class TransformService {
         var validated=policy.validate(input.getSqlText(),model.getTableName());
         input.setName(input.getName().trim()); input.setSqlText(validated.sql());
         input.setUpstreamTaskIds(ids(input.getUpstreamTaskIds())); input.setUpstreamPipelineIds(ids(input.getUpstreamPipelineIds()));
-        for(long upstream:input.getUpstreamTaskIds()) require(upstream);
         for(long pipeline:input.getUpstreamPipelineIds()) if(platform.pipeline(pipeline)==null) throw new IllegalArgumentException("上游同步管道不存在");
-        if(id==null) { input.setId(null); mapper.insert(input); id=input.getId(); }
-        else {
-            var current=required(mapper.lockTask(id)); checkVersion(current,input.getVersion());
-            ensureEditable(id); input.setId(id); mapper.update(input);
-            mapper.deleteTaskDependencies(id); mapper.deletePipelineDependencies(id);
-        }
-        for(long upstream:input.getUpstreamTaskIds()) mapper.taskDependency(id,upstream);
-        for(long pipeline:input.getUpstreamPipelineIds()) mapper.pipelineDependency(id,pipeline);
-        graph(id); // Cycle detection is in the same transaction as edge replacement.
-        platform.audit(actor,"SQL_TASK_SAVE",Long.toString(id),"SUCCESS");
-        return id;
+        return input;
     }
 
     @Transactional
@@ -119,6 +147,7 @@ public class TransformService {
     }
 
     public void ensureEditable(long taskId) {
+        ensureOwnerEditable(required(mapper.task(taskId)).getWorkflowId());
         if(required(mapper.task(taskId)).getActiveRunId()!=null) throw new IllegalArgumentException("任务正在运行，请等待完成");
         for(var node:graph(taskId).nodes()) {
             boolean active=node.kind().equals("SQL") ? required(mapper.task(node.refId())).getActiveRunId()!=null
@@ -127,6 +156,19 @@ public class TransformService {
         }
         var scheduled=workflows.scheduledForTask(taskId);
         if(!scheduled.isEmpty()) throw new IllegalArgumentException("任务被已启用调度的工作流引用，请先暂停："+scheduled.getFirst().getName());
+    }
+
+    private void ensureOwnerEditable(long id) {
+        var owner=workflows.workflow(id);
+        if(owner==null) throw new IllegalArgumentException("所属加工流程不存在或已删除");
+        if(owner.isReviewRequired()) throw new IllegalArgumentException("请先在画布核对迁移后的输入表和依赖，确认并保存");
+        if(Set.of("SCHEDULED","SCHEDULE_PENDING").contains(owner.getStatus()))
+            throw new IllegalArgumentException("请先暂停所属加工流程的定时调度");
+        for(String key:workflows.nodeKeys(id)) {
+            boolean active=key.startsWith("sql-")?required(mapper.task(WorkflowGraph.parse(key))).getActiveRunId()!=null
+                    :platform.pipeline(WorkflowGraph.parse(key)).getActiveRunId()!=null;
+            if(active) throw new IllegalArgumentException("所属加工流程存在运行中的节点，请等待完成");
+        }
     }
 
     public void preflight(Graph graph) {
@@ -170,6 +212,11 @@ public class TransformService {
         if(rootId!=null && workflows.retiredLegacy(rootId,hash)>0)
             throw new ResponseStatusException(HttpStatus.CONFLICT,"旧版链路已更新，请从工作流重新发布");
         var graph=workflowId==null?graph(rootId):workflowGraphs.graph(workflowId);
+        long ownerId=workflowId==null?required(mapper.task(rootId)).getWorkflowId():workflowId;
+        var owner=workflows.workflow(ownerId);
+        if(owner==null || owner.isReviewRequired()) throw new ResponseStatusException(HttpStatus.CONFLICT,"加工流程已删除或迁移尚未核对");
+        for(var node:graph.nodes()) if(node.kind().equals("SQL") && !Objects.equals(required(mapper.task(node.refId())).getWorkflowId(),ownerId))
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"SQL 任务不能跨流程运行，请重新发布");
         if(!graph.hash().equals(hash) || graph.nodes().stream().noneMatch(n->n.kind().equals("SQL") && n.refId()==id))
             throw new ResponseStatusException(HttpStatus.CONFLICT,"加工链配置已变化，请重新发布");
         var task=required(mapper.lockTask(id));

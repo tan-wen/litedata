@@ -3,10 +3,6 @@
     <div><p class="mb-1">请立即保存 API 凭证，本次显示后无法再次查看：</p>
     <code class="user-select-all text-break" th:text="${apiKey}"></code></div>
   </div>
-  <div class="alert theme-success fade show" role="alert" th:if="${success}">
-    <span th:text="${success}">操作成功</span><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="关闭"></button>
-  </div>
-  <div class="alert theme-danger fade show" role="alert" th:if="${error}">
-    <span th:text="${error}">操作失败</span><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="关闭"></button>
-  </div>
+  <div hidden data-platform-notification="success" th:if="${success}" th:text="${success}">操作成功</div>
+  <div hidden data-platform-notification="danger" th:if="${error}" th:text="${error}">操作失败</div>
 </div>

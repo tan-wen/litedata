@@ -60,7 +60,7 @@ class TransformIntegrationTest {
     @MockitoBean DolphinWorkflowClient engine;
 
     @BeforeEach void clean() throws Exception {
-        for(String table:List.of("pipeline_transform_archive","sql_task_run","processing_workflow_snapshot","processing_workflow","sql_task_dependency","sql_pipeline_dependency","sql_task","model_execution","model_field","data_model","pipeline_run","pipeline","data_source","audit_event")) jdbc.update("DELETE FROM "+table);
+        for(String table:List.of("pipeline_transform_archive","sql_task_run","workflow_definition_snapshot","processing_workflow_snapshot","processing_workflow_edge","processing_workflow_node","sql_task_dependency","sql_pipeline_dependency","sql_task","processing_workflow","model_execution","model_field","data_model","pipeline_run","pipeline","data_source","audit_event")) jdbc.update("DELETE FROM "+table);
         reset(gateway,engine);
         when(gateway.inspect(anyString())).thenReturn(new DorisModelGateway.Schema(List.of(new DorisModelGateway.Column("id","bigint(20)",false,"")),List.of("id"),List.of("id"),1));
         when(engine.configured()).thenReturn(true); when(engine.create(anyString(),anyString(),anyList())).thenReturn(88L);
@@ -193,7 +193,7 @@ class TransformIntegrationTest {
 
         var saved=tasks.require(id);
         mvc.perform(get("/transforms/"+id).with(user("dev").roles("DEVELOPER")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("href=\"/transforms/"+id+"/edit?returnTo=detail\">编辑任务</a>")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("href=\"/transforms/"+id+"/edit?returnTo=detail\">编辑 SQL 任务</a>")));
         mvc.perform(get("/transforms/"+id+"/edit").param("returnTo","detail").with(user("dev").roles("DEVELOPER")))
                 .andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("returnTo","detail"))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("backPath","/transforms/"+id))
@@ -230,11 +230,11 @@ class TransformIntegrationTest {
         long upstream=task("dwd_orders",List.of()),root=task("ads_orders",List.of(upstream));
         long modelId=tasks.require(upstream).getModelId();
         assertThatIllegalArgumentException().isThrownBy(()->models.archive(modelId,1,"dev")).withMessageContaining("加工任务");
-        assertThatIllegalArgumentException().isThrownBy(()->tasks.archive(upstream,1,"dev")).withMessageContaining("下游");
+        assertThatIllegalArgumentException().isThrownBy(()->tasks.archive(upstream,1,"dev")).withMessageContaining("工作流引用");
         String hash=tasks.graph(root).hash(); var model=models.require(modelId); model.setDescription("changed"); models.save(modelId,model,"dev");
         assertThat(tasks.graph(root).hash()).isNotEqualTo(hash);
         assertThatThrownBy(()->tasks.claim(upstream,1,root,hash)).isInstanceOf(ResponseStatusException.class);
-        tasks.archive(root,1,"dev"); tasks.archive(upstream,1,"dev");
+        workflows.save(tasks.require(root).getWorkflowId(),new com.litedata.workflow.WorkflowService.Save(workflows.view(tasks.require(root).getWorkflowId()).version(),workflows.view(tasks.require(root).getWorkflowId()).graphHash(),workflows.view(tasks.require(root).getWorkflowId()).cronExpression(),List.of(),List.of(),Map.of()),"dev");
         assertThat(mapper.tasks()).isEmpty();
     }
 
@@ -245,7 +245,8 @@ class TransformIntegrationTest {
         var edit=tasks.require(consumer); edit.setUpstreamPipelineIds(List.of(pipeline)); tasks.save(consumer,edit,"dev");
         long archived=task("ads_archived",List.of());
         var old=tasks.require(archived); old.setUpstreamPipelineIds(List.of(pipeline)); tasks.save(archived,old,"dev");
-        tasks.archive(archived,tasks.require(archived).getVersion(),"dev");
+        long archivedFlow=tasks.require(archived).getWorkflowId(); var archivedView=workflows.view(archivedFlow);
+        workflows.save(archivedFlow,new com.litedata.workflow.WorkflowService.Save(archivedView.version(),archivedView.graphHash(),archivedView.cronExpression(),List.of(),List.of(),Map.of()),"dev");
         var run=new PipelineRun(); run.setPipelineId(pipeline);
         run.setLowerBound(java.time.LocalDateTime.of(2026,1,1,0,0)); run.setUpperBound(run.getLowerBound().plusHours(1));
         platform.insertRun(run); platform.activeRun(pipeline,run.getId()); pipelines.finish(run.getId(),true,"");
@@ -264,7 +265,7 @@ class TransformIntegrationTest {
         assertThat(platform.pipeline(pipeline).getScheduleId()).isNull();
         assertThat(platform.pipeline(pipeline).getDefinitionCode()).isNull();
         assertThat(platform.workflowCodes("pipeline",pipeline)).contains(12345L);
-        assertThat(mapper.upstreamPipelines(archived)).containsExactly(pipeline);
+        assertThat(mapper.upstreamPipelines(archived)).isEmpty();
         assertThat(platform.run(run.getId()).getStatus()).isEqualTo("SUCCESS");
         assertThat(jdbc.queryForObject("SELECT sql_text FROM pipeline_transform_archive WHERE pipeline_id=?",String.class,pipeline))
                 .isEqualTo("  INSERT INTO dwd_legacy SELECT id FROM ods_orders  ");
@@ -293,7 +294,7 @@ class TransformIntegrationTest {
         long replacementFlow=scheduledWorkflow(replacement,6);
         assertThatIllegalArgumentException().isThrownBy(()->migration.migrate(pipeline,"dev")).withMessageContaining("暂停");
         jdbc.update("UPDATE processing_workflow SET status='PAUSED' WHERE id=?",replacementFlow);
-        long consumer=task("ads_consumer",List.of());
+        long consumer=task(tasks.require(replacement).getWorkflowId(),"ads_consumer",List.of());
         var edit=tasks.require(consumer); edit.setUpstreamPipelineIds(List.of(pipeline)); tasks.save(consumer,edit,"dev");
         long consumerFlow=scheduledWorkflow(consumer,8);
         assertThatIllegalArgumentException().isThrownBy(()->migration.migrate(pipeline,"dev")).withMessageContaining("暂停");
@@ -367,14 +368,16 @@ class TransformIntegrationTest {
     }
 
     private long scheduledWorkflow(long task,int schedule) {
-        var draft=new com.litedata.workflow.ProcessingWorkflow(); draft.setName("scheduled-"+task);
-        long id=workflows.metadata(null,draft,"dev"); var view=workflows.view(id);
-        workflows.save(id,new com.litedata.workflow.WorkflowService.Save(view.version(),view.graphHash(),view.cronExpression(),workflows.expand(id,"sql-"+task),List.of(),Map.of()),"dev");
+        long id=tasks.require(task).getWorkflowId();
         jdbc.update("UPDATE processing_workflow SET status='SCHEDULED',schedule_id=? WHERE id=?",schedule,id); return id;
     }
     private long task(String table,List<Long> upstream) {
         long modelId=model(table,table.startsWith("dim")?"DIM":table.startsWith("ads")?"ADS":table.startsWith("dws")?"DWS":"DWD");
         var task=new SqlTask(); task.setName(table); task.setModelId(modelId); task.setSqlText("INSERT INTO "+table+" SELECT id FROM ods_orders"); task.setUpstreamTaskIds(upstream);
+        if(!upstream.isEmpty()) task.setWorkflowId(tasks.require(upstream.getFirst()).getWorkflowId());
         return tasks.save(null,task,"dev");
+    }
+    private long task(long workflow,String table,List<Long> upstream) {
+        long modelId=model(table,table.startsWith("ads")?"ADS":"DWD"); var task=new SqlTask(); task.setWorkflowId(workflow); task.setName(table); task.setModelId(modelId); task.setSqlText("INSERT INTO "+table+" SELECT id FROM ods_orders"); task.setUpstreamTaskIds(upstream); return tasks.save(null,task,"dev");
     }
 }

@@ -2,6 +2,7 @@ package com.litedata.model;
 
 public class SqlTask {
     private Long id;
+    private Long workflowId;
     private String name;
     private Long modelId;
     private String targetTable;
@@ -14,6 +15,8 @@ public class SqlTask {
     private java.util.List<Long> upstreamTaskIds = new java.util.ArrayList<>();
     private java.util.List<Long> upstreamPipelineIds = new java.util.ArrayList<>();
     public Long getId() { return id; }
+    public Long getWorkflowId() { return workflowId; }
+    public void setWorkflowId(Long value) { this.workflowId=value; }
     public void setId(Long id) { this.id = id; }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }

@@ -33,7 +33,6 @@
   const aggregationEmpty = document.querySelector('[data-aggregation-empty]');
   const wizardPanels = [...form.querySelectorAll('[data-wizard-step]')];
   const wizardSteps = [...form.querySelectorAll('[data-wizard-target]')];
-  const wizardNotice = form.querySelector('[data-wizard-notice]');
   let activeStep = 1;
 
   function parseType(value) {
@@ -280,7 +279,7 @@
     [...body.rows].forEach((row, index) => row.querySelectorAll('[data-property]').forEach(input => { input.name = `fields[${index}].${input.dataset.property}`; input.id = `field-${index}-${input.dataset.property}`; }));
     body.querySelectorAll('[data-type-picker]').forEach(initializeTypePicker); add.disabled = body.rows.length >= 100; updatePhysicalSettings(); updateWizardSummary();
   }
-  function setNotice(message) { wizardNotice.textContent = message || ''; wizardNotice.hidden = !message; }
+  function setNotice(message) { if (message) window.platformFeedback.show(message, { key: 'model-wizard' }); else window.platformFeedback.clear('model-wizard'); }
   function focusInvalid(element) { element.focus({ preventScroll: true }); element.scrollIntoView({ block: 'nearest', behavior: 'instant' }); }
   function validateControls(step) {
     const inputs = [...form.querySelectorAll(`[data-wizard-step="${step}"] input, [data-wizard-step="${step}"] select, [data-wizard-step="${step}"] textarea`)].filter(control => !control.disabled && control.type !== 'hidden'); const invalid = inputs.find(control => !control.checkValidity());

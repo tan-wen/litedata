@@ -9,7 +9,7 @@
 | 生产安装、打包、备份恢复 | [生产部署](../deploy/production/README.md) |
 | 多数据库接入、自动 ODS | [数据源](data-sources.md) |
 | 模型、DDL、分桶及分区 | [数据建模](modeling.md)、[公共维度](dimension-models.md) |
-| 工作流创建、画布连线、独立编辑和运行排查 | [工作流画布使用说明](workflow-canvas-guide.md) |
+| 数据加工流程创建、画布连线、SQL 编辑和运行排查 | [数据加工画布使用说明](workflow-canvas-guide.md) |
 | SQL、依赖执行语义与运行互斥 | [数据加工](sql-transforms.md) |
 | Cron、运行实例与节点日志 | [调度运维](scheduling-operations.md) |
 | 元数据采集与血缘 | [元数据与血缘](metadata-lineage.md) |

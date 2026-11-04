@@ -105,12 +105,15 @@ public class SchedulerController {
                          @RequestParam(defaultValue="0") int offset,@RequestParam(defaultValue="200") int limit,Principal principal) {
         try {
             return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(operations.log(operations.resource(type,id),instanceId,taskId,offset,limit,principal.getName()));
+        } catch(DolphinMonitorClient.MissingLogException exception) {
+            return ResponseEntity.status(HttpStatus.GONE).cacheControl(CacheControl.noStore())
+                    .body(Map.of("code","LOG_FILE_MISSING","message",exception.getMessage()));
         } catch(IllegalStateException exception) {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).cacheControl(CacheControl.noStore()).body(Map.of("message",exception.getMessage()));
         }
     }
     private void prepare(Model model,SchedulerOperations.Resource resource) {
-        model.addAttribute("resource",resource); model.addAttribute("activeNav",switch(resource.type()) { case "pipeline" -> "pipelines"; case "workflow" -> "workflows"; default -> "transforms"; });
+        model.addAttribute("resource",resource); model.addAttribute("activeNav",switch(resource.type()) { case "pipeline" -> "pipelines"; default -> "workflows"; });
     }
     private PipelineCallbackRecords.Page callbackRecords(SchedulerOperations.Resource resource,long instanceId) {
         if(!"pipeline".equals(resource.type())) return null;

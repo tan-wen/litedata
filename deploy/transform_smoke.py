@@ -8,7 +8,7 @@ import time
 import uuid
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
-from smoke import Client, SmokeFailure, load_dotenv, parse, post_form, require_success, id_from_row, generated_key, create_workflow, workflow_action
+from smoke import Client, SmokeFailure, load_dotenv, parse, post_form, require_success, id_from_row, generated_key, create_workflow, create_workflow_sql, request_json, update_workflow_sql, workflow_action
 
 
 def checked(status, page, text):
@@ -42,11 +42,8 @@ def model(client, table, layer, definitions):
     return identifier
 
 
-def task(client, name, model_id, sql):
-    _, page = client.request("GET", "/transforms/new")
-    status, page = post_form(client, page, "/transforms", {"name": name, "modelId": model_id, "sqlText": sql})
-    checked(status, page, "数据加工已保存")
-    return id_from_row(page, name, "/edit")
+def task(client, workflow_id, page, name, model_id, sql):
+    return create_workflow_sql(client, workflow_id, page, name, model_id, sql)
 
 
 def runs(client, root):
@@ -124,16 +121,22 @@ def main():
         "sourceTable": "orders", "watermarkColumn": "updated_at", "targetMode": "EXISTING", "targetTable": ods, "cronExpression": "0 0 * * * ?"})
     checked(status, page, "ODS 同步管道已保存")
     pipeline_id = id_from_row(page, pipeline_name, "/run")
+    workflow_id, workflow_page = create_workflow(client, "flow-" + suffix)
     dwd_sql = f"INSERT INTO {dwd} SELECT id,customer_name,amount,updated_at FROM {ods} WHERE id IN (1,2)"
-    dwd_id = task(client, dwd, dwd_model, dwd_sql)
-    dws_id = task(client, dws, dws_model, f"INSERT INTO {dws} SELECT customer_name,SUM(amount),COUNT(*) FROM {dwd} GROUP BY customer_name")
-    root = task(client, ads, ads_model, f"INSERT INTO {ads} SELECT customer_name,total_amount,order_count FROM {dws}")
+    dwd_id, graph = task(client, workflow_id, workflow_page, dwd, dwd_model, dwd_sql)
+    dws_id, graph = task(client, workflow_id, workflow_page, dws, dws_model, f"INSERT INTO {dws} SELECT customer_name,SUM(amount),COUNT(*) FROM {dwd} GROUP BY customer_name")
+    root, graph = task(client, workflow_id, workflow_page, ads, ads_model, f"INSERT INTO {ads} SELECT customer_name,total_amount,order_count FROM {dws}")
     task_ids = [dwd_id, dws_id, root]
-    workflow_id = create_workflow(client, "flow-" + suffix, [f"pipeline-{pipeline_id}", *[f"sql-{tid}" for tid in task_ids]],
-        [{"from": f"pipeline-{pipeline_id}", "to": f"sql-{dwd_id}"}, {"from": f"sql-{dwd_id}", "to": f"sql-{dws_id}"},
-         {"from": f"sql-{dws_id}", "to": f"sql-{root}"}], "0 */5 * * * ?")
+    pipeline_item = request_json(client, "GET", f"/workflows/{workflow_id}/expand?" + urlencode({"key": f"pipeline-{pipeline_id}"}))
+    pipeline = pipeline_item.get("node") or (pipeline_item.get("nodes") or [None])[0]
+    if not pipeline:
+        raise SmokeFailure("workflow pipeline was not available for expansion")
+    request_json(client, "POST", f"/workflows/{workflow_id}/graph", {"version": graph["version"], "graphHash": graph["graphHash"],
+        "cronExpression": "0 */5 * * * ?", "nodes": [*graph.get("nodes", []), {**pipeline, "upstreamKeys": []}],
+        "edges": [{"from": f"pipeline-{pipeline_id}", "to": f"sql-{dwd_id}"}, {"from": f"sql-{dwd_id}", "to": f"sql-{dws_id}"},
+                  {"from": f"sql-{dws_id}", "to": f"sql-{root}"}], "positions": {}}, workflow_page)
     status, page = workflow_action(client, workflow_id, "run")
-    checked(status, page, "已提交整条工作流")
+    checked(status, page, "已提交整条加工流程")
     names = [dwd, dws, ads]
     wait_runs(client, task_ids, names, 1, 300)
     print(json.dumps({"stage": "manual-dag-success", "workflowId": int(workflow_id), "taskId": int(root)}), flush=True)
@@ -158,21 +161,19 @@ def main():
     if status != 200 or {row["customer_name"]: (float(row["total_amount"]), int(row["order_count"])) for row in rows} != expected or {key: response.get(key) for key in ("count", "pageNum", "pageSize", "hasMore")} != {"count": 2, "pageNum": 1, "pageSize": 100, "hasMore": False}:
         raise SmokeFailure("ADS aggregation did not match demo source")
     status, page = workflow_action(client, workflow_id, "schedule")
-    checked(status, page, "工作流定时调度已启用")
+    checked(status, page, "加工流程定时调度已启用")
     print(json.dumps({"stage": "timer-enabled-awaiting-trigger", "workflowId": int(workflow_id), "taskId": int(root)}), flush=True)
     try:
         wait_runs(client, task_ids, names, 2, 420)
     finally:
         status, page = workflow_action(client, workflow_id, "pause")
-        checked(status, page, "定时调度已停用")
+        checked(status, page, "加工流程定时调度已停用")
     print(json.dumps({"stage": "timer-trigger-success-and-paused"}), flush=True)
     before = {int(item["id"]) for item in engine_instances(workflow_id)}
-    _, edit = client.request("GET", f"/transforms/{dwd_id}/edit")
-    status, page = post_form(client, edit, f"/transforms/{dwd_id}", {"name": dwd, "modelId": dwd_model,
-        "sqlText": f"INSERT INTO {dwd} SELECT id,customer_name,amount,updated_at FROM missing_flow_{suffix}"})
-    checked(status, page, "数据加工已保存")
+    update_workflow_sql(client, workflow_id, workflow_page, dwd_id, dwd, dwd_model,
+        f"INSERT INTO {dwd} SELECT id,customer_name,amount,updated_at FROM missing_flow_{suffix}")
     status, page = workflow_action(client, workflow_id, "run")
-    checked(status, page, "已提交整条工作流")
+    checked(status, page, "已提交整条加工流程")
     deadline = time.monotonic() + 300
     failed = False
     while time.monotonic() < deadline:
@@ -189,9 +190,7 @@ def main():
     if any(sum(row["task"] == name for row in records) != 2 for name in (dws, ads)):
         raise SmokeFailure("downstream ran after upstream failure")
     # Restore the task for further manual trials, keeping failure evidence and the timer paused.
-    _, edit = client.request("GET", f"/transforms/{dwd_id}/edit")
-    status, page = post_form(client, edit, f"/transforms/{dwd_id}", {"name": dwd, "modelId": dwd_model, "sqlText": dwd_sql})
-    checked(status, page, "数据加工已保存")
+    update_workflow_sql(client, workflow_id, workflow_page, dwd_id, dwd, dwd_model, dwd_sql)
     return {"status": "success", "workflowId": int(workflow_id), "taskId": int(root), "tables": names,
             "checks": ["pure-ods-sync", "manual-real-dag", "dwd-dws-ads-results", "actual-timer-trigger", "pause", "upstream-failure-gates-downstream"]}
 

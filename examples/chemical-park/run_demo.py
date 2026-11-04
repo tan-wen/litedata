@@ -136,6 +136,19 @@ def workflow_node(response, key):
     return nodes[0]
 
 
+def create_workflow_sql(client, workflow_id, page, name, model_id, sql):
+    status, graph = client.request_json("GET", f"/workflows/{workflow_id}/graph")
+    if status != 200:
+        raise DemoFailure("无法读取工作流画布")
+    status, saved = client.request_json("POST", f"/workflows/{workflow_id}/sql-tasks", {
+        "workflowVersion": graph["version"], "graphHash": graph["graphHash"], "taskId": None, "version": 0,
+        "name": name, "modelId": int(model_id), "sqlText": sql}, {"X-CSRF-TOKEN": next((form["inputs"].get("_csrf") for form in parse(page).forms if form["inputs"].get("_csrf")), "")})
+    node = next((item for item in saved.get("nodes", []) if item.get("kind") == "SQL" and item.get("name") == name), None)
+    if status != 200 or not node or node.get("refId") is None:
+        raise DemoFailure("工作流 SQL 任务保存失败")
+    return int(node["refId"]), saved
+
+
 def docker(service, command, input_text="", timeout=90):
     result = subprocess.run(["docker", "compose", "exec", "-T", service, *command], cwd=ROOT,
                             input=input_text.encode("utf-8"), capture_output=True, timeout=timeout)
@@ -242,7 +255,7 @@ class Demo:
         if status != 200:
             raise DemoFailure("无法读取工作流画布")
         _, page = self.client.request("GET", f"/workflows/{workflow}")
-        checked(self.client.post(page, f"/workflows/{workflow}/run", {"version": graph["version"], "graphHash": graph["graphHash"]}), "已提交整条工作流")
+        checked(self.client.post(page, f"/workflows/{workflow}/run", {"version": graph["version"], "graphHash": graph["graphHash"]}), "已提交整条加工流程")
         names = {self.args.prefix + " " + task["name"] for task in self.manifest["transforms"]}
         deadline = time.monotonic() + self.args.timeout
         last_progress = 0
@@ -432,12 +445,6 @@ class Demo:
             fields.update(name=self.args.prefix + " " + pipeline["name"], sourceId=source_id, targetMode="EXISTING", targetTable=target)
             page = checked(self.client.post(page, "/pipelines", fields), "ODS 同步管道已保存")
             self.report["resources"]["pipelines"][pipeline["key"]] = identifier(page, fields["name"], "pipelines", "run")
-        for task in self.manifest["transforms"]:
-            _, page = self.client.request("GET", "/transforms/new")
-            fields = {"name": self.args.prefix + " " + task["name"], "modelId": self.report["resources"]["models"][task["targetModel"]],
-                      "sqlText": task["sqlText"]}
-            page = checked(self.client.post(page, "/transforms", fields), "数据加工已保存")
-            self.report["resources"]["transforms"][task["key"]] = identifier(page, fields["name"], "transforms", "edit")
         _, page = self.client.request("GET", "/workflows/new")
         workflow_name = self.args.prefix + " 化工园区加工工作流"
         page = checked(self.client.post(page, "/workflows", {"name": workflow_name, "description": "化工园区示例 SQL 与同步编排"}), "Cron")
@@ -449,17 +456,19 @@ class Demo:
         csrf = next((form["inputs"].get("_csrf") for form in parse(page).forms if form["action"] == f"/workflows/{workflow_id}/run"), None)
         if not csrf:
             raise DemoFailure("工作流页面缺少 CSRF 令牌")
-        status, graph = self.client.request_json("GET", f"/workflows/{workflow_id}/graph")
-        if status != 200:
-            raise DemoFailure("无法读取新工作流画布")
+        for task in self.manifest["transforms"]:
+            name = self.args.prefix + " " + task["name"]
+            task_id, graph = create_workflow_sql(self.client, workflow_id, page, name,
+                self.report["resources"]["models"][task["targetModel"]], task["sqlText"])
+            self.report["resources"]["transforms"][task["key"]] = task_id
         transform_keys = set(self.report["resources"]["transforms"])
         pipeline_keys = set(self.report["resources"]["pipelines"])
         if transform_keys & pipeline_keys:
             raise DemoFailure("示例任务与同步管道键重复，无法建立工作流")
         node_keys = {**{key: "sql-" + str(value) for key, value in self.report["resources"]["transforms"].items()},
                      **{key: "pipeline-" + str(value) for key, value in self.report["resources"]["pipelines"].items()}}
-        nodes = []
-        for key in node_keys.values():
+        nodes = list(graph.get("nodes", []))
+        for key in ("pipeline-" + str(value) for value in self.report["resources"]["pipelines"].values()):
             status, item = self.client.request_json("GET", f"/workflows/{workflow_id}/expand?" + urlencode({"key": key}))
             if status != 200:
                 raise DemoFailure("工作流无法加载节点：" + key)

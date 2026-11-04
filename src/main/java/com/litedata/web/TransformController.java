@@ -29,7 +29,7 @@ public class TransformController {
     @ModelAttribute("workflowId") Long context(@RequestParam(required=false) Long workflowId) {
         if(workflowId!=null) workflows.require(workflowId); return workflowId;
     }
-    @ModelAttribute("activeNav") String activeNav() { return "transforms"; }
+    @ModelAttribute("activeNav") String activeNav() { return "workflows"; }
     @ModelAttribute("canEdit") boolean canEdit(HttpServletRequest request) { return request.isUserInRole("ADMIN") || request.isUserInRole("DEVELOPER"); }
     @ModelAttribute("canManageUsers") boolean canManageUsers(HttpServletRequest request) { return request.isUserInRole("ADMIN"); }
     @ModelAttribute void navigation(@RequestParam Map<String,String> params,Model model) {
@@ -75,17 +75,18 @@ public class TransformController {
                 draft.setUpstreamTaskIds(current.getUpstreamTaskIds());
                 draft.setUpstreamPipelineIds(current.getUpstreamPipelineIds());
             }
+            if(model.getAttribute("workflowId") instanceof Long workflowId) draft.setWorkflowId(workflowId);
             tasks.save(id,draft,principal.getName());
-            redirect.addFlashAttribute("success","数据加工已保存，依赖和执行周期请在工作流中维护");
+            redirect.addFlashAttribute("success","SQL 任务已保存，依赖和执行周期请在数据加工中维护");
             return "redirect:"+returnPath(model,id);
         } catch(IllegalArgumentException exception) {
             model.addAttribute("error",exception.getMessage()); return form(model,draft,id);
         } catch(org.springframework.dao.DuplicateKeyException exception) {
-            model.addAttribute("error","任务名称或目标模型已被其他任务使用（含已归档任务）"); return form(model,draft,id);
+            model.addAttribute("error","任务名称或目标模型已被其他有效 SQL 任务使用"); return form(model,draft,id);
         }
     }
     @PostMapping("/{id}/archive") String archive(@PathVariable long id,@RequestParam int version,Principal principal,RedirectAttributes redirect) {
-        tasks.archive(id,version,principal.getName()); redirect.addFlashAttribute("success","加工任务已归档，保留物理数据和运行记录"); return "redirect:/transforms";
+        tasks.archive(id,version,principal.getName()); redirect.addFlashAttribute("success","SQL 任务已归档，保留物理数据和运行记录"); return "redirect:/transforms";
     }
     private String form(Model model,SqlTask draft,Long id) {
         model.addAttribute("draft",draft); model.addAttribute("taskId",id);

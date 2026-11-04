@@ -129,17 +129,42 @@ def request_json(client: Client, method: str, path: str, body: dict | None = Non
         raise SmokeFailure("workflow API rejected request: " + str(error.code)) from error
 
 
-def create_workflow(client: Client, name: str, keys: list[str], edges: list[dict], cron: str = "0 0 * * * ?") -> str:
+def create_workflow(client: Client, name: str) -> tuple[str, str]:
     _, page = client.request("GET", "/workflows/new")
     status, page = post_form(client, page, "/workflows", {"name": name, "description": "Isolated smoke fixture"})
-    require_success(status, page, "工作流已保存")
+    require_success(status, page, "加工流程已保存")
     identifier = resource_id(page, "/workflows", "run")
-    view = request_json(client, "GET", f"/workflows/{identifier}/graph")
-    nodes = [request_json(client, "GET", f"/workflows/{identifier}/expand?" + urlencode({"key": key}))["nodes"][0] for key in keys]
-    request_json(client, "POST", f"/workflows/{identifier}/graph", {
-        "version": view["version"], "graphHash": view["graphHash"], "cronExpression": cron,
-        "nodes": nodes, "edges": edges, "positions": {}}, page)
-    return identifier
+    return identifier, page
+
+
+def create_workflow_sql(client: Client, workflow_id: str, page: str, name: str, model_id: str, sql: str) -> tuple[str, dict]:
+    view = request_json(client, "GET", f"/workflows/{workflow_id}/graph")
+    saved = request_json(client, "POST", f"/workflows/{workflow_id}/sql-tasks", {
+        "workflowVersion": view["version"], "graphHash": view["graphHash"], "taskId": None, "version": 0,
+        "name": name, "modelId": int(model_id), "sqlText": sql}, page)
+    node = next((item for item in saved.get("nodes", []) if item.get("kind") == "SQL" and item.get("name") == name), None)
+    if not node or node.get("refId") is None:
+        raise SmokeFailure("workflow SQL task was not added to the returned graph")
+    return str(node["refId"]), saved
+
+
+def update_workflow_sql(client: Client, workflow_id: str, page: str, task_id: str, name: str, model_id: str, sql: str) -> dict:
+    view = request_json(client, "GET", f"/workflows/{workflow_id}/graph")
+    task = request_json(client, "GET", f"/workflows/{workflow_id}/sql-tasks/{task_id}")
+    return request_json(client, "POST", f"/workflows/{workflow_id}/sql-tasks", {
+        "workflowVersion": view["version"], "graphHash": view["graphHash"], "taskId": int(task_id),
+        "version": task["version"], "name": name, "modelId": int(model_id), "sqlText": sql}, page)
+
+
+def save_workflow_graph(client: Client, workflow_id: str, page: str, view: dict, pipeline_id: str, sql_id: str, cron: str = "0 0 * * * ?") -> dict:
+    item = request_json(client, "GET", f"/workflows/{workflow_id}/expand?" + urlencode({"key": f"pipeline-{pipeline_id}"}))
+    pipeline = item.get("node") or (item.get("nodes") or [None])[0]
+    if not pipeline:
+        raise SmokeFailure("workflow pipeline was not added to the returned graph")
+    nodes = [*view.get("nodes", []), {**pipeline, "upstreamKeys": []}]
+    return request_json(client, "POST", f"/workflows/{workflow_id}/graph", {
+        "version": view["version"], "graphHash": view["graphHash"], "cronExpression": cron, "nodes": nodes,
+        "edges": [{"from": f"pipeline-{pipeline_id}", "to": f"sql-{sql_id}"}], "positions": {}}, page)
 
 
 def workflow_action(client: Client, identifier: str, action: str) -> tuple[int, str]:
@@ -215,16 +240,6 @@ def create_model(client: Client, table: str, layer: str, fields: list[tuple[str,
     return model_id
 
 
-def create_transform(client: Client, name: str, model_id: str, sql: str, pipeline_id: str) -> str:
-    status, page = client.request("GET", "/transforms/new")
-    if status != 200:
-        raise SmokeFailure("transform create page is unavailable")
-    status, page = post_form(client, page, "/transforms", {"name": name, "modelId": model_id, "sqlText": sql,
-        })
-    require_success(status, page, "数据加工已保存")
-    return id_from_row(page, name, "/edit")
-
-
 def api_query(client: Client, slug: str, token: str) -> tuple[int, str]:
     return client.request("GET", f"/api/data/{slug}?customerId=1&pageNum=1&pageSize=100", headers={"X-API-Key": token})
 
@@ -285,12 +300,12 @@ def main() -> dict[str, object]:
     })
     require_success(status, pipelines, "ODS 同步管道已保存")
     pipeline_id = id_from_row(pipelines, pipeline_name, "/run")
-    transform_id = create_transform(client, transform_name, ads_model_id,
-        f"INSERT INTO {ads_table} SELECT id,customer_name,amount,updated_at FROM {ods_table}", pipeline_id)
-    workflow_id = create_workflow(client, transform_name, [f"pipeline-{pipeline_id}", f"sql-{transform_id}"],
-        [{"from": f"pipeline-{pipeline_id}", "to": f"sql-{transform_id}"}])
+    workflow_id, workflow_page = create_workflow(client, transform_name)
+    transform_id, graph = create_workflow_sql(client, workflow_id, workflow_page, transform_name, ads_model_id,
+        f"INSERT INTO {ads_table} SELECT id,customer_name,amount,updated_at FROM {ods_table}")
+    save_workflow_graph(client, workflow_id, workflow_page, graph, pipeline_id, transform_id)
     status, pipelines = workflow_action(client, workflow_id, "run")
-    require_success(status, pipelines, "已提交整条工作流")
+    require_success(status, pipelines, "已提交整条加工流程")
 
     deadline = time.monotonic() + POLL_TIMEOUT_SECONDS
     run_succeeded = False
