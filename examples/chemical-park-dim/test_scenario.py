@@ -85,6 +85,21 @@ class ScenarioTest(unittest.TestCase):
                 if rule["type"] == "NON_NEGATIVE":
                     self.assertEqual(len(rule["columns"].split(",")), 1)
 
+    def test_model_names_use_layer_prefix_and_keep_business_prefix_in_suffix(self):
+        expected = {
+            "ods_enterprise": "ods_cpdim_resin01_enterprise",
+            "ods_utility": "ods_cpdim_resin01_utility",
+            "ods_production": "ods_cpdim_resin01_production",
+            "dim_enterprise": "dim_cpdim_resin01_enterprise",
+            "dwd_utility_day": "dwd_cpdim_resin01_utility_day",
+            "dws_enterprise_7d": "dws_cpdim_resin01_enterprise_7d",
+            "ads_park_7d": "ads_cpdim_resin01_park_7d",
+        }
+        models = {model["key"]: model for model in self.scenario["models"]}
+        self.assertEqual(expected, {key: model["tableName"] for key, model in models.items()})
+        for transform in self.scenario["transforms"]:
+            self.assertIn(models[transform["targetModel"]]["tableName"], transform["sqlText"])
+
     def test_determinism_and_identifier_guard(self):
         self.assertEqual(self.scenario, build_scenario("cpdim_resin01", self.as_of))
         with self.assertRaises(ValueError):

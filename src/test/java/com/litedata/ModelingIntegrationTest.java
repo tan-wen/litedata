@@ -12,6 +12,7 @@ import com.litedata.modeling.*;
 import com.litedata.store.ModelMapper;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -55,6 +56,8 @@ class ModelingIntegrationTest {
         jdbc.update("DELETE FROM data_model"); jdbc.update("DELETE FROM audit_event");
         reset(gateway);
         when(gateway.backendCapacity()).thenReturn(new DorisModelGateway.BackendCapacity(3, 3));
+        when(gateway.tableExists(anyString())).thenReturn(false);
+        when(gateway.existingTables(anyList())).thenReturn(Set.of());
     }
 
     @Test void createsEditsFiltersAndRendersModelFormsAndDdl() throws Exception {
@@ -93,6 +96,39 @@ class ModelingIntegrationTest {
                 .andExpect(status().isOk()).andExpect(view().name("model-form"))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("保留输入")));
         assertThat(mapper.models()).isEmpty();
+    }
+
+    @Test void newModelsDeriveImmutableWarehousePrefixesFromTheirLayer() throws Exception {
+        for (String layer : List.of("ODS", "DWD", "DIM", "DWS", "ADS")) {
+            mvc.perform(prefixedModelRequest(layer, "orders"))
+                    .andExpect(status().is3xxRedirection());
+            assertThat(mapper.modelByTable(layer.toLowerCase() + "_orders")).isNotNull();
+        }
+
+        mvc.perform(prefixedModelRequest("ODS", "bad-name"))
+                .andExpect(status().isOk()).andExpect(view().name("model-form"))
+                .andExpect(model().attribute("tableNameSuffix", "bad-name"));
+        mvc.perform(prefixedModelRequest("ADS", ""))
+                .andExpect(status().isOk()).andExpect(view().name("model-form"))
+                .andExpect(model().attribute("tableNameSuffix", ""))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("表名后缀不能为空")));
+        assertThat(mapper.models()).hasSize(5);
+
+        String maximumSuffix = "x".repeat(60);
+        mvc.perform(prefixedModelRequest("DWD", maximumSuffix))
+                .andExpect(status().is3xxRedirection());
+        assertThat(mapper.modelByTable("dwd_" + maximumSuffix)).isNotNull();
+        String tooLongSuffix = "x".repeat(61);
+        mvc.perform(prefixedModelRequest("DWD", tooLongSuffix))
+                .andExpect(status().isOk()).andExpect(view().name("model-form"))
+                .andExpect(model().attribute("tableNameSuffix", tooLongSuffix))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("表名仅支持字母、数字和下划线，最长64字符")));
+
+        var existing = service.require(mapper.modelByTable("ods_orders").getId());
+        String editForm = mvc.perform(get("/models/" + existing.getId() + "/edit").with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(java.util.regex.Pattern.compile("<input\\b(?=[^>]*\\bid=\"tableName\")(?=[^>]*\\breadonly\\b)[^>]*>")
+                .matcher(editForm).find()).isTrue();
     }
 
     @Test void rendersTypeDropdownsAndPreservesParameterizedFieldTypesOnEdit() throws Exception {
@@ -355,14 +391,158 @@ class ModelingIntegrationTest {
         assertThat(mapper.executions(id).getFirst().getStatus()).isEqualTo("DIFF");
     }
 
-    @Test void archiveRetainsMetadataAndHistoryWithoutTouchingPhysicalTable() throws Exception {
+    @Test void archiveRejectsModelsWithSuccessfulCreateHistoryWithoutQueryingDoris() throws Exception {
         var preview = fixture(); long id = preview.model().getId();
-        when(gateway.inspect(anyString())).thenReturn(schema()); service.compare(id, 1, "dev"); reset(gateway);
-        service.archive(id, 1, "dev");
-        assertThat(mapper.models()).isEmpty(); assertThat(mapper.fields(id)).hasSize(2);
+        var execution = new ModelExecution(); execution.setModelId(id); execution.setModelVersion(1); execution.setOperation("CREATE");
+        execution.setTargetTable("warehouse.ods_model_test"); execution.setDdl("legacy"); execution.setActor("dev"); execution.setStatus("SUCCESS"); execution.setMessage("legacy build");
+        mapper.execution(execution);
+        reset(gateway);
+        assertThatIllegalArgumentException().isThrownBy(() -> service.archive(id, 1, "dev"))
+                .withMessageContaining("成功建表记录");
+        assertThat(mapper.model(id)).isNotNull(); assertThat(mapper.fields(id)).hasSize(2);
         assertThat(mapper.executions(id)).hasSize(1);
-        assertThatIllegalArgumentException().isThrownBy(() -> service.require(id));
         verifyNoInteractions(gateway);
+    }
+
+    @Test void archiveRejectsPhysicalTableEvenWhenPhysicalVersionIsMissing() throws Exception {
+        var preview = fixture(); long id = preview.model().getId();
+        when(gateway.tableExists(preview.model().getTableName())).thenReturn(true);
+        assertThatIllegalArgumentException().isThrownBy(() -> service.archive(id, 1, "dev"))
+                .withMessageContaining("已存在物理表");
+        assertThat(mapper.model(id)).isNotNull();
+    }
+
+    @Test void archiveFailsClosedWhenPhysicalTableCheckIsUnavailable() throws Exception {
+        var preview = fixture(); long id = preview.model().getId();
+        when(gateway.tableExists(preview.model().getTableName())).thenThrow(new SQLException("offline"));
+        assertThatIllegalArgumentException().isThrownBy(() -> service.archive(id, 1, "dev"))
+                .withMessageContaining("无法确认 Doris 物理表状态");
+        assertThat(mapper.model(id)).isNotNull();
+    }
+
+    @Test void listShowsCreationSeparatelyFromSchemaVerificationAndOnlyDraftsHaveDeleteActions() throws Exception {
+        long draftId = fixture().model().getId();
+        long verifiedId = fixture("ods_verified").model().getId();
+        long recordedId = fixture("ods_recorded").model().getId();
+        long physicalId = fixture("ods_physical").model().getId();
+        mapper.physicalVersion(verifiedId, 1);
+        var verified = service.require(verifiedId); verified.setName("已变更模型"); service.save(verifiedId, verified, "dev");
+        var execution = new ModelExecution(); execution.setModelId(recordedId); execution.setModelVersion(1); execution.setOperation("CREATE");
+        execution.setTargetTable("warehouse.ods_recorded"); execution.setDdl("legacy"); execution.setActor("dev"); execution.setStatus("SUCCESS"); execution.setMessage("created");
+        mapper.execution(execution);
+        // Creation evidence must survive beyond the 30 records shown on the detail page.
+        execution.setOperation("COMPARE"); execution.setStatus("DIFF");
+        for (int i = 0; i < 31; i++) mapper.execution(execution);
+        when(gateway.existingTables(anyList())).thenReturn(Set.of("ods_physical"));
+        clearInvocations(gateway);
+
+        mvc.perform(get("/models").with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<th>是否建表</th>")))
+                .andExpect(modelRowContains(draftId, ">未建表</span>", "action=\"/models/" + draftId + "/archive\"", "name=\"version\" value=\"1\""))
+                .andExpect(modelRowContains(verifiedId, ">已建表</span>", ">模型已变更</span>"))
+                .andExpect(modelRowContains(recordedId, ">已建表</span>", ">待核对</span>"))
+                .andExpect(modelRowContains(physicalId, ">已建表</span>", ">待核对</span>"))
+                .andExpect(archiveActions(1))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("查看已删除模型"))));
+        verify(gateway).existingTables(List.of("ods_physical", "ods_model_test"));
+        verify(gateway, never()).tableExists(anyString());
+        mvc.perform(get("/models/" + recordedId).with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(archiveActions(0));
+        mvc.perform(get("/models").with(user("reader").roles("VIEWER")))
+                .andExpect(status().isOk()).andExpect(archiveActions(0));
+    }
+
+    @Test void unavailableDorisShowsUnknownWithoutOfferingDeletionAndPreservesKnownCreation() throws Exception {
+        long draftId = fixture().model().getId();
+        long verifiedId = fixture("ods_verified").model().getId(); mapper.physicalVersion(verifiedId, 1);
+        when(gateway.existingTables(anyList())).thenThrow(new SQLException("offline"));
+        mvc.perform(get("/models").with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk())
+                .andExpect(modelRowContains(draftId, ">状态未知</span>"))
+                .andExpect(modelRowContains(verifiedId, ">已建表</span>"))
+                .andExpect(archiveActions(0));
+        mvc.perform(get("/models/" + draftId).with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(archiveActions(0));
+    }
+
+    @Test void creationLookupOnlyReadsTheFilteredDatabasePageAndSkipsEmptyResults() throws Exception {
+        fixture();
+        long firstId = fixture("ods_first").model().getId();
+        fixture("ods_second");
+        clearInvocations(gateway);
+        mvc.perform(get("/models").param("keyword", "ods_").param("layer", "ODS").param("pageSize", "1").param("pageNum", "2")
+                .with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(model().attribute("totalCount", 3L))
+                .andExpect(modelRowContains(firstId, ">未建表</span>"));
+        verify(gateway).existingTables(List.of("ods_first"));
+        clearInvocations(gateway);
+        mvc.perform(get("/models").param("keyword", "no-match").with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("<td colspan=\"9\"")));
+        verifyNoInteractions(gateway);
+    }
+
+    @Test void archiveRetainsDefinitionAndHistoryWithoutDeletedListOrRestoreRoutes() throws Exception {
+        var preview = fixture(); long id = preview.model().getId();
+        var execution = new ModelExecution(); execution.setModelId(id); execution.setModelVersion(1); execution.setOperation("COMPARE");
+        execution.setTargetTable("warehouse.ods_model_test"); execution.setDdl("legacy"); execution.setActor("dev"); execution.setStatus("DIFF"); execution.setMessage("legacy comparison");
+        mapper.execution(execution);
+        mvc.perform(post("/models/" + id + "/archive").with(user("dev").roles("DEVELOPER")).with(csrf()).param("version", "1"))
+                .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/models"));
+        assertThat(mapper.model(id)).isNull();
+        assertThat(mapper.fields(id)).hasSize(2);
+        assertThat(mapper.executions(id)).hasSize(1);
+        assertThat(jdbc.queryForObject("SELECT archived FROM data_model WHERE id=?", Boolean.class, id)).isTrue();
+        assertThat(service.count("", "")).isZero();
+        assertThatIllegalArgumentException().isThrownBy(() -> service.require(id)).withMessageContaining("已归档");
+        mvc.perform(get("/models").with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("ods_model_test"))));
+        mvc.perform(get("/models/archived").with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isNotFound());
+        mvc.perform(post("/models/" + id + "/restore").with(user("dev").roles("DEVELOPER")).with(csrf()).param("version", "1"))
+                .andExpect(status().isNotFound());
+        assertThat(mapper.model(id)).isNull();
+    }
+
+    @Test void archiveRequiresDeveloperRoleCsrfAndCurrentVersion() throws Exception {
+        long id = fixture().model().getId();
+        mvc.perform(post("/models/" + id + "/archive").with(user("reader").roles("VIEWER")).with(csrf()).param("version", "1"))
+                .andExpect(status().isForbidden());
+        mvc.perform(post("/models/" + id + "/archive").with(user("dev").roles("DEVELOPER")).param("version", "1"))
+                .andExpect(status().isForbidden());
+        mvc.perform(post("/models/" + id + "/archive").with(user("dev").roles("DEVELOPER")).with(csrf()).param("version", "2"))
+                .andExpect(status().is3xxRedirection()).andExpect(flash().attribute("error", "模型已被修改，请刷新页面后重试"));
+        assertThat(mapper.model(id)).isNotNull();
+    }
+
+    @Test void archiveProtectsAnOdsModelUntilItsPipelineIsArchived() {
+        var preview = fixture(); long id = preview.model().getId();
+        jdbc.update("INSERT INTO data_source(name,jdbc_url,username,encrypted_password) VALUES('archive-guard-source','jdbc:mysql://localhost/test','test','test')");
+        long sourceId = jdbc.queryForObject("SELECT id FROM data_source WHERE name='archive-guard-source'", Long.class);
+        try {
+            jdbc.update("INSERT INTO pipeline(name,source_id,source_table,watermark_column,target_table,transform_sql,cron_expression) VALUES('archive-guard-pipeline',?,'orders','updated_at',?,'','0 0 * * * ?')", sourceId, preview.model().getTableName());
+            assertThatIllegalArgumentException().isThrownBy(() -> service.archive(id, 1, "dev")).withMessageContaining("同步管道");
+            assertThat(mapper.model(id)).isNotNull();
+            jdbc.update("UPDATE pipeline SET archived=TRUE WHERE name='archive-guard-pipeline'");
+            service.archive(id, 1, "dev");
+            assertThat(mapper.model(id)).isNull();
+        } finally {
+            jdbc.update("DELETE FROM pipeline WHERE source_id=?", sourceId);
+            jdbc.update("DELETE FROM data_source WHERE id=?", sourceId);
+        }
+    }
+
+    @Test void invalidLegacyDefinitionStillOpensForCorrectionOrArchive() throws Exception {
+        long id = fixture().model().getId();
+        jdbc.update("UPDATE model_field SET comment=? WHERE model_id=? AND ordinal_position=1", "legacy\\comment", id);
+        mvc.perform(get("/models/" + id).with(user("dev").roles("DEVELOPER")))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("当前模型无法生成 DDL")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("删除模型")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(">执行建表</button>"))));
+        mvc.perform(post("/models/" + id + "/archive").with(user("dev").roles("DEVELOPER")).with(csrf()).param("version", "1"))
+                .andExpect(status().is3xxRedirection());
+        assertThat(mapper.model(id)).isNull();
     }
 
     @Test void customBucketingPersistsRendersAndUpdatesThroughTheForm() throws Exception {
@@ -502,6 +682,12 @@ class ModelingIntegrationTest {
                 .param("fields[1].name", "id").param("fields[1].dataType", "BIGINT").param("fields[1].keyColumn", "true");
     }
 
+    private static org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder prefixedModelRequest(String layer, String suffix) {
+        return post("/models").with(user("dev").roles("DEVELOPER")).with(csrf())
+                .param("tableName", "forged_table_name").param("tableNameSuffix", suffix).param("name", "前缀模型").param("subjectArea", "测试")
+                .param("layer", layer).param("dimensionKeys", "id").param("fields[0].name", "id").param("fields[0].dataType", "BIGINT").param("fields[0].keyColumn", "true");
+    }
+
     private static org.springframework.test.web.servlet.ResultMatcher replicaAttribute(String attribute, String expected) {
         return result -> {
             var input = java.util.regex.Pattern.compile("<input\\b[^>]*\\bid=\"replicationNum\"[^>]*>")
@@ -511,8 +697,25 @@ class ModelingIntegrationTest {
         };
     }
 
+    private static org.springframework.test.web.servlet.ResultMatcher modelRowContains(long id, String... expected) {
+        return result -> {
+            var row = java.util.regex.Pattern.compile("(?s)<tr\\b[^>]*>\\s*<td><a\\b[^>]*\\bhref=\"/models/" + id + "\".*?</tr>")
+                    .matcher(result.getResponse().getContentAsString());
+            assertThat(row.find()).as("model row %s", id).isTrue();
+            assertThat(row.group()).contains(expected);
+        };
+    }
+
+    private static org.springframework.test.web.servlet.ResultMatcher archiveActions(int expected) {
+        return result -> assertThat(java.util.regex.Pattern.compile("<form\\b[^>]*\\baction=\"/models/\\d+/archive\"")
+                .matcher(result.getResponse().getContentAsString()).results().count()).isEqualTo(expected);
+    }
+
     private ModelingService.Preview fixture() {
-        var model = new DataModel(); model.setName("测试模型"); model.setTableName("ods_model_test"); model.setSubjectArea("交易");
+        return fixture("ods_model_test");
+    }
+    private ModelingService.Preview fixture(String tableName) {
+        var model = new DataModel(); model.setName("测试模型"); model.setTableName(tableName); model.setSubjectArea("交易");
         var id = new ModelField(); id.setName("id"); id.setDataType("BIGINT"); id.setKeyColumn(true);
         var amount = new ModelField(); amount.setName("amount"); amount.setDataType("DECIMAL(18,2)"); amount.setNullable(true);
         model.setFields(List.of(id, amount)); return service.preview(service.save(null, model, "dev"));

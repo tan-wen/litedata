@@ -30,10 +30,22 @@ public class PipelineService {
         if(pipeline==null) throw new IllegalArgumentException("同步任务不存在");
         return pipeline;
     }
+    @Transactional
     public long create(String name,long sourceId,String table,String column,String target,String transform,String cron) {
         var pipeline=definition(name,sourceId,table,column,target,transform,cron);
         mapper.insertPipeline(pipeline);
         return pipeline.getId();
+    }
+    @Transactional
+    public void archive(long id) {
+        var pipeline=mapper.lockPipeline(id);
+        if(pipeline==null) throw new IllegalArgumentException("同步任务不存在");
+        if(pipeline.getActiveRunId()!=null || mapper.runningPipelineRuns(id)>0) throw new IllegalArgumentException("同步任务仍有运行中的实例，请等待完成后删除");
+        if("SCHEDULED".equals(pipeline.getStatus()) || "SCHEDULE_PENDING".equals(pipeline.getStatus()))
+            throw new IllegalArgumentException("请先停用定时调度，再删除同步任务");
+        if(mapper.activePipelineTaskReferences(id)>0)
+            throw new IllegalArgumentException("同步任务仍被有效加工流程引用，请先移除该依赖");
+        mapper.archivePipeline(id);
     }
     @Transactional
     public void update(long id,String name,long sourceId,String table,String column,String target,String transform,String cron) {
@@ -54,7 +66,7 @@ public class PipelineService {
         } else mapper.updatePipeline(pipeline);
     }
     private Pipeline definition(String name,long sourceId,String table,String column,String target,String transform,String cron) {
-        sources.require(sourceId);
+        sources.requireLocked(sourceId);
         requireOdsTarget(JdbcConnections.identifier(target));
         if(name==null || name.isBlank() || name.length()>100) throw new IllegalArgumentException("任务名称不能为空，最长100字符");
         cron=SchedulePreview.validate(cron);

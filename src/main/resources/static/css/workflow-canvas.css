@@ -23,3 +23,4 @@
 .workflow-sql-dialog { width:min(44rem,calc(100vw - 2rem)); max-height:calc(100vh - 2rem); padding:0; border:0; background:transparent; color:inherit; }
 .workflow-sql-dialog::backdrop { background:rgb(0 0 0 / .42); }
 .workflow-sql-dialog .card { margin:0; max-height:calc(100vh - 2rem); overflow:auto; }
+.workflow-leave-dialog { width:min(30rem,calc(100vw - 2rem)); }

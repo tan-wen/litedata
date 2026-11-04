@@ -55,7 +55,7 @@ DolphinScheduler 的末端任务包含三个同步节点和四个 SQL 节点；�
 
 生成仓库日历日期之前八个完整日期的记录。`stat_date` 是统计日期，`period_end` 为次日零点；它用于派生指标的滚动窗口。`updated_at` 则在生成或修正数据时更新，并有前导索引，用于同步水位。业务发生时间与数据变更时间分开，历史业务日期的纠错也能被增量读取。
 
-七个模型分别为三个 ODS、`dim_enterprise`、`dwd_utility_day`、`dws_enterprise_7d`、`ads_park_7d`。物理表名、指标编码和任务名称带本次唯一前缀，例如 `cpdim_resin261026_utility`、`cpdim_resin261026_dwd_utility_day`；API slug 使用连字符，例如 `cpdim-resin261026-park-7d`。
+七个模型分别为三个 ODS、`dim_enterprise`、`dwd_utility_day`、`dws_enterprise_7d`、`ads_park_7d`。物理模型表名始终由数仓分层前缀开头，随后是本次唯一业务前缀和表后缀，例如源业务表为 `cpdim_resin261026_utility`，模型表为 `dwd_cpdim_resin261026_utility_day`；指标编码和任务名称仍带本次唯一业务前缀，API slug 使用连字符，例如 `cpdim-resin261026-park-7d`。
 
 `dim_enterprise` 粒度为一家企业，字段及角色如下：
 
@@ -69,10 +69,10 @@ DolphinScheduler 的末端任务包含三个同步节点和四个 SQL 节点；�
 在模型表单中选择 DIM，业务键填写 `enterprise_id`，展示字段填写 `enterprise_name`，策略选择 SCD1。维度加工的实际 SQL 形如：
 
 ```sql
-INSERT INTO cpdim_resin261026_dim_enterprise
+INSERT INTO dim_cpdim_resin261026_enterprise
     (enterprise_id, enterprise_name, product_code, updated_at)
 SELECT enterprise_id, enterprise_name, product_code, updated_at
-FROM cpdim_resin261026_ods_enterprise;
+FROM ods_cpdim_resin261026_enterprise;
 ```
 
 DWD 将原先对 `ods_enterprise` 的关联改为 `dim_enterprise`，仍按企业 ID 关联，并与用能、产量的企业日期粒度对齐。DIM 的依赖是企业档案同步；DWD 的依赖是 DIM 加工、用能同步、产量同步。指标中仍显式配置 `enterprise_id` 分组，名称和产品属性沿公共维表统一提供。
@@ -191,15 +191,3 @@ docker compose --env-file .env.example config --quiet
 ## 9. 公共维度与历史语义
 
 `dim_enterprise` 是园区共享企业维度，DWD 从它读取企业名称和产品编码。其余非主键字段是维度属性，DIM 与事实加工可以共享调度依赖。SCD1 只保留当前属性，示例重算历史明细时使用当前企业属性；不保留企业迁移、产品变更等历史版本。DIM 的业务键、展示字段及更新策略属于模型配置，指标中的 `enterprise_id` 统计分组仍需显式选择。完整边界见[公共维度建模](../../docs/dimension-models.md)。
-
-## 10. 本次独立示例验证
-
-2026-10-26 在本地 Doris 4.1.3 / DolphinScheduler 3.4.0 环境执行：
-
-```powershell
-python examples/chemical-park-dim/run_demo.py --prefix cpdim_resin261026b
-```
-
-结果为 `success`：七模型、三同步、四加工完成五轮运行；DIM 保持 3 个成员，DWD 纠错后为 24 行。源端异常、DIM 成员质量和 DWD 企业引用通过验证；企业名称更新后同步覆盖 DIM 与重算后的 DWD，恢复后与最初成员记录一致。10 个指标、5 个受控 API 与独立预期值对账通过，无凭据调用返回 401；企业维度字段血缘追到 DIM、ODS 和业务源。
-
-本机产物为 `output/chemical-park-dim/cpdim_resin261026b/report.json` 与同目录 `dashboard.html`。独立 DIM 版本 15 项 Python 测试通过，原版 10 项测试通过；两套示例均纳入 CI。报告和看板只保存在本地，不包含凭据，不纳入版本控制；本次未验证持续定时触发、连续七天运行和生产容量。

@@ -6,9 +6,9 @@ import org.apache.ibatis.annotations.*;
 
 @Mapper
 public interface MetadataMapper {
-    String JOIN = " FROM metadata_table t LEFT JOIN data_source s ON t.scope_key=CONCAT('source:',s.id) LEFT JOIN data_model m ON t.scope_key='doris' AND LOWER(t.table_name)=m.table_name AND m.archived=FALSE ";
+    String JOIN = " FROM metadata_table t LEFT JOIN data_source s ON t.scope_key=CONCAT('source:',s.id) AND s.archived=FALSE LEFT JOIN data_model m ON t.scope_key='doris' AND LOWER(t.table_name)=m.table_name AND m.archived=FALSE ";
     String SELECT = "SELECT t.*,FLOOR(UNIX_TIMESTAMP(t.collected_at)) collected_epoch,CASE WHEN t.scope_key='doris' THEN 'Doris 数仓' ELSE s.name END source_name,m.id model_id,m.name model_name,m.layer" + JOIN;
-    String FILTER = " WHERE (#{layer}='' OR m.layer=#{layer}) AND (#{keyword}='' OR LOCATE(#{keyword},LOWER(CONCAT(t.catalog_name,'.',t.table_name,' ',t.comment,' ',COALESCE(s.name,''),' ',COALESCE(m.name,''))))>0) ";
+    String FILTER = " WHERE (t.scope_key='doris' OR NOT EXISTS(SELECT 1 FROM data_source archived_source WHERE t.scope_key=CONCAT('source:',archived_source.id) AND archived_source.archived=TRUE)) AND (#{layer}='' OR m.layer=#{layer}) AND (#{keyword}='' OR LOCATE(#{keyword},LOWER(CONCAT(t.catalog_name,'.',t.table_name,' ',t.comment,' ',COALESCE(s.name,''),' ',COALESCE(m.name,''))))>0) ";
     @Insert("INSERT IGNORE INTO metadata_scope(scope_key) VALUES(#{scope})") void ensureScope(String scope);
     @Select("SELECT scope_key FROM metadata_scope WHERE scope_key=#{scope} FOR UPDATE") String lockScope(String scope);
     @Select("SELECT COUNT(*)" + JOIN + FILTER) long count(@Param("keyword") String keyword,@Param("layer") String layer);

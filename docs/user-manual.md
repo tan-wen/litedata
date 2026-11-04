@@ -1,6 +1,6 @@
 # LiteData 平台操作手册
 
-> 维护日期：2026-10-31；适用平台：0.1.0-SNAPSHOT，共 39 个图文步骤。截图采集于 2026-10-26，部分页面已调整；当前建模流程见 [数据建模](modeling.md)，依赖与运行入口见 [工作流画布使用说明](workflow-canvas-guide.md)。截图用于操作参考，不作为当前版本的验证证据。
+> 维护日期：2026-11-04；适用平台：0.1.0-SNAPSHOT，共 39 个图文步骤。截图采集于 2026-10-26，部分页面已调整；当前建模流程见 [数据建模](modeling.md)，依赖与运行入口见 [工作流画布使用说明](workflow-canvas-guide.md)。截图用于操作参考，不作为当前版本的验证证据。
 
 手册维护源为本 Markdown 和截图；HTML/PDF 导出件放本地 `output/manual/`，不纳入版本控制。
 
@@ -8,7 +8,7 @@
 
 平台已经部署，能够登录。维护及执行任务需 ADMIN / DEVELOPER；账号管理需 ADMIN。首次部署按仓库 README 执行 deploy/start.ps1 或 deploy/start.sh。
 
-首次 orders 链路使用已初始化的 ods_orders / ads_orders；园区进阶样例对应 examples/chemical-park-dim/README.md，截图中的前缀为 cpdim_resin261026b。新建表练习使用独立表名 ods_orders_manual，不与已有订单链路混用。
+首次 orders 链路使用已初始化的 ods_orders / ads_orders；园区进阶样例对应 examples/chemical-park-dim/README.md，当前文字示例前缀为 cpdim_resin261104；截图中的旧前缀为 cpdim_resin261026b。新建表练习使用独立表名 ods_orders_manual，不与已有订单链路混用。
 
 ## 目录
 
@@ -57,7 +57,7 @@
 
 **结果检查**：能找到数据源、数据建模、同步管道、数据加工、数据服务和各治理菜单。
 
-**操作提醒**：截图中 cpdim_resin261026b 为合成演示数据前缀；实际资源 ID、数量和运行时间以自己的环境为准。
+**操作提醒**：截图中 cpdim_resin261026b 是旧的合成演示数据前缀，与本手册文字使用的 cpdim_resin261104 不同；实际资源 ID、数量和运行时间以自己的环境为准。
 
 ![步骤 02：认识工作台与操作主线](manual/screenshots/02.png)
 
@@ -113,7 +113,7 @@
 2. 点击该行“测试连接”。
 3. 检查状态和最近错误；失败时检查网络、库名、账号及驱动类型。
 
-**示例**：已有演示源“cpdim_resin261026b 化工园区业务源”显示 CONNECTED。
+**示例**：已有演示源“cpdim_resin261104 化工园区业务源”显示 CONNECTED。
 
 **结果检查**：连接成功显示 CONNECTED；失败需查看脱敏错误后修正。
 
@@ -177,7 +177,7 @@
 3. 核对 warehouse 库、数据模型（UNIQUE / DUPLICATE / AGGREGATE）、键列、HASH 分桶、默认副本及可选日期自动分区。
 4. AGGREGATE 逐一核对非键字段的聚合函数。新建/编辑页的“Doris 物理设置”可调整这些配置；截图示例沿用 UNIQUE 单副本。
 
-**示例**：既有样例：cpdim_resin261026b_ods_utility；主键 record_id；水位 updated_at DATETIME(6)。
+**示例**：既有样例：ods_cpdim_resin261104_utility；主键 record_id；水位 updated_at DATETIME(6)。
 
 **结果检查**：DDL 与模型字段一致，目标表名、主键和桶数符合预期。
 
@@ -218,7 +218,7 @@
 2. 填写业务键、展示名称字段，更新策略使用 SCD1。
 3. 补齐字段后保存、预览和确认建表，再在数据加工配置写入。
 
-**示例**：既有模型 cpdim_resin261026b_dim_enterprise；业务键 enterprise_id；展示名称 enterprise_name。
+**示例**：既有模型 dim_cpdim_resin261104_enterprise；业务键 enterprise_id；展示名称 enterprise_name。
 
 **结果检查**：模型详情展示业务键和 SCD1；同一业务键再次写入会覆盖当前属性。
 
@@ -241,7 +241,7 @@
 5. 第三步可设置 HASH 分桶键、AUTO 或固定桶数、副本数，以及自动/手动范围或列表分区、动态分区 PROPERTIES。自动范围和动态分区仅可选非空 DATE/DATETIME 键列；手动范围分区还可选整数键列，列表分区可选整数、日期和 CHAR/VARCHAR 键列；AUTO_LIST 不支持 AUTO 分桶。动态分区若配置 `dynamic_partition.start`，Doris 会自动删除过期分区。
 6. 自动模式没有来源主键时，选择非空、稳定且唯一的业务键后重新预览；结构漂移会阻断创建，不会自动 ALTER 或 DROP。同步只写入 ODS；清洗、关联和汇总在“数据加工”创建独立 SQL 任务，并把此同步管道声明为上游。
 
-**示例**：来源 cpdim_resin261026b_utility → 目标 cpdim_resin261026b_ods_utility；水位 updated_at。
+**示例**：来源 cpdim_resin261104_utility → 目标 ods_cpdim_resin261104_utility；水位 updated_at。
 
 **结果检查**：保存后列表显示源→目标、运行状态和最近成功水位。
 
@@ -283,7 +283,7 @@
 2. 进入“实例 / 日志”确认真实工作流和节点成功。
 3. 验证通过后点击“启用定时”；需要停用未来计划时点击“停用定时”。
 
-**示例**：先手动验证“cpdim_resin261026b 同步 utility”；截图中调度为未启用。
+**示例**：先手动验证“cpdim_resin261104 同步 utility”；截图中调度为未启用。
 
 **结果检查**：DataX 成功写入 ODS 后才推进水位；独立加工失败不会回退它，运行失败需在对应任务排障后重跑。
 
@@ -343,7 +343,7 @@
 2. 新增数据加工，填写名称并选择目标模型。
 3. 填写单条 INSERT INTO ... SELECT，写入表必须与所选目标模型一致。
 
-**示例**：既有“日能耗产量明细”写入 cpdim_resin261026b_dwd_utility_day，并关联企业维度与生产数据。
+**示例**：既有“日能耗产量明细”写入 dwd_cpdim_resin261104_utility_day，并关联企业维度与生产数据。
 
 **结果检查**：SQL 和目标模型匹配；保存时进行受控语法及依赖校验。
 
@@ -383,7 +383,7 @@
 2. 核对同步、DIM、DWD、DWS、ADS 的执行顺序。
 3. 点击“运行”，通过运行实例、运行图和节点记录确认全部成功。
 
-**示例**：园区末端看板任务：cpdim_resin261026b_ads_park_7d；上游包含三条同步及四层加工。
+**示例**：园区末端看板任务：ads_cpdim_resin261104_park_7d；上游包含三条同步及四层加工。
 
 **结果检查**：本次整链重跑全部声明上游；历史成功不能替代本次执行。
 
@@ -423,7 +423,7 @@
 2. 点击“生成密钥”，妥善保存一次性显示的凭证。
 3. 使用 X-API-Key 调用 /api/data/{服务标识}。
 
-**示例**：既有服务 cpdim-resin261026b-daily 已发布；调用时使用它自己的服务级密钥。
+**示例**：既有服务 cpdim-resin261104-daily 已发布；调用时使用它自己的服务级密钥。
 
 **结果检查**：已发布状态和有效凭证同时满足后，应用才能查询数据。
 
@@ -483,7 +483,7 @@
 2. 核对来源、层级、版本、采集时间。
 3. 查看字段名、类型、可空和注释，按需跳转关联资源。
 
-**示例**：warehouse.cpdim_resin261026b_dwd_utility_day；包含 enterprise_id、stat_date、steam_tons 和 production_tons。
+**示例**：warehouse.dwd_cpdim_resin261104_utility_day；包含 enterprise_id、stat_date、steam_tons 和 production_tons。
 
 **结果检查**：能读到最近一次采集的实际字段结构。
 
@@ -523,7 +523,7 @@
 2. 按关键词、类型、主题域、状态、负责人或标签筛选。
 3. 点击资产名称进入详情，按需打开结构、血缘、质量或服务入口。
 
-**示例**：关键词可用 cpdim_resin261026b；业务分析人员可优先筛选“指标”或“数据服务”。
+**示例**：关键词可用 cpdim_resin261104；业务分析人员可优先筛选“指标”或“数据服务”。
 
 **结果检查**：结果同时展示来源类型、业务说明和可用状态，并支持数据库分页。
 
@@ -563,7 +563,7 @@
 2. 选择 Doris 数仓或已登记的 MySQL 源，填写连接库中的单表名和负责人。
 3. 首次将 Cron 留空；全表检查时将时间字段留空。
 
-**示例**：表名 cpdim_resin261026b_dwd_utility_day；超时 30 秒；首次手动运行。
+**示例**：表名 dwd_cpdim_resin261104_utility_day；超时 30 秒；首次手动运行。
 
 **结果检查**：任务对象和范围清楚，继续配置规则后保存。
 
@@ -647,7 +647,7 @@
 
 **结果检查**：保存生成带 metric_value 的 SELECT 和不可变版本快照。
 
-**操作提醒**：截图为未保存示例；来源模型为 cpdim_resin261026b_dwd_utility_day。编码和类型首次保存后固定，定义指标不会执行查询。
+**操作提醒**：截图为未保存示例；文字示例的来源模型为 dwd_cpdim_resin261104_utility_day。编码和类型首次保存后固定，定义指标不会执行查询。
 
 ![步骤 31：定义原子指标](manual/screenshots/31.png)
 
@@ -663,7 +663,7 @@
 2. 选择原子指标，填写窗口天数和可选业务筛选。
 3. 核对继承的模型、度量和维度后保存。
 
-**示例**：既有 cpdim_resin261026b_electricity_7d：引用 electricity_daily，窗口 7 天。 业务筛选：product_code = 'RESIN_A'。
+**示例**：既有 cpdim_resin261104_electricity_7d：引用 cpdim_resin261104_electricity_daily，窗口 7 天。业务筛选：product_code = 'RESIN_A'。
 
 **结果检查**：生成以数据库当前时间为终点的七日滚动区间查询。
 
@@ -683,7 +683,7 @@
 2. 用 [指标编码] 引用已有指标，填写四则运算公式。
 3. 核对输入维度、时间范围、单位、过滤条件和去重方式后保存。
 
-**示例**：[cpdim_resin261026b_steam_7d] / [cpdim_resin261026b_production_7d] → 七日吨产品蒸汽。
+**示例**：[cpdim_resin261104_steam_7d] / [cpdim_resin261104_production_7d] → 七日吨产品蒸汽。
 
 **结果检查**：保存后固定引用的上游指标版本，除零通过 NULLIF 返回 NULL。
 
@@ -763,7 +763,7 @@
 2. 填写用途、有效期，勾选工具权限并填写服务白名单。
 3. 点击“创建并显示 Key”，将只显示一次的 Key 保存到客户端密钥配置。
 
-**示例**：名称 手册只读分析 Agent；7 天；保留列举/查询数据服务；白名单 cpdim-resin261026b-daily；不授予执行管道。
+**示例**：名称 手册只读分析 Agent；7 天；保留列举/查询数据服务；白名单 cpdim-resin261104-daily；不授予执行管道。
 
 **结果检查**：Key 仅能使用角色、scope、白名单三者交集内的权限。
 

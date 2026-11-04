@@ -124,6 +124,44 @@ public class DorisModelGateway {
         }
     }
 
+    /**
+     * Checks only the metadata catalogue with the read-only Doris connection.
+     * This deliberately does not parse SHOW CREATE output: archive protection
+     * needs to know whether any physical table exists, even a legacy one.
+     */
+    public boolean tableExists(String tableName) throws SQLException {
+        JdbcConnections.identifier(tableName);
+        var doris = properties.doris();
+        try (var connection = connections.open(doris.jdbcUrl(), doris.username(), doris.password());
+             var statement = connection.prepareStatement("SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA=? AND TABLE_NAME=? LIMIT 1")) {
+            statement.setString(1, "warehouse");
+            statement.setString(2, tableName);
+            statement.setQueryTimeout(15);
+            try (var result = statement.executeQuery()) {
+                return result.next();
+            }
+        }
+    }
+
+    /** Returns the requested physical tables that currently exist in the warehouse schema. */
+    public Set<String> existingTables(List<String> tableNames) throws SQLException {
+        if (tableNames == null || tableNames.isEmpty()) return Set.of();
+        for (String tableName : tableNames) JdbcConnections.identifier(tableName);
+        String placeholders = String.join(",", Collections.nCopies(tableNames.size(), "?"));
+        var doris = properties.doris();
+        try (var connection = connections.open(doris.jdbcUrl(), doris.username(), doris.password());
+             var statement = connection.prepareStatement("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=? AND TABLE_NAME IN (" + placeholders + ")")) {
+            statement.setString(1, "warehouse");
+            for (int i = 0; i < tableNames.size(); i++) statement.setString(i + 2, tableNames.get(i));
+            statement.setQueryTimeout(15);
+            try (var result = statement.executeQuery()) {
+                Set<String> existing = new HashSet<>();
+                while (result.next()) existing.add(result.getString(1));
+                return Set.copyOf(existing);
+            }
+        }
+    }
+
     static Schema parseSchema(List<Column> columns, String ddl) {
         var key = Pattern.compile("(?im)^\\s*(UNIQUE|DUPLICATE|AGGREGATE)\\s+KEY\\s*\\(([^)]+)\\)").matcher(ddl);
         String type = key.find() ? key.group(1).toUpperCase(Locale.ROOT) : "UNKNOWN";

@@ -12,7 +12,7 @@ class DimensionDashboardTest(unittest.TestCase):
     def test_dashboard_shows_observed_members_changes_and_dimension_lineage_safely(self):
         report = {"status": "success", "prefix": "cpdim_test", "platform_url": "http://localhost:8080",
                   "dimension_lineage_path": "/metrics/1/lineage?field=enterprise_id&mode=direct",
-                  "dimension": {"modelId": 7, "tableName": "cpdim_test_dim_enterprise", "businessKeys": "enterprise_id",
+                  "dimension": {"modelId": 7, "tableName": "dim_cpdim_test_enterprise", "businessKeys": "enterprise_id",
                                 "labelField": "enterprise_name", "strategy": "SCD1",
                                 "members": [{"enterprise_id": 1, "enterprise_name": "<img src=x onerror=alert(1)>", "product_code": "RESIN_A"}],
                                 "scd1": {"status": "passed", "before": "原名", "after": "新名", "factAfter": "新名", "restored": "原名",

@@ -5,6 +5,9 @@
   if (!form || !body || !add) return;
 
   const layer = document.getElementById('layer');
+  const tableName = document.getElementById('tableName');
+  const tableNameSuffix = document.getElementById('tableNameSuffix');
+  const tableNamePrefix = document.querySelector('[data-table-prefix]');
   const modelType = document.getElementById('modelType');
   const partitionType = document.getElementById('partitionType');
   const partitionColumn = document.getElementById('partitionColumn');
@@ -34,6 +37,15 @@
   const wizardPanels = [...form.querySelectorAll('[data-wizard-step]')];
   const wizardSteps = [...form.querySelectorAll('[data-wizard-target]')];
   let activeStep = 1;
+
+  function synchronizeTableName() {
+    if (!tableNameSuffix) return;
+    const prefix = `${layer.value.toLowerCase()}_`;
+    tableNamePrefix.textContent = prefix;
+    tableNameSuffix.maxLength = 64 - prefix.length;
+    tableNameSuffix.placeholder = layer.value === 'DIM' ? 'enterprise' : 'orders';
+    tableName.value = prefix + tableNameSuffix.value;
+  }
 
   function parseType(value) {
     const normalized = value.trim().toUpperCase().replace(/\s*([(),])\s*/g, '$1');
@@ -161,7 +173,7 @@
   function updateDimension(changed) {
     const enabled = layer.value === 'DIM'; dimensionSettings.hidden = !enabled;
     dimensionSettings.querySelectorAll('input, select').forEach(input => { input.disabled = !enabled; }); document.getElementById('dimensionKeys').required = enabled;
-    document.getElementById('tableName').placeholder = enabled ? 'dim_enterprise' : 'ods_orders'; modelType.querySelectorAll('option:not([value="UNIQUE"])').forEach(option => { option.disabled = enabled; });
+    modelType.querySelectorAll('option:not([value="UNIQUE"])').forEach(option => { option.disabled = enabled; });
     if (enabled && changed) { modelType.value = 'UNIQUE'; partitionType.value = 'NONE'; }
   }
   function aggregationOptions(field) {
@@ -335,7 +347,7 @@
     if (panelTop < topbarBottom || panelTop >= window.innerHeight) panel.scrollIntoView({ block: 'start', behavior: 'instant' });
   }
 
-  layer.addEventListener('change', () => { updateDimension(true); updatePhysicalSettings(); updateWizardSummary(); }); modelType.addEventListener('change', updatePhysicalSettings); partitionType.addEventListener('change', updatePhysicalSettings); partitionColumn.addEventListener('change', () => partitionColumn.setCustomValidity('')); rangeStyle.addEventListener('change', updateManualRangeStyle);
+  layer.addEventListener('change', () => { synchronizeTableName(); updateDimension(true); updatePhysicalSettings(); updateWizardSummary(); }); modelType.addEventListener('change', updatePhysicalSettings); partitionType.addEventListener('change', updatePhysicalSettings); partitionColumn.addEventListener('change', () => partitionColumn.setCustomValidity('')); rangeStyle.addEventListener('change', updateManualRangeStyle);
   distributionType.addEventListener('change', () => {
     if (distributionType.value === 'HASH' && !distributionSelection().length) defaultDistributionKeys = true;
     updatePhysicalSettings();
@@ -362,10 +374,11 @@
   add.addEventListener('click', () => { if (body.rows.length >= 100) return; body.append(document.getElementById('field-template').content.cloneNode(true)); const typeSelect = body.lastElementChild.querySelector('[data-type-select]'); typeSelect.selectedIndex = [...typeSelect.options].indexOf(selectedOptionForKind(typeSelect, 'VARCHAR')); renumber(); focusInvalid(body.lastElementChild.querySelector('input')); });
   body.addEventListener('click', event => { const button = event.target.closest('button'); if (!button) return; const row = button.closest('tr'); if (button.hasAttribute('data-remove')) row.remove(); if (button.dataset.move === 'up' && row.previousElementSibling) body.insertBefore(row, row.previousElementSibling); if (button.dataset.move === 'down' && row.nextElementSibling) body.insertBefore(row.nextElementSibling, row); renumber(); });
   form.querySelectorAll('[data-wizard-next]').forEach(button => button.addEventListener('click', () => attemptStep(Number(button.dataset.wizardNext)))); form.querySelectorAll('[data-wizard-back]').forEach(button => button.addEventListener('click', () => attemptStep(Number(button.dataset.wizardBack)))); wizardSteps.forEach(button => button.addEventListener('click', () => attemptStep(Number(button.dataset.wizardTarget))));
-  form.addEventListener('input', event => { if (event.target.closest('[data-wizard-step="1"]')) updateWizardSummary(); });
+  form.addEventListener('input', event => { if (event.target.closest('[data-wizard-step="1"]')) { synchronizeTableName(); updateWizardSummary(); } });
   form.addEventListener('submit', event => {
+    synchronizeTableName();
     if (activeStep < 3) { event.preventDefault(); attemptStep(activeStep + 1); return; }
     for (let step = 1; step <= 3; step += 1) { showStep(step); if (!validateStep(step)) { event.preventDefault(); return; } }
   });
-  form.noValidate = true; form.classList.add('model-wizard-enhanced'); updateDimension(false); renumber(); const errorStep = Number(form.dataset.errorStep); showStep([1, 2, 3].includes(errorStep) ? errorStep : 1);
+  form.noValidate = true; form.classList.add('model-wizard-enhanced'); synchronizeTableName(); updateDimension(false); renumber(); const errorStep = Number(form.dataset.errorStep); showStep([1, 2, 3].includes(errorStep) ? errorStep : 1);
 })();

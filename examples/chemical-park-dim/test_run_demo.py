@@ -1,6 +1,7 @@
 import copy
 import datetime as dt
 import unittest
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from run_demo import Client, Demo, DemoFailure, identifier, workflow_node
@@ -29,6 +30,34 @@ class RunnerContractTest(unittest.TestCase):
     def test_identifier_reads_transform_id_from_list_edit_link(self):
         page = "<table><tr><td>cpdim_demo ADS</td><td><a href=\"/transforms/42/edit\">编辑</a></td></tr></table>"
         self.assertEqual(42, identifier(page, "cpdim_demo ADS", "transforms", "edit"))
+
+    def test_model_posts_layer_relative_suffix_and_rejects_duplicate_prefix(self):
+        demo = Demo.__new__(Demo)
+        demo.args = SimpleNamespace(prefix="cpdim_resin01")
+        demo.client = Client("http://localhost:8080/")
+        demo.report = {"resources": {"models": {}}}
+        model = next(item for item in self.scenario["models"] if item["key"] == "dwd_utility_day")
+        form = ('<form action="/models"><input name="_csrf" value="token"></form>'
+                '<form action="/models/42/physicalize"><input name="_csrf" value="token"></form>')
+        calls = []
+
+        def request(method, path, fields=None, headers=None):
+            calls.append((method, path, fields))
+            if method == "GET":
+                return 200, form
+            if path == "/models":
+                demo.client.last_path = "/models/42"
+                return 200, "逻辑模型已保存" + form
+            return 200, "Doris 表已创建"
+
+        demo.client.request = request
+        demo.model(model)
+        save_fields = next(fields for method, path, fields in calls if method == "POST" and path == "/models")
+        self.assertEqual("dwd_cpdim_resin01_utility_day", save_fields["tableName"])
+        self.assertEqual("cpdim_resin01_utility_day", save_fields["tableNameSuffix"])
+        duplicate = dict(model, tableName="dwd_dwd_cpdim_resin01_utility_day")
+        with self.assertRaisesRegex(DemoFailure, "重复或缺少"):
+            demo.model(duplicate)
 
     def test_datetime_check_detects_real_eight_hour_shift(self):
         demo = Demo.__new__(Demo)

@@ -19,6 +19,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class ModelingService {
     public record Preview(DataModel model, String ddl, String hash) {}
     public record ExecutionResult(boolean success, String message) {}
+    public enum CreationStatus {
+        CREATED("已建表"), NOT_CREATED("未建表"), UNKNOWN("状态未知");
+        private final String label;
+        CreationStatus(String label) { this.label = label; }
+        public String getLabel() { return label; }
+        public boolean isCreated() { return this == CREATED; }
+        public boolean isNotCreated() { return this == NOT_CREATED; }
+    }
     public record BackendStatus(boolean known, int total, int available) {
         public int replicationLimit() { return known ? Math.min(10, available) : 10; }
         public String hint() {
@@ -33,11 +41,13 @@ public class ModelingService {
     private final DorisModelGateway gateway;
     private final SqlTaskMapper sqlTasks;
     private final MetricMapper metrics;
+    private final ModelDependencyGuard dependencies;
 
-    public ModelingService(ModelMapper mapper, PlatformMapper platform, DorisDdl ddl, DorisModelGateway gateway, SqlTaskMapper sqlTasks, MetricMapper metrics) {
+    public ModelingService(ModelMapper mapper, PlatformMapper platform, DorisDdl ddl, DorisModelGateway gateway, SqlTaskMapper sqlTasks, MetricMapper metrics, ModelDependencyGuard dependencies) {
         this.mapper = mapper; this.platform = platform; this.ddl = ddl; this.gateway = gateway;
         this.sqlTasks = sqlTasks;
         this.metrics = metrics;
+        this.dependencies = dependencies;
     }
 
     public List<DataModel> list(String keyword, String layer) {
@@ -52,6 +62,27 @@ public class ModelingService {
 
     public List<DataModel> list(String keyword, String layer, QueryPage page) {
         return mapper.modelPage(query(keyword), normalizedLayer(layer), page.pageSize(), page.offset());
+    }
+
+    public Map<Long, CreationStatus> creationStatuses(List<DataModel> models) {
+        if (models.isEmpty()) return Map.of();
+        var createdIds = new HashSet<>(mapper.successfulCreateModelIds(models.stream().map(DataModel::getId).toList()));
+        var unchecked = models.stream().filter(model -> model.getPhysicalVersion() == null && !createdIds.contains(model.getId())).toList();
+        Set<String> existing = Set.of();
+        boolean known = true;
+        if (!unchecked.isEmpty()) {
+            try {
+                existing = gateway.existingTables(unchecked.stream().map(DataModel::getTableName).toList());
+            } catch (SQLException | IllegalStateException | IllegalArgumentException exception) {
+                known = false;
+            }
+        }
+        var statuses = new LinkedHashMap<Long, CreationStatus>();
+        for (var model : models) {
+            boolean created = model.getPhysicalVersion() != null || createdIds.contains(model.getId()) || existing.contains(model.getTableName());
+            statuses.put(model.getId(), created ? CreationStatus.CREATED : known ? CreationStatus.NOT_CREATED : CreationStatus.UNKNOWN);
+        }
+        return statuses;
     }
 
     public DataModel require(long id) {
@@ -104,8 +135,20 @@ public class ModelingService {
         metrics.lockGraph();
         var model = requireModel(mapper.lockModel(id));
         checkVersion(model, version);
-        if (sqlTasks.modelReferences(id)>0) throw new IllegalArgumentException("模型仍关联数据加工，请先归档加工任务");
-        if (metrics.modelReferences(id)>0) throw new IllegalArgumentException("模型仍关联指标，请先归档相关指标");
+        if (mapper.pipelineReferences(model.getTableName())>0) throw new IllegalArgumentException("模型仍关联同步管道，请先删除相关管道");
+        if (sqlTasks.modelReferences(id)>0) throw new IllegalArgumentException("模型仍关联数据加工，请先删除加工任务");
+        if (metrics.modelReferences(id)>0) throw new IllegalArgumentException("模型仍关联指标，请先删除相关指标");
+        dependencies.check(model.getTableName());
+        if (model.getPhysicalVersion() != null)
+            throw new IllegalArgumentException("模型已完成物理建表或结构核对，不能删除");
+        if (mapper.successfulCreateExecutions(id) > 0)
+            throw new IllegalArgumentException("模型已有成功建表记录，不能删除");
+        try {
+            if (gateway.tableExists(model.getTableName()))
+                throw new IllegalArgumentException("Doris 中已存在物理表，不能删除");
+        } catch (SQLException | IllegalStateException exception) {
+            throw new IllegalArgumentException("无法确认 Doris 物理表状态，已拒绝删除；请恢复物理库连接后重试");
+        }
         mapper.archive(id);
         platform.audit(actor, "MODEL_ARCHIVE", Long.toString(id), "SUCCESS");
     }

@@ -21,24 +21,30 @@ public interface PlatformMapper {
     @Select("SELECT * FROM app_user WHERE id=#{id}") AppUser user(long id);
     @Update("UPDATE app_user SET password_hash=#{passwordHash},role=#{role} WHERE id=#{id}")
     void updateUser(AppUser user);
-    @Select("SELECT * FROM data_source ORDER BY id DESC") List<DataSource> sources();
-    @Select("SELECT COUNT(*) FROM data_source") long sourceCount();
-    @Select("SELECT * FROM data_source ORDER BY id DESC LIMIT #{limit} OFFSET #{offset}")
+    @Select("SELECT * FROM data_source WHERE archived=FALSE ORDER BY id DESC") List<DataSource> sources();
+    @Select("SELECT COUNT(*) FROM data_source WHERE archived=FALSE") long sourceCount();
+    @Select("SELECT * FROM data_source WHERE archived=FALSE ORDER BY id DESC LIMIT #{limit} OFFSET #{offset}")
     List<DataSource> sourcePage(@Param("limit") int limit,@Param("offset") long offset);
-    @Select("SELECT * FROM data_source WHERE id=#{id}") DataSource source(long id);
-    @Select("SELECT COUNT(*) FROM quality_task WHERE source_id=#{id}") long qualitySourceReferences(long id);
+    @Select("SELECT * FROM data_source WHERE id=#{id} AND archived=FALSE") DataSource source(long id);
+    @Select("SELECT * FROM data_source WHERE id=#{id} AND archived=FALSE FOR UPDATE") DataSource lockSource(long id);
+    @Select("SELECT COUNT(*) FROM quality_task WHERE source_id=#{id} AND archived=FALSE") long qualitySourceReferences(long id);
+    @Select("SELECT COUNT(*) FROM pipeline WHERE source_id=#{id} AND archived=FALSE") long activePipelineSourceReferences(long id);
+    @Update("UPDATE data_source SET archived=TRUE WHERE id=#{id} AND archived=FALSE") int archiveSource(long id);
     @Insert("INSERT INTO data_source(name,jdbc_url,username,encrypted_password) VALUES(#{name},#{jdbcUrl},#{username},#{encryptedPassword})")
     @Options(useGeneratedKeys=true,keyProperty="id") void insertSource(DataSource source);
     @Update("UPDATE data_source SET name=#{name},jdbc_url=#{jdbcUrl},username=#{username},encrypted_password=#{encryptedPassword},status='UNTESTED',last_error=NULL WHERE id=#{id}")
     void updateSource(DataSource source);
     @Update("UPDATE data_source SET status=#{status},last_error=#{error} WHERE id=#{id}")
     void sourceStatus(@Param("id") long id,@Param("status") String status,@Param("error") String error);
-    @Select("SELECT * FROM pipeline ORDER BY id DESC") List<Pipeline> pipelines();
-    @Select("SELECT COUNT(*) FROM pipeline") long pipelineCount();
-    @Select("SELECT * FROM pipeline ORDER BY id DESC LIMIT #{limit} OFFSET #{offset}")
+    @Select("SELECT * FROM pipeline WHERE archived=FALSE ORDER BY id DESC") List<Pipeline> pipelines();
+    @Select("SELECT COUNT(*) FROM pipeline WHERE archived=FALSE") long pipelineCount();
+    @Select("SELECT * FROM pipeline WHERE archived=FALSE ORDER BY id DESC LIMIT #{limit} OFFSET #{offset}")
     List<Pipeline> pipelinePage(@Param("limit") int limit,@Param("offset") long offset);
-    @Select("SELECT * FROM pipeline WHERE id=#{id}") Pipeline pipeline(long id);
-    @Select("SELECT * FROM pipeline WHERE id=#{id} FOR UPDATE") Pipeline lockPipeline(long id);
+    @Select("SELECT * FROM pipeline WHERE id=#{id} AND archived=FALSE") Pipeline pipeline(long id);
+    @Select("SELECT * FROM pipeline WHERE id=#{id} AND archived=FALSE FOR UPDATE") Pipeline lockPipeline(long id);
+    @Select("SELECT COUNT(*) FROM processing_workflow_node n JOIN processing_workflow w ON w.id=n.workflow_id WHERE n.pipeline_id=#{id} AND w.archived=FALSE") long activePipelineTaskReferences(long id);
+    @Select("SELECT COUNT(*) FROM pipeline_run WHERE pipeline_id=#{id} AND status='RUNNING'") long runningPipelineRuns(long id);
+    @Update("UPDATE pipeline SET archived=TRUE WHERE id=#{id} AND archived=FALSE") int archivePipeline(long id);
     @Insert("INSERT INTO pipeline(name,source_id,source_table,watermark_column,target_table,transform_sql,cron_expression) VALUES(#{name},#{sourceId},#{sourceTable},#{watermarkColumn},#{targetTable},#{transformSql},#{cronExpression})")
     @Options(useGeneratedKeys=true,keyProperty="id") void insertPipeline(Pipeline pipeline);
     @Update("UPDATE pipeline SET source_schema_hash=#{sourceHash},target_schema_hash=#{targetHash},source_key_columns=#{keys} WHERE id=#{id}")
@@ -63,7 +69,7 @@ public interface PlatformMapper {
     @Select("SELECT * FROM pipeline_run WHERE id=#{id} FOR UPDATE") PipelineRun lockRun(long id);
     @Update("UPDATE pipeline_run SET status=#{status},message=#{message},finished_at=CURRENT_TIMESTAMP(6) WHERE id=#{id} AND status='RUNNING'")
     int finishRun(@Param("id") long id,@Param("status") String status,@Param("message") String message);
-    @Select("SELECT r.*,p.name pipeline_name FROM pipeline_run r JOIN pipeline p ON p.id=r.pipeline_id ORDER BY r.id DESC LIMIT 50")
+    @Select("SELECT r.*,p.name pipeline_name FROM pipeline_run r JOIN pipeline p ON p.id=r.pipeline_id WHERE p.archived=FALSE ORDER BY r.id DESC LIMIT 50")
     List<PipelineRun> recentRuns();
     @Select("SELECT COUNT(*) FROM pipeline_run WHERE pipeline_id=#{id} AND workflow_instance_id IS NULL")
     long pipelineRunCount(long id);
@@ -73,21 +79,22 @@ public interface PlatformMapper {
     long instanceRunCount(@Param("pipelineId") long pipelineId,@Param("instanceId") long instanceId);
     @Select("SELECT * FROM pipeline_run WHERE pipeline_id=#{pipelineId} AND workflow_instance_id=#{instanceId} ORDER BY started_at DESC,id DESC")
     List<PipelineRun> instanceRuns(@Param("pipelineId") long pipelineId,@Param("instanceId") long instanceId);
-    @Select("SELECT * FROM data_service ORDER BY id DESC") List<DataService> services();
-    @Select("SELECT COUNT(*) FROM data_service") long serviceCount();
-    @Select("SELECT s.*,(SELECT COUNT(*) FROM service_call c WHERE c.service_id=s.id AND c.started_at>=#{start} AND c.started_at<#{end}) daily_calls FROM data_service s ORDER BY s.id DESC LIMIT #{limit} OFFSET #{offset}")
+    @Select("SELECT * FROM data_service WHERE archived=FALSE ORDER BY id DESC") List<DataService> services();
+    @Select("SELECT COUNT(*) FROM data_service WHERE archived=FALSE") long serviceCount();
+    @Select("SELECT s.*,(SELECT COUNT(*) FROM service_call c WHERE c.service_id=s.id AND c.started_at>=#{start} AND c.started_at<#{end}) daily_calls FROM data_service s WHERE s.archived=FALSE ORDER BY s.id DESC LIMIT #{limit} OFFSET #{offset}")
     List<DataService> servicePage(@Param("start") LocalDateTime start,@Param("end") LocalDateTime end,
             @Param("limit") int limit,@Param("offset") long offset);
-    @Select("SELECT s.*,(SELECT COUNT(*) FROM service_call c WHERE c.service_id=s.id AND c.started_at>=#{start} AND c.started_at<#{end}) daily_calls FROM data_service s ORDER BY s.id DESC")
+    @Select("SELECT s.*,(SELECT COUNT(*) FROM service_call c WHERE c.service_id=s.id AND c.started_at>=#{start} AND c.started_at<#{end}) daily_calls FROM data_service s WHERE s.archived=FALSE ORDER BY s.id DESC")
     List<DataService> servicesWithDailyCalls(@Param("start") LocalDateTime start,@Param("end") LocalDateTime end);
-    @Select("SELECT * FROM data_service WHERE id=#{id}") DataService dataService(long id);
-    @Select("SELECT * FROM data_service WHERE slug=#{slug}") DataService serviceBySlug(String slug);
+    @Select("SELECT * FROM data_service WHERE id=#{id} AND archived=FALSE") DataService dataService(long id);
+    @Select("SELECT * FROM data_service WHERE slug=#{slug} AND archived=FALSE") DataService serviceBySlug(String slug);
     @Insert("INSERT INTO data_service(name,slug,query_sql) VALUES(#{name},#{slug},#{querySql})")
     @Options(useGeneratedKeys=true,keyProperty="id") void insertService(DataService service);
     @Update("UPDATE data_service SET name=#{name},query_sql=#{querySql},published=FALSE WHERE id=#{id}")
     void updateService(DataService service);
     @Update("UPDATE data_service SET published=#{published} WHERE id=#{id}")
     void publish(@Param("id") long id,@Param("published") boolean published);
+    @Update("UPDATE data_service SET archived=TRUE WHERE id=#{id} AND archived=FALSE") int archiveService(long id);
     @Update("UPDATE api_credential SET enabled=FALSE WHERE service_id=#{id}") void revokeCredentials(long id);
     @Insert("INSERT INTO api_credential(service_id,token_hash) VALUES(#{serviceId},#{tokenHash})")
     void insertCredential(@Param("serviceId") long serviceId,@Param("tokenHash") String tokenHash);
@@ -95,7 +102,7 @@ public interface PlatformMapper {
     int credentialValid(@Param("serviceId") long serviceId,@Param("tokenHash") String tokenHash);
     @Insert("INSERT INTO audit_event(actor,action,target,outcome) VALUES(#{actor},#{action},#{target},#{outcome})")
     void audit(@Param("actor") String actor,@Param("action") String action,@Param("target") String target,@Param("outcome") String outcome);
-    @Select("SELECT (SELECT COUNT(*) FROM data_source) sources,(SELECT COUNT(*) FROM pipeline) pipelines,(SELECT COUNT(*) FROM data_service WHERE published=TRUE) services,(SELECT COUNT(*) FROM pipeline_run WHERE status='FAILED') failedRuns")
+    @Select("SELECT (SELECT COUNT(*) FROM data_source WHERE archived=FALSE) sources,(SELECT COUNT(*) FROM pipeline WHERE archived=FALSE) pipelines,(SELECT COUNT(*) FROM data_service WHERE archived=FALSE AND published=TRUE) services,(SELECT COUNT(*) FROM pipeline_run r JOIN pipeline p ON p.id=r.pipeline_id WHERE p.archived=FALSE AND r.status='FAILED') failedRuns")
     Map<String, Object> stats();
 }
 

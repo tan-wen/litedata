@@ -72,6 +72,13 @@ public class DataApiService {
         policy.validate(service.getQuerySql()); mapper.publish(id,!service.isPublished());
     }
     @Transactional
+    public void archive(long id) {
+        var service=get(id);
+        if(service.isPublished()) throw new IllegalArgumentException("请先下线已发布的数据服务，再删除");
+        mapper.revokeCredentials(id);
+        mapper.archiveService(id);
+    }
+    @Transactional
     public String credential(long id) {
         if(mapper.dataService(id)==null) throw new IllegalArgumentException("服务不存在");
         byte[] bytes=new byte[32]; new SecureRandom().nextBytes(bytes);

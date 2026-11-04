@@ -197,6 +197,14 @@ class Demo:
     def model(self, definition):
         _, page = self.client.request("GET", "/models/new")
         fields = {k: definition[k] for k in ("tableName", "name", "subjectArea", "layer", "buckets")}
+        table_prefix = definition["layer"].lower() + "_"
+        table_name = definition["tableName"]
+        if not table_name.startswith(table_prefix):
+            raise DemoFailure("模型表名未使用数仓分层前缀：" + table_name)
+        table_name_suffix = table_name[len(table_prefix):]
+        if not table_name_suffix or table_name_suffix.startswith(table_prefix):
+            raise DemoFailure("模型表名重复或缺少数仓分层前缀：" + table_name)
+        fields["tableNameSuffix"] = table_name_suffix
         fields.update(modelType="UNIQUE", replicationNum="1", distributionType="HASH", autoBuckets="false",
             distributionColumns=",".join(field["name"] for field in definition["fields"] if field.get("keyColumn")), partitionType="NONE")
         fields.update({key: definition[key] for key in ("dimensionKeys", "dimensionLabel", "dimensionStrategy") if key in definition})

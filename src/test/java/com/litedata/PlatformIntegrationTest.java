@@ -75,6 +75,7 @@ class PlatformIntegrationTest {
     @Autowired SourceService sourceService;
     @Autowired PipelineService pipelineService;
     @Autowired DataApiService apiService;
+    @Autowired com.litedata.modeling.ModelDependencyGuard modelDependencies;
     @MockitoBean DolphinMonitorClient monitor;
 
     @BeforeEach
@@ -91,6 +92,7 @@ class PlatformIntegrationTest {
         jdbc.update("DELETE FROM service_call");
         jdbc.update("DELETE FROM audit_event");
         jdbc.update("DELETE FROM pipeline_run");
+        jdbc.update("DELETE FROM processing_workflow_node");
         jdbc.update("DELETE FROM pipeline");
         jdbc.update("DELETE FROM data_model");
         jdbc.update("INSERT INTO data_model(name,table_name,subject_area,layer) VALUES('订单ODS','ods_orders','测试','ODS')");
@@ -108,6 +110,7 @@ class PlatformIntegrationTest {
         jdbc.update("DELETE FROM service_call");
         jdbc.update("DELETE FROM audit_event");
         jdbc.update("DELETE FROM pipeline_run");
+        jdbc.update("DELETE FROM processing_workflow_node");
         jdbc.update("DELETE FROM pipeline");
         jdbc.update("DELETE FROM data_service");
         jdbc.update("DELETE FROM data_source");
@@ -134,6 +137,84 @@ class PlatformIntegrationTest {
                 .param("username","reader").param("password","test-password"))
                 .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("所选数据库类型与 JDBC 地址不一致")));
         assertThat(mapper.sourceCount()).isEqualTo(4);
+    }
+
+    @Test
+    void archivesRetireDraftResourcesAndProtectActiveDependencies() throws Exception {
+        sourceService.create("archive-source",MYSQL.getJdbcUrl(),MYSQL.getUsername(),MYSQL.getPassword());
+        long source=mapper.sources().getFirst().getId();
+        pipelineService.create("legacy-dependency-pipeline",source,"source_orders","updated_at","ods_orders","","0 0 * * * ?");
+        long legacyPipeline=mapper.pipelines().getFirst().getId();
+        pipelineService.create("active-node-pipeline",source,"source_orders","updated_at","ods_orders","","0 0 * * * ?");
+        long activePipeline=mapper.pipelines().getFirst().getId();
+        apiService.create("Archive service","archive-service","SELECT id FROM warehouse.api_fixture");
+        long service=mapper.services().getFirst().getId();
+
+        mvc.perform(post("/sources/"+source+"/archive").with(csrf()).with(user("developer").roles("DEVELOPER")))
+                .andExpect(status().is3xxRedirection()).andExpect(header().string("Location","/sources"));
+        assertThat(mapper.source(source)).isNotNull();
+        mvc.perform(post("/pipelines/"+legacyPipeline+"/archive").with(csrf()).with(user("viewer").roles("VIEWER")))
+                .andExpect(status().isForbidden());
+        jdbc.update("INSERT INTO processing_workflow(name) VALUES('archive-workflow')");
+        long workflow=jdbc.queryForObject("SELECT LAST_INSERT_ID()",Long.class);
+        long model=jdbc.queryForObject("SELECT id FROM data_model WHERE table_name='ods_orders'",Long.class);
+        jdbc.update("INSERT INTO sql_task(name,model_id,sql_text,workflow_id) VALUES('archive-task',?,?,?)",model,"SELECT id FROM warehouse.api_fixture",workflow);
+        long task=jdbc.queryForObject("SELECT LAST_INSERT_ID()",Long.class);
+        jdbc.update("INSERT INTO sql_pipeline_dependency(task_id,pipeline_id) VALUES(?,?)",task,legacyPipeline);
+        jdbc.update("INSERT INTO processing_workflow_node(workflow_id,node_key,task_id) VALUES(?,?,?)",workflow,"sql-"+task,task);
+        mvc.perform(post("/pipelines/"+legacyPipeline+"/archive").with(csrf()).with(user("developer").roles("DEVELOPER")))
+                .andExpect(status().is3xxRedirection()).andExpect(header().string("Location","/pipelines"));
+        assertThat(mapper.pipeline(legacyPipeline)).isNull();
+        jdbc.update("INSERT INTO processing_workflow_node(workflow_id,node_key,pipeline_id) VALUES(?,?,?)",workflow,"pipeline-"+activePipeline,activePipeline);
+        mvc.perform(post("/pipelines/"+activePipeline+"/archive").with(csrf()).with(user("developer").roles("DEVELOPER")))
+                .andExpect(status().is3xxRedirection()).andExpect(header().string("Location","/pipelines"));
+        assertThat(mapper.pipeline(activePipeline)).isNotNull();
+        jdbc.update("UPDATE processing_workflow SET archived=TRUE WHERE id=?",workflow);
+        mvc.perform(post("/pipelines/"+activePipeline+"/archive").with(csrf()).with(user("developer").roles("DEVELOPER")))
+                .andExpect(status().is3xxRedirection()).andExpect(header().string("Location","/pipelines"));
+        assertThat(mapper.pipeline(activePipeline)).isNull();
+        mvc.perform(post("/sources/"+source+"/archive").with(csrf()).with(user("developer").roles("DEVELOPER")))
+                .andExpect(status().is3xxRedirection()).andExpect(header().string("Location","/sources"));
+        assertThat(mapper.source(source)).isNull();
+
+        mvc.perform(post("/services/"+service+"/publish").with(csrf()).with(user("developer").roles("DEVELOPER")))
+                .andExpect(status().is3xxRedirection());
+        mvc.perform(post("/services/"+service+"/archive").with(csrf()).with(user("developer").roles("DEVELOPER")))
+                .andExpect(status().is3xxRedirection()).andExpect(header().string("Location","/services"));
+        assertThat(mapper.dataService(service)).isNotNull();
+        mvc.perform(post("/services/"+service+"/publish").with(csrf()).with(user("developer").roles("DEVELOPER")))
+                .andExpect(status().is3xxRedirection());
+        String token=apiService.credential(service);
+        assertThat(mapper.credentialValid(service,DataApiService.hash(token))).isEqualTo(1);
+        mvc.perform(post("/services/"+service+"/archive").with(csrf()).with(user("developer").roles("DEVELOPER")))
+                .andExpect(status().is3xxRedirection()).andExpect(header().string("Location","/services"));
+        assertThat(mapper.dataService(service)).isNull();
+        assertThat(mapper.credentialValid(service,DataApiService.hash(token))).isZero();
+        assertThat(mapper.sourceCount()).isZero();
+        assertThat(mapper.pipelineCount()).isZero();
+        assertThat(mapper.serviceCount()).isZero();
+        mvc.perform(get("/sources").with(user("developer").roles("DEVELOPER")))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("archive-source"))));
+        jdbc.update("DELETE FROM sql_pipeline_dependency WHERE task_id=?",task);
+        jdbc.update("DELETE FROM processing_workflow_node WHERE workflow_id=?",workflow);
+        jdbc.update("DELETE FROM sql_task WHERE id=?",task);
+        jdbc.update("DELETE FROM processing_workflow WHERE id=?",workflow);
+    }
+
+    @Test
+    void modelDependenciesIncludeDraftServicesAndQualityReferences() {
+        apiService.create("Draft dependency","model-dependency","SELECT id FROM warehouse.ods_orders WHERE id=:id");
+        long service=mapper.services().getFirst().getId();
+        org.assertj.core.api.Assertions.assertThatIllegalArgumentException().isThrownBy(()->modelDependencies.check("ods_orders")).withMessageContaining("数据服务");
+        apiService.archive(service);
+        jdbc.update("INSERT INTO quality_task(name,table_name,owner) VALUES('model-dependency-quality','ods_orders','test')");
+        try {
+            org.assertj.core.api.Assertions.assertThatIllegalArgumentException().isThrownBy(()->modelDependencies.check("ods_orders")).withMessageContaining("数据质量");
+            jdbc.update("UPDATE quality_task SET archived=TRUE WHERE name='model-dependency-quality'");
+            org.assertj.core.api.Assertions.assertThatCode(()->modelDependencies.check("ods_orders")).doesNotThrowAnyException();
+        } finally {
+            jdbc.update("DELETE FROM quality_task WHERE name='model-dependency-quality'");
+        }
     }
 
     @Test

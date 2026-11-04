@@ -107,6 +107,10 @@ public class PageController {
         sources.test(id); audit(principal,"SOURCE_TEST",Long.toString(id));
         redirect.addFlashAttribute("success","连接测试成功"); return "redirect:/sources";
     }
+    @PostMapping("/sources/{id}/archive") String archiveSource(@PathVariable long id,RedirectAttributes redirect,Principal principal) {
+        sources.archive(id); audit(principal,"SOURCE_ARCHIVE",Long.toString(id));
+        redirect.addFlashAttribute("success","数据源已删除，历史记录已保留"); return "redirect:/sources";
+    }
     @GetMapping("/pipelines") String pipelines(@RequestParam Map<String,String> params,Model model) {
         var page=ListPagination.prepare(model,"/pipelines",params,mapper.pipelineCount());
         model.addAttribute("pipelines",mapper.pipelinePage(page.pageSize(),page.offset()));
@@ -206,6 +210,10 @@ public class PageController {
         scheduler.pause(id); audit(principal,"PIPELINE_PAUSE",Long.toString(id));
         redirect.addFlashAttribute("success","定时调度已停用，已提交的实例继续执行"); return "redirect:/pipelines";
     }
+    @PostMapping("/pipelines/{id}/archive") String archivePipeline(@PathVariable long id,RedirectAttributes redirect,Principal principal) {
+        pipelines.archive(id); audit(principal,"PIPELINE_ARCHIVE",Long.toString(id));
+        redirect.addFlashAttribute("success","同步管道已删除，ODS 物理表与运行历史已保留"); return "redirect:/pipelines";
+    }
     @PostMapping("/pipelines/{id}/migrate-transform") String migrateTransform(@PathVariable long id,RedirectAttributes redirect,Principal principal) {
         long taskId=migration.migrate(id,principal.getName());
         redirect.addFlashAttribute("success","旧加工 SQL 已迁移并重接依赖；历史记录与 SQL 已保留，请核对 SQL、依赖和调度周期后运行或启用末端调度");
@@ -254,6 +262,10 @@ public class PageController {
     @PostMapping("/services/{id}/publish") String publish(@PathVariable long id,RedirectAttributes redirect,Principal principal) {
         services.publish(id); audit(principal,"SERVICE_PUBLISH_TOGGLE",Long.toString(id));
         redirect.addFlashAttribute("success","发布状态已更新"); return "redirect:/services";
+    }
+    @PostMapping("/services/{id}/archive") String archiveService(@PathVariable long id,RedirectAttributes redirect,Principal principal) {
+        services.archive(id); audit(principal,"SERVICE_ARCHIVE",Long.toString(id));
+        redirect.addFlashAttribute("success","数据服务已删除，调用记录已保留且凭证已吊销"); return "redirect:/services";
     }
     @PostMapping("/services/{id}/credentials") String credential(@PathVariable long id,RedirectAttributes redirect,Principal principal) {
         redirect.addFlashAttribute("apiKey",services.credential(id)); audit(principal,"CREDENTIAL_ROTATE",Long.toString(id));

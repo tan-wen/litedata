@@ -51,7 +51,7 @@ public class QualityController {
             if(errors.hasErrors()) throw new IllegalArgumentException("表单格式有误，请检查规则类型、数值、数据源和字段配置");
             quality.save(id,draft,p.getName()); r.addFlashAttribute("success","质量任务已保存；修改配置会暂停原有定时调度，请按需重新启用"); return "redirect:/quality";
         } catch(IllegalArgumentException e) { m.addAttribute("error",e.getMessage()); return form(m,draft,id); }
-        catch(org.springframework.dao.DuplicateKeyException e) { m.addAttribute("error","质量任务名称已存在（含已归档任务），请使用其他名称"); return form(m,draft,id); }
+        catch(org.springframework.dao.DuplicateKeyException e) { m.addAttribute("error","质量任务名称已存在（含已删除任务），请使用其他名称"); return form(m,draft,id); }
     }
     @PostMapping("/{id}/run") String start(@PathVariable long id,@RequestParam int version,Principal p) { return "redirect:/quality/runs/"+quality.start(id,version,p.getName()); }
     @PostMapping("/{id}/schedule") String schedule(@PathVariable long id,@RequestParam int version,Principal p,RedirectAttributes r) {
@@ -61,7 +61,7 @@ public class QualityController {
         quality.schedule(id,version,false,p.getName()); r.addFlashAttribute("success","定时扫描已停用"); return "redirect:/quality/"+id;
     }
     @PostMapping("/{id}/archive") String archive(@PathVariable long id,@RequestParam int version,Principal p,RedirectAttributes r) {
-        quality.archive(id,version,p.getName()); r.addFlashAttribute("success","任务已归档，历史配置与扫描结果保留"); return "redirect:/quality";
+        quality.archive(id,version,p.getName()); r.addFlashAttribute("success","任务已删除，历史配置与扫描结果保留"); return "redirect:/quality";
     }
     private String form(Model m,QualityTask draft,Long id) {
         m.addAttribute("draft",draft); m.addAttribute("taskId",id); m.addAttribute("ruleTypes",RuleType.values());

@@ -65,10 +65,10 @@ public class MetricController {
             metrics.save(id, draft, principal.getName());
             redirect.addFlashAttribute("success", "指标已保存，口径、依赖版本和 SQL 预览已记录"); return "redirect:/metrics";
         } catch (IllegalArgumentException e) { model.addAttribute("error", e.getMessage()); return form(model, draft, id); }
-        catch (org.springframework.dao.DuplicateKeyException e) { model.addAttribute("error", "指标编码已存在（含已归档指标），请使用其他编码"); return form(model, draft, id); }
+        catch (org.springframework.dao.DuplicateKeyException e) { model.addAttribute("error", "指标编码已存在（含已删除指标），请使用其他编码"); return form(model, draft, id); }
     }
     @PostMapping("/{id}/archive") String archive(@PathVariable long id, @RequestParam int version, Principal principal, RedirectAttributes redirect) {
-        metrics.archive(id, version, principal.getName()); redirect.addFlashAttribute("success", "指标已归档，历史口径和 SQL 已保留"); return "redirect:/metrics";
+        metrics.archive(id, version, principal.getName()); redirect.addFlashAttribute("success", "指标已删除，历史口径和 SQL 已保留"); return "redirect:/metrics";
     }
     private String form(Model model, MetricDefinition draft, Long id) {
         model.addAttribute("draft", draft); model.addAttribute("metricId", id);

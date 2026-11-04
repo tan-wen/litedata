@@ -31,12 +31,15 @@ public class WorkflowService {
             this(version,graphHash,cronExpression,nodes,edges,positions,acknowledgeOwnershipMigration,List.of());
         }
     }
-    public record ModelChoice(long id,String name,String tableName,Long taskId) {}
+    public record ModelChoice(long id,String name,String tableName,Long taskId,List<String> columns) {}
     public List<ModelChoice> modelChoices(List<com.litedata.model.DataModel> models) {
         var writers=new HashMap<Long,Long>();
         for(var t:sql.tasks()) writers.put(t.getModelId(),t.getId());
+        var columns=new HashMap<Long,List<String>>();
+        for(var field:mapper.sqlModelFields()) columns.computeIfAbsent(field.modelId(),ignored->new ArrayList<>()).add(field.name());
         return models.stream().filter(m->!"ODS".equals(m.getLayer()) && "UNIQUE".equals(m.getModelType()))
-                .map(m->new ModelChoice(m.getId(),m.getName(),m.getTableName(),writers.get(m.getId()))).toList();
+                .map(m->new ModelChoice(m.getId(),m.getName(),m.getTableName(),writers.get(m.getId()),
+                        List.copyOf(columns.getOrDefault(m.getId(),List.of())))).toList();
     }
     public record TaskSave(int workflowVersion,String graphHash,Long taskId,int version,String name,Long modelId,String sqlText) {}
     public record TaskDefinition(long id,String name,Long modelId,String sqlText,int version) {}

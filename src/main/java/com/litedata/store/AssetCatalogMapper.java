@@ -13,8 +13,10 @@ public interface AssetCatalogMapper {
           CASE WHEN t.scope_key='doris' THEN 'Doris 数仓' ELSE COALESCE(s.name,'来源已移除') END source_name,
           CASE WHEN t.present=FALSE OR (t.scope_key<>'doris' AND s.id IS NULL) THEN 'MISSING' ELSE 'ACTIVE' END status,
           t.version resource_version,t.id metadata_id,FLOOR(UNIX_TIMESTAMP(t.collected_at)) collected_epoch,t.scope_key,t.table_name
-        FROM metadata_table t LEFT JOIN data_source s ON t.scope_key=CONCAT('source:',s.id)
+        FROM metadata_table t LEFT JOIN data_source s ON t.scope_key=CONCAT('source:',s.id) AND s.archived=FALSE
           LEFT JOIN data_model m ON t.scope_key='doris' AND t.catalog_name='warehouse' AND LOWER(t.table_name)=m.table_name AND m.archived=FALSE
+        WHERE t.scope_key='doris' OR NOT EXISTS(SELECT 1 FROM data_source archived_source
+          WHERE t.scope_key=CONCAT('source:',archived_source.id) AND archived_source.archived=TRUE)
         UNION ALL
         SELECT 'MODEL',m.id,m.name,m.table_name,m.subject_area,'',m.description,m.layer,'Doris 数仓',
           CASE WHEN m.archived THEN 'ARCHIVED' ELSE 'ACTIVE' END,m.version,t.id,FLOOR(UNIX_TIMESTAMP(t.collected_at)),'doris',m.table_name
@@ -26,7 +28,7 @@ public interface AssetCatalogMapper {
         UNION ALL
         SELECT 'SERVICE',s.id,s.name,s.slug,'','','','','数据服务',
           CASE WHEN s.published THEN 'PUBLISHED' ELSE 'UNPUBLISHED' END,0,NULL,NULL,'',''
-        FROM data_service s
+        FROM data_service s WHERE s.archived=FALSE
         """;
     String ENTRIES="""
         SELECT a.asset_type,a.resource_id,COALESCE(NULLIF(p.business_name,''),a.name) name,a.code,

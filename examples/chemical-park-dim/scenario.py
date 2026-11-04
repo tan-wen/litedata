@@ -28,6 +28,14 @@ def _identifier(prefix: str, suffix: str) -> str:
     return value
 
 
+def _model_identifier(layer: str, prefix: str, suffix: str) -> str:
+    """Build a model table name using the platform's layer-owned prefix."""
+    value = f"{layer.lower()}_{_identifier(prefix, suffix)}"
+    if len(value) >= 64:
+        raise ValueError("generated identifier must be shorter than 64 characters")
+    return value
+
+
 def _decimal(value: Decimal, places: str = "0.001") -> str:
     return format(value.quantize(Decimal(places), rounding=ROUND_HALF_UP), "f")
 
@@ -85,7 +93,17 @@ def build_scenario(prefix: str, as_of: dt.date) -> dict[str, Any]:
         raise TypeError("as_of must be a datetime.date")
     _identifier(prefix, "x")
     tables = {key: _identifier(prefix, key) for key in ("enterprise", "utility", "production")}
-    models = {key: _identifier(prefix, key) for key in ("ods_enterprise", "ods_utility", "ods_production", "dim_enterprise", "dwd_utility_day", "dws_enterprise_7d", "ads_park_7d")}
+    model_layout = {
+        "ods_enterprise": ("ODS", "enterprise"),
+        "ods_utility": ("ODS", "utility"),
+        "ods_production": ("ODS", "production"),
+        "dim_enterprise": ("DIM", "enterprise"),
+        "dwd_utility_day": ("DWD", "utility_day"),
+        "dws_enterprise_7d": ("DWS", "enterprise_7d"),
+        "ads_park_7d": ("ADS", "park_7d"),
+    }
+    models = {key: _model_identifier(layer, prefix, suffix)
+              for key, (layer, suffix) in model_layout.items()}
     enterprises = [
         {"enterprise_id": 1, "enterprise_name": "虚构华东树脂厂", "product_code": PRODUCT},
         {"enterprise_id": 2, "enterprise_name": "虚构滨江树脂厂", "product_code": PRODUCT},

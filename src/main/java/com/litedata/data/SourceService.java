@@ -6,6 +6,7 @@ import com.litedata.store.PlatformMapper;
 import java.sql.*;
 import java.util.List;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class SourceService {
@@ -19,6 +20,12 @@ public class SourceService {
         if (source == null) throw new IllegalArgumentException("数据源不存在");
         return source;
     }
+    public DataSource requireLocked(long id) {
+        DataSource source = mapper.lockSource(id);
+        if (source == null) throw new IllegalArgumentException("数据源不存在");
+        return source;
+    }
+    @Transactional
     public void create(String name, String url, String user, String password) {
         mapper.insertSource(definition(name, url, user, password));
     }
@@ -35,6 +42,15 @@ public class SourceService {
         source.setId(id);
         if (password == null || password.isEmpty()) source.setEncryptedPassword(existing.getEncryptedPassword());
         mapper.updateSource(source);
+    }
+    @Transactional
+    public void archive(long id) {
+        requireLocked(id);
+        if(mapper.activePipelineSourceReferences(id)>0)
+            throw new IllegalArgumentException("数据源仍被有效同步管道引用，请先删除这些管道");
+        if(mapper.qualitySourceReferences(id)>0)
+            throw new IllegalArgumentException("数据源仍被有效质量任务引用，请先删除这些质量任务");
+        mapper.archiveSource(id);
     }
     private DataSource definition(String name, String url, String user, String password) {
         if (name == null || name.isBlank() || name.length() > 100 || user == null || user.isBlank() || user.length() > 100)

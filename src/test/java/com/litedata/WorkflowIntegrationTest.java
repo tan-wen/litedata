@@ -425,6 +425,25 @@ class WorkflowIntegrationTest {
         assertThat(workflows.task(flow,node.refId()).modelId()).isEqualTo(model);
     }
 
+    @Test void sqlModelChoicesExposeOrderedColumnsAndOnlyActiveUniqueNonOdsModels() throws Exception {
+        long flow=workflow("模型字段目录");
+        long eligible=model("dwd_choice_columns","DWD","UNIQUE",List.of("id","select","updated_at"));
+        var writer=new SqlTask(); writer.setWorkflowId(flow); writer.setName("占用字段模型"); writer.setModelId(eligible);
+        writer.setSqlText("INSERT INTO dwd_choice_columns SELECT id,id,id FROM ods_orders"); long writerId=tasks.save(null,writer,"dev");
+        long ods=model("ods_choice_columns","ODS","UNIQUE",List.of("id"));
+        long duplicate=model("dwd_duplicate_columns","DWD","DUPLICATE",List.of("id"));
+        long archived=model("ads_archived_columns","ADS","UNIQUE",List.of("id"));
+        models.archive(archived,models.require(archived).getVersion(),"dev");
+
+        var response=mvc.perform(get("/workflows/"+flow+"/sql-models").with(user("viewer").roles("VIEWER")))
+                .andExpect(status().isOk()).andReturn().getResponse();
+        var choices=json.readValue(response.getContentAsString(java.nio.charset.StandardCharsets.UTF_8),WorkflowService.ModelChoice[].class);
+        var choice=Arrays.stream(choices).filter(item->item.id()==eligible).findFirst().orElseThrow();
+        assertThat(choice.columns()).containsExactly("id","select","updated_at");
+        assertThat(choice.taskId()).isEqualTo(writerId);
+        assertThat(Arrays.stream(choices).map(WorkflowService.ModelChoice::id)).doesNotContain(ods,duplicate,archived);
+    }
+
     private long workflow(String name) { var w=new ProcessingWorkflow(); w.setName(name); return workflows.metadata(null,w,"dev"); }
     private WorkflowService.Node node(long w,long id) { return workflows.expand(w,"sql-"+id).getFirst(); }
     private WorkflowService.Save save(WorkflowService.View v,List<WorkflowService.Node> n,List<WorkflowService.Edge> e) { return new WorkflowService.Save(v.version(),v.graphHash(),v.cronExpression(),n,e,Map.of()); }
@@ -437,6 +456,7 @@ class WorkflowIntegrationTest {
     private long task(String table) { long m=model(table,table.startsWith("ads")?"ADS":"DWD"); var t=new SqlTask(); t.setName(table);t.setModelId(m);t.setSqlText("INSERT INTO "+table+" SELECT id FROM ods_orders"); return tasks.save(null,t,"dev"); }
     private long task(long workflow,String table) { long m=model(table,table.startsWith("ads")?"ADS":"DWD"); var t=new SqlTask(); t.setWorkflowId(workflow);t.setName(table);t.setModelId(m);t.setSqlText("INSERT INTO "+table+" SELECT id FROM ods_orders"); return tasks.save(null,t,"dev"); }
     private long taskWithModel(long workflow,String name,long model) { var t=new SqlTask(); t.setWorkflowId(workflow);t.setName(name);t.setModelId(model);t.setSqlText("INSERT INTO ads_reusable SELECT id FROM ods_orders"); return tasks.save(null,t,"dev"); }
-    private long model(String table,String layer) { var m=new DataModel();m.setName(table);m.setTableName(table);m.setSubjectArea("测试");m.setLayer(layer);var f=new ModelField();f.setName("id");f.setDataType("BIGINT");f.setKeyColumn(true);m.setFields(List.of(f));return models.save(null,m,"dev"); }
+    private long model(String table,String layer) { return model(table,layer,"UNIQUE",List.of("id")); }
+    private long model(String table,String layer,String modelType,List<String> fields) { var m=new DataModel();m.setName(table);m.setTableName(table);m.setSubjectArea("测试");m.setLayer(layer);m.setModelType(modelType);var definitions=new ArrayList<ModelField>();for(int i=0;i<fields.size();i++){var f=new ModelField();f.setName(fields.get(i));f.setDataType("BIGINT");f.setKeyColumn(i==0);definitions.add(f);}m.setFields(definitions);return models.save(null,m,"dev"); }
     private long pipeline(String target) { sources.create("source-"+target,MYSQL.getJdbcUrl(),MYSQL.getUsername(),MYSQL.getPassword()); model(target,"ODS"); pipelines.create(target,platform.sources().getFirst().getId(),"orders","updated_at",target,"","0 0 * * * ?"); return platform.pipelines().getFirst().getId(); }
 }

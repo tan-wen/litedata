@@ -7,7 +7,7 @@
   const stage=root.querySelector('[data-workflow-stage]'), layer=root.querySelector('[data-workflow-nodes]'), svg=root.querySelector('[data-workflow-edges]'), editable=root.dataset.editable==='true', csrf=root.querySelector('input[name="_csrf"]')?.value||'';
   const status=root.querySelector('[data-workflow-status]'), saveButton=root.querySelector('[data-workflow-save]'), cron=root.querySelector('[data-workflow-cron]'), empty=root.querySelector('[data-workflow-empty]');
   const dialog=root.querySelector('[data-workflow-sql-dialog]'), sqlForm=dialog?.querySelector('form'), sqlSave=dialog?.querySelector('[data-workflow-sql-save]');
-  let view=window.workflowCanvas||null, nodes=new Map(), positions=new Map(), sqlDrafts=new Map(), selected=null, edge=null, joining=null, layoutDirty=false, graphDirty=false, cronDirty=false, saving=false, sqlSaving=false, sqlOpening=false, adding=false, dialogInputDirty=false, loaded=false, catalogPage=1, catalogTimer, catalogSerial=0;
+  let view=window.workflowCanvas||null, nodes=new Map(), positions=new Map(), sqlDrafts=new Map(), sqlModels=new Map(), generatedInsert=null, selected=null, edge=null, joining=null, layoutDirty=false, graphDirty=false, cronDirty=false, saving=false, sqlSaving=false, sqlOpening=false, adding=false, dialogInputDirty=false, loaded=false, catalogPage=1, catalogTimer, catalogSerial=0;
   const message=(value,level)=>{if(status)status.textContent=value;if(level)window.platformFeedback.show(value,{level,key:'workflow-status'});}, problem=value=>{if(value)window.platformFeedback.show(value,{key:'workflow'});else window.platformFeedback.clear('workflow');};
   function position(key){
     const saved=positions.get(key);if(saved)return saved;
@@ -18,6 +18,40 @@
     return {x:70,y:55+(positions.size+1)*220};
   }
   const hasDraft=()=>layoutDirty||graphDirty||cronDirty||sqlDrafts.size>0;
+  const leaveDialog=root.querySelector('[data-workflow-leave-dialog]');
+  let pendingLeave=null, leaving=false;
+  const hasUnsavedChanges=()=>editable&&(hasDraft()||dialogInputDirty);
+  function confirmLeave(action){
+    pendingLeave=action;
+    if(!leaveDialog.open)leaveDialog.showModal();
+    leaveDialog.querySelector('[data-workflow-leave-cancel]').focus();
+  }
+  leaveDialog?.querySelector('[data-workflow-leave-cancel]').addEventListener('click',()=>leaveDialog.close());
+  leaveDialog?.addEventListener('close',()=>{pendingLeave=null;});
+  leaveDialog?.querySelector('[data-workflow-leave-confirm]').addEventListener('click',()=>{
+    const action=pendingLeave;
+    if(!action)return;
+    leaving=true;
+    leaveDialog.close();
+    action();
+  });
+  document.addEventListener('click',event=>{
+    if(event.defaultPrevented||event.button!==0||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey||!hasUnsavedChanges())return;
+    const link=event.target.closest('a[href]');
+    if(!link||link.hasAttribute('download')||link.target&&link.target!=='_self')return;
+    const url=new URL(link.href,location.href);
+    if(!['http:','https:'].includes(url.protocol)||link.getAttribute('href').startsWith('#')||url.hash&&url.origin===location.origin&&url.pathname===location.pathname&&url.search===location.search)return;
+    event.preventDefault();
+    confirmLeave(()=>location.assign(url.href));
+  });
+  document.addEventListener('submit',event=>{
+    if(leaving){if(event.defaultPrevented)leaving=false;return;}
+    if(event.defaultPrevented||!hasUnsavedChanges())return;
+    const form=event.target,submitter=event.submitter,target=submitter?.getAttribute('formtarget')??form.target,method=submitter?.getAttribute('formmethod')??form.method;
+    if(method==='dialog'||target&&target!=='_self')return;
+    event.preventDefault();
+    confirmLeave(()=>submitter?form.requestSubmit(submitter):form.requestSubmit());
+  });
   const draftKey=()=>{const entropy=window.crypto;if(entropy?.randomUUID)return `draft-${entropy.randomUUID()}`;const bytes=new Uint8Array(16);if(entropy?.getRandomValues)entropy.getRandomValues(bytes);else for(let index=0;index<bytes.length;index++)bytes[index]=Math.floor(Math.random()*256);return `draft-${[...bytes].map(byte=>byte.toString(16).padStart(2,'0')).join('')}`;};
   const edges=()=>[...nodes.values()].flatMap(node=>(node.upstreamKeys||[]).map(from=>({from,to:node.key})));
   function resize(){const values=[...positions.values()];stage.style.width=`${Math.max(760,...values.map(p=>p.x+240))}px`;stage.style.minHeight=`${Math.max(300,...[...layer.querySelectorAll('.workflow-node')].map(el=>position(el.dataset.nodeKey).y+el.offsetHeight+20))}px`;}
@@ -36,7 +70,36 @@
   function hydrate(data){view=data;joining=null;sqlDrafts.clear();dialogInputDirty=false;ownershipNotice();const current=root.querySelector('[data-workflow-current-cron]');if(current)current.textContent=data.cronExpression||'';nodes=new Map((data.nodes||[]).map(node=>[node.key,{...node,upstreamKeys:[...(node.upstreamKeys||[])]}]));positions=new Map(Object.entries(data.positions||{}));if(selected&&!nodes.has(selected))selected=null;if(edge){const [from,to]=edge.split('>');if(!nodes.has(from)||!nodes.has(to))edge=null;}root.querySelectorAll('[data-workflow-version]').forEach(el=>el.value=data.version);root.querySelectorAll('[data-workflow-hash]').forEach(el=>el.value=data.graphHash||'');if(cron)cron.value=data.cronExpression||cron.value;if(positions.size===0&&nodes.size)layout(false);else render();layoutDirty=false;graphDirty=false;cronDirty=false;select(selected);updateActions();}
   function updateActions(){root.inert=adding||saving||sqlOpening||sqlSaving;if(saveButton)saveButton.disabled=adding||saving||sqlOpening||sqlSaving;const newSql=root.querySelector('[data-workflow-new-sql]');if(newSql)newSql.disabled=!loaded||adding||saving||sqlOpening||sqlSaving;const hasNodes=nodes.size>0,reviewRequired=Boolean(view?.reviewRequired);root.querySelectorAll('[data-workflow-action]').forEach(form=>{const pause=form.action.endsWith('/pause');form.querySelector('button').disabled=!loaded||(!pause&&(!hasNodes||reviewRequired));});}
   function sqlProblem(value){if(value)window.platformFeedback.show(value,{key:'workflow-sql'});else window.platformFeedback.clear('workflow-sql');}
-  const showSqlDialog=()=>{dialog.showModal();requestAnimationFrame(()=>{dialog.querySelector('[data-workflow-sql-text]')?.dispatchEvent(new Event('input'));dialogInputDirty=false;});};
+  const insertTarget=/^(\s*INSERT\s+INTO\s+)(?:`[a-z_][a-z0-9_]*`|[a-z_][a-z0-9_]*)(?:\s*\.\s*(?:`[a-z_][a-z0-9_]*`|[a-z_][a-z0-9_]*))?(?=\s*(?:\(|SELECT\b|WITH\b|$))/i;
+  function modelColumnList(modelId){const columns=sqlModels.get(modelId)?.columns||[];return columns.length?` (${columns.map(name=>'`'+name.replaceAll('`','``')+'`').join(', ')})`:'';}
+  const showSqlDialog=()=>{
+    const model=dialog.querySelector('[data-workflow-sql-model]'),text=dialog.querySelector('[data-workflow-sql-text]'),insert=insertTarget.exec(text.value);
+    const target=model.value&&insert?`${insert[1]}warehouse.${model.selectedOptions[0].dataset.tableName}`:null,prefix=target?target+modelColumnList(model.value):null;
+    generatedInsert=prefix&&insert[0]===target&&text.value.startsWith(prefix)?prefix:null;
+    text.readOnly=!model.value;
+    dialog.showModal();requestAnimationFrame(()=>{text.dispatchEvent(new Event('input'));dialogInputDirty=false;});
+  };
+  function changeSqlModel(){
+    const model=dialog.querySelector('[data-workflow-sql-model]'),text=dialog.querySelector('[data-workflow-sql-text]'),table=model.selectedOptions[0]?.dataset.tableName;
+    text.readOnly=!table;
+    sqlProblem('');
+    if(!table)return;
+    const target=`warehouse.${table}`,columnList=modelColumnList(model.value);
+    // Match only a leading INSERT target; preserve custom column lists and query bodies.
+    const insert=insertTarget.exec(text.value);
+    if(!text.value.trim()){
+      generatedInsert=`INSERT INTO ${target}${columnList}`;
+      text.value=generatedInsert+'\n';
+    }else if(insert){
+      const automatic=generatedInsert&&text.value.startsWith(generatedInsert);
+      const rest=text.value.slice(automatic?generatedInsert.length:insert[0].length);
+      const customColumns=!automatic&&rest.trimStart().startsWith('(');
+      const prefix=`${insert[1]}${target}${customColumns?'':columnList}`;
+      text.value=prefix+rest;
+      generatedInsert=customColumns?null:prefix;
+    }else {generatedInsert=null;sqlProblem(`已切换目标模型，请手动将 SQL 写入表调整为 ${target}；原 SQL 已保留。`);return;}
+    text.dispatchEvent(new Event('input'));
+  }
   function modelOccupancy(){const occupied=new Map(),saved=new Set((view?.nodes||[]).filter(node=>node.kind==='SQL').map(node=>String(node.refId)));for(const option of dialog.querySelectorAll('[data-workflow-sql-model] option[value]')){const taskId=option.dataset.taskId,key=`sql-${taskId}`;if(taskId&&saved.has(taskId)&&nodes.has(key)&&!sqlDrafts.has(key))occupied.set(option.value,key);else if(taskId&&!saved.has(taskId))occupied.set(option.value,key);}for(const [key,draft] of sqlDrafts)if(nodes.has(key))occupied.set(String(draft.modelId),key);return occupied;}
   function configureModelOptions(model,nodeKey){const occupied=modelOccupancy();model.querySelectorAll('option[value]').forEach(option=>{const owner=occupied.get(option.value);option.disabled=Boolean(owner)&&owner!==nodeKey;});}
   async function openSql(node){
@@ -48,8 +111,10 @@
     try{
       const response=await fetch(root.dataset.sqlUrl.replace(/sql-tasks$/, 'sql-models'),{headers:{Accept:'application/json'},cache:'no-store'}),models=await window.platformFeedback.readJson(response);
       if(!response.ok)throw Error(models.message||'目标模型读取失败');
+      sqlModels=new Map(models.map(item=>[String(item.id),item]));
+      generatedInsert=null;
       const model=dialog.querySelector('[data-workflow-sql-model]');
-      model.querySelectorAll('option[value]').forEach(option=>{const current=models.find(item=>String(item.id)===option.value);option.dataset.taskId=current?.taskId?String(current.taskId):'';option.dataset.tableName=current?.tableName||option.dataset.tableName||'';});
+      model.querySelectorAll('option[value]').forEach(option=>{const current=sqlModels.get(option.value);option.dataset.taskId=current?.taskId?String(current.taskId):'';option.dataset.tableName=current?.tableName||option.dataset.tableName||'';});
       const id=dialog.querySelector('[data-workflow-sql-id]'),version=dialog.querySelector('[data-workflow-sql-version]'),name=dialog.querySelector('[data-workflow-sql-name]'),text=dialog.querySelector('[data-workflow-sql-text]'),refresh=()=>text.dispatchEvent(new Event('input'));
       sqlProblem('');
       dialog.querySelector('[data-workflow-sql-title]').textContent=node?'编辑 SQL 加工':'新增 SQL 加工';
@@ -63,8 +128,9 @@
     }catch(e){problem(e);}
     finally{sqlOpening=false;updateActions();}
   }
+  dialog?.querySelector('[data-workflow-sql-model]')?.addEventListener('change',changeSqlModel);
   function saveSql(){if(view?.reviewRequired){sqlProblem('请先核对迁移后的输入表和依赖，勾选确认后保存画布，再修改 SQL。');return;}if(sqlSaving||!sqlForm.reportValidity())return;sqlSaving=true;updateActions();sqlProblem('');try{const get=s=>dialog.querySelector(s),key=dialog.dataset.nodeKey||draftKey(),existing=nodes.get(key),draft={key,taskId:existing?.refId||null,version:existing?.version||0,name:get('[data-workflow-sql-name]').value.trim(),modelId:Number(get('[data-workflow-sql-model]').value),sqlText:get('[data-workflow-sql-text]').value};if(!existing){nodes.set(key,{key,name:draft.name,kind:'SQL',refId:0,version:0,configHash:null,tableName:modelTable(draft.modelId),upstreamKeys:[],editUrl:null,engineName:'',standaloneScheduled:false});positions.set(key,position(key));graphDirty=true;}sqlDrafts.set(key,draft);dialogInputDirty=false;dialog.close();render();select(key);message('SQL 修改已加入画布草稿，请保存画布。','success');problem('');}finally{sqlSaving=false;updateActions();}}
-  root.querySelector('[data-workflow-layout]')?.addEventListener('click',()=>layout(true));root.querySelector('[data-workflow-delete]')?.addEventListener('click',()=>{if(edge){const [from,to]=edge.split('>');nodes.get(to).upstreamKeys=nodes.get(to).upstreamKeys.filter(key=>key!==from);}else if(selected){sqlDrafts.delete(selected);nodes.delete(selected);positions.delete(selected);for(const node of nodes.values())node.upstreamKeys=(node.upstreamKeys||[]).filter(key=>key!==selected);}else return;graphDirty=true;select();render();});saveButton?.addEventListener('click',save);root.querySelector('[data-workflow-catalog]')?.addEventListener('input',()=>{catalogPage=1;clearTimeout(catalogTimer);catalogTimer=setTimeout(catalog,220);});root.querySelector('[data-catalog-prev]')?.addEventListener('click',()=>{if(catalogPage>1){catalogPage--;catalog();}});root.querySelector('[data-catalog-next]')?.addEventListener('click',()=>{catalogPage++;catalog();});cron?.addEventListener('input',()=>cronDirty=true);root.querySelector('[data-workflow-new-sql]')?.addEventListener('click',()=>openSql());dialog?.querySelectorAll('input,select,textarea').forEach(control=>{const mark=()=>{if(dialog.open)dialogInputDirty=true;};control.addEventListener('input',mark);control.addEventListener('change',mark);});dialog?.querySelector('[data-workflow-sql-close]')?.addEventListener('click',()=>{dialog.close();sqlProblem('');});dialog?.querySelector('[data-workflow-sql-cancel]')?.addEventListener('click',()=>{dialog.close();sqlProblem('');});dialog?.addEventListener('close',()=>{dialogInputDirty=false;sqlProblem('');});sqlForm?.addEventListener('submit',event=>{event.preventDefault();saveSql();});root.querySelectorAll('[data-workflow-action]').forEach(form=>{const pause=form.action.endsWith('/pause');form.addEventListener('submit',event=>{if(!pause&&view?.reviewRequired){event.preventDefault();problem('请先核对迁移后的输入表和依赖，勾选确认并保存画布后再运行或启用调度。');}else if(hasDraft()&&!pause){event.preventDefault();problem('请先保存画布草稿后再运行或调整调度。');}else if(!pause&&!nodes.size){event.preventDefault();problem('请至少添加一个节点后再运行或启用调度。');}});});window.addEventListener('beforeunload',event=>{if(editable&&(hasDraft()||dialogInputDirty)){event.preventDefault();event.returnValue='';}});root.querySelectorAll('[data-workflow-zoom]').forEach(button=>button.addEventListener('click',()=>{if(button.dataset.workflowZoom==='fit'){const factor=Math.max(.3,Math.min(1,stage.parentElement.clientWidth/stage.offsetWidth));stage.dataset.scale=String(factor);stage.style.transform=`scale(${factor})`;return;}const factor=button.dataset.workflowZoom==='in'?1.1:.9,next=Math.max(.55,Math.min(1.35,(Number(stage.dataset.scale)||1)*factor));stage.style.transform=`scale(${next})`;stage.dataset.scale=String(next);}));stage.addEventListener('click',()=>select());
+  root.querySelector('[data-workflow-layout]')?.addEventListener('click',()=>layout(true));root.querySelector('[data-workflow-delete]')?.addEventListener('click',()=>{if(edge){const [from,to]=edge.split('>');nodes.get(to).upstreamKeys=nodes.get(to).upstreamKeys.filter(key=>key!==from);}else if(selected){sqlDrafts.delete(selected);nodes.delete(selected);positions.delete(selected);for(const node of nodes.values())node.upstreamKeys=(node.upstreamKeys||[]).filter(key=>key!==selected);}else return;graphDirty=true;select();render();});saveButton?.addEventListener('click',save);root.querySelector('[data-workflow-catalog]')?.addEventListener('input',()=>{catalogPage=1;clearTimeout(catalogTimer);catalogTimer=setTimeout(catalog,220);});root.querySelector('[data-catalog-prev]')?.addEventListener('click',()=>{if(catalogPage>1){catalogPage--;catalog();}});root.querySelector('[data-catalog-next]')?.addEventListener('click',()=>{catalogPage++;catalog();});cron?.addEventListener('input',()=>cronDirty=true);root.querySelector('[data-workflow-new-sql]')?.addEventListener('click',()=>openSql());dialog?.querySelectorAll('input,select,textarea').forEach(control=>{const mark=()=>{if(dialog.open)dialogInputDirty=true;};control.addEventListener('input',mark);control.addEventListener('change',mark);});dialog?.querySelector('[data-workflow-sql-close]')?.addEventListener('click',()=>{dialog.close();sqlProblem('');});dialog?.querySelector('[data-workflow-sql-cancel]')?.addEventListener('click',()=>{dialog.close();sqlProblem('');});dialog?.addEventListener('close',()=>{dialogInputDirty=false;sqlProblem('');});sqlForm?.addEventListener('submit',event=>{event.preventDefault();saveSql();});root.querySelectorAll('[data-workflow-action]').forEach(form=>{const pause=form.action.endsWith('/pause');form.addEventListener('submit',event=>{if(!pause&&view?.reviewRequired){event.preventDefault();problem('请先核对迁移后的输入表和依赖，勾选确认并保存画布后再运行或启用调度。');}else if(hasDraft()&&!pause){event.preventDefault();problem('请先保存画布草稿后再运行或调整调度。');}else if(!pause&&!nodes.size){event.preventDefault();problem('请至少添加一个节点后再运行或启用调度。');}});});window.addEventListener('beforeunload',event=>{if(leaving){leaving=false;return;}if(hasUnsavedChanges()){event.preventDefault();event.returnValue='';}});root.querySelectorAll('[data-workflow-zoom]').forEach(button=>button.addEventListener('click',()=>{if(button.dataset.workflowZoom==='fit'){const factor=Math.max(.3,Math.min(1,stage.parentElement.clientWidth/stage.offsetWidth));stage.dataset.scale=String(factor);stage.style.transform=`scale(${factor})`;return;}const factor=button.dataset.workflowZoom==='in'?1.1:.9,next=Math.max(.55,Math.min(1.35,(Number(stage.dataset.scale)||1)*factor));stage.style.transform=`scale(${next})`;stage.dataset.scale=String(next);}));stage.addEventListener('click',()=>select());
   stage.addEventListener('click',event=>{const link=event.target.closest('.workflow-node a');if(!link)return;if(hasDraft()||dialogInputDirty){event.preventDefault();event.stopPropagation();problem('画布有未保存草稿，请先保存画布再编辑同步管道。');}},true);
   updateActions();
   (async()=>{try{const response=await fetch(root.dataset.graphUrl,{headers:{Accept:'application/json'},cache:'no-store'}),data=await window.platformFeedback.readJson(response);if(!response.ok)throw Error(data.message);loaded=true;hydrate(data);if(window.innerWidth>=1024)root.querySelector('[data-workflow-zoom="fit"]')?.click();message('画布已加载。');catalog();}catch(e){problem(e);message('画布加载失败。');}})();

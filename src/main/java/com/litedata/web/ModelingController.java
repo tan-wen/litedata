@@ -7,6 +7,7 @@ import com.litedata.modeling.DorisDdl;
 import jakarta.servlet.http.HttpServletRequest;
 import java.security.Principal;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -18,6 +19,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 @Controller
 @RequestMapping("/models")
 public class ModelingController {
+    private static final List<String> LAYERS = List.of("ODS", "DIM", "DWD", "DWS", "ADS");
     private final ModelingService modeling;
     public ModelingController(ModelingService modeling) { this.modeling = modeling; }
 
@@ -34,20 +36,22 @@ public class ModelingController {
         return request.isUserInRole("ADMIN") || request.isUserInRole("DEVELOPER");
     }
     @ModelAttribute("canManageUsers") boolean canManageUsers(HttpServletRequest request) { return request.isUserInRole("ADMIN"); }
-    @ModelAttribute("layers") List<String> layers() { return List.of("ODS", "DIM", "DWD", "DWS", "ADS"); }
+    @ModelAttribute("layers") List<String> layers() { return LAYERS; }
     @ModelAttribute("fieldDataTypes") List<String> fieldDataTypes() { return DorisDdl.TYPE_OPTIONS; }
 
     @GetMapping String list(@RequestParam(defaultValue="") String keyword, @RequestParam(defaultValue="") String layer,
             @RequestParam Map<String,String> params, Model model) {
         var page = ListPagination.prepare(model, "/models", params, modeling.count(keyword, layer));
-        model.addAttribute("models", modeling.list(keyword, layer, page));
+        var models = modeling.list(keyword, layer, page);
+        model.addAttribute("models", models);
+        model.addAttribute("creationStatuses", modeling.creationStatuses(models));
         model.addAttribute("keyword", keyword); model.addAttribute("layer", layer);
         return "models";
     }
     @GetMapping("/new") String create(@RequestParam(defaultValue="ODS") String layer, Model model) {
         var draft = new DataModel();
         draft.setAutoBuckets(true);
-        if (List.of("ODS", "DIM", "DWD", "DWS", "ADS").contains(layer)) draft.setLayer(layer);
+        if (LAYERS.contains(layer)) draft.setLayer(layer);
         var field = new ModelField(); field.setName("id"); field.setDataType("BIGINT"); field.setKeyColumn(true); field.setComment("业务主键");
         draft.getFields().add(field);
         if ("DIM".equals(layer)) {
@@ -58,16 +62,36 @@ public class ModelingController {
         return form(model, draft, null);
     }
     @GetMapping("/{id}/edit") String edit(@PathVariable long id, Model model) { return form(model, modeling.require(id), id); }
-    @GetMapping("/{id}") String detail(@PathVariable long id, Model model) {
-        var preview = modeling.preview(id);
-        model.addAttribute("definition", preview.model()); model.addAttribute("ddl", preview.ddl()); model.addAttribute("ddlHash", preview.hash());
-        model.addAttribute("executions", modeling.executions(id));
+    @GetMapping("/{id:\\d+}") String detail(@PathVariable long id, Model model) {
+        var definition = modeling.require(id);
+        model.addAttribute("definition", definition);
+        model.addAttribute("creationStatus", modeling.creationStatuses(List.of(definition)).get(id));
+        try {
+            var preview = modeling.preview(id);
+            model.addAttribute("definition", preview.model()); model.addAttribute("ddl", preview.ddl()); model.addAttribute("ddlHash", preview.hash());
+        } catch (IllegalArgumentException exception) {
+            model.addAttribute("ddlError", exception.getMessage());
+        }
+        var executions = modeling.executions(id);
+        model.addAttribute("executions", executions);
         return "model-detail";
     }
-    @PostMapping String create(@ModelAttribute("draft") DataModel draft, BindingResult errors, Model model, Principal principal, RedirectAttributes redirect) {
+    @PostMapping String create(@ModelAttribute("draft") DataModel draft, BindingResult errors,
+            @RequestParam(name = "tableNameSuffix", required = false) String tableNameSuffix, Model model, Principal principal, RedirectAttributes redirect) {
+        if (tableNameSuffix != null) {
+            try {
+                draft.setTableName(prefixedTableName(draft.getLayer(), tableNameSuffix));
+            } catch (IllegalArgumentException exception) {
+                model.addAttribute("error", exception.getMessage());
+                model.addAttribute("errorStep", 1);
+                form(model, draft, null);
+                model.addAttribute("tableNameSuffix", tableNameSuffix);
+                return "model-form";
+            }
+        }
         return save(null, draft, errors, model, principal, redirect);
     }
-    @PostMapping("/{id}") String update(@PathVariable long id, @ModelAttribute("draft") DataModel draft, BindingResult errors,
+    @PostMapping("/{id:\\d+}") String update(@PathVariable long id, @ModelAttribute("draft") DataModel draft, BindingResult errors,
             Model model, Principal principal, RedirectAttributes redirect) {
         return save(id, draft, errors, model, principal, redirect);
     }
@@ -86,7 +110,7 @@ public class ModelingController {
             if (!model.containsAttribute("errorStep")) model.addAttribute("errorStep", errorStep(exception.getMessage()));
             return form(model, draft, id);
         } catch (org.springframework.dao.DuplicateKeyException exception) {
-            model.addAttribute("error", "表名已被模型使用（含已归档模型），请选择其他表名");
+            model.addAttribute("error", "表名已被模型使用（含已删除模型），请选择其他表名");
             model.addAttribute("errorStep", 1);
             return form(model, draft, id);
         }
@@ -106,13 +130,31 @@ public class ModelingController {
     }
     @PostMapping("/{id}/archive") String archive(@PathVariable long id, @RequestParam int version, Principal principal, RedirectAttributes redirect) {
         modeling.archive(id, version, principal.getName());
-        redirect.addFlashAttribute("success", "逻辑模型已归档，物理表及执行记录已保留");
+        redirect.addFlashAttribute("success", "模型已删除；字段和执行记录已保留");
         return "redirect:/models";
     }
     private String form(Model model, DataModel draft, Long id) {
         model.addAttribute("draft", draft); model.addAttribute("modelId", id);
+        String layer = normalizedLayer(draft.getLayer());
+        String prefix = layer.isEmpty() ? "" : layer.toLowerCase(Locale.ROOT) + "_";
+        String tableName = draft.getTableName() == null ? "" : draft.getTableName();
+        model.addAttribute("tableNamePrefix", prefix);
+        model.addAttribute("tableNameSuffix", tableName.regionMatches(true, 0, prefix, 0, prefix.length()) ? tableName.substring(prefix.length()) : tableName);
         model.addAttribute("backendStatus", modeling.backendStatus());
         return "model-form";
+    }
+
+    private static String prefixedTableName(String layer, String suffix) {
+        String normalized = normalizedLayer(layer);
+        if (normalized.isEmpty()) throw new IllegalArgumentException("分层仅支持 ODS、DIM、DWD、DWS、ADS");
+        String normalizedSuffix = suffix.trim();
+        if (normalizedSuffix.isEmpty()) throw new IllegalArgumentException("表名后缀不能为空");
+        return normalized.toLowerCase(Locale.ROOT) + "_" + normalizedSuffix;
+    }
+
+    private static String normalizedLayer(String layer) {
+        String normalized = layer == null ? "" : layer.trim().toUpperCase(Locale.ROOT);
+        return LAYERS.contains(normalized) ? normalized : "";
     }
 
     private static boolean isPhysicalField(String field) {

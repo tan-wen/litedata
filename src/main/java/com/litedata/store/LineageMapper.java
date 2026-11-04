@@ -6,6 +6,6 @@ import org.apache.ibatis.annotations.*;
 
 @Mapper
 public interface LineageMapper {
-    @Select("SELECT * FROM pipeline ORDER BY id LIMIT 5001") List<Pipeline> pipelines();
+    @Select("SELECT * FROM pipeline WHERE archived=FALSE ORDER BY id LIMIT 5001") List<Pipeline> pipelines();
     @Select(SqlTaskMapper.TASK_COLUMNS + "WHERE t.archived=FALSE ORDER BY t.id LIMIT 5001") List<SqlTask> tasks();
 }

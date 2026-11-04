@@ -18,6 +18,8 @@ public interface ModelMapper {
     DataModel model(long id);
     @Select("SELECT * FROM data_model WHERE id=#{id} AND archived=FALSE FOR UPDATE")
     DataModel lockModel(long id);
+    @Select("SELECT COUNT(*) FROM pipeline WHERE LOWER(target_table)=LOWER(#{table}) AND archived=FALSE")
+    long pipelineReferences(String table);
     @Select("SELECT * FROM model_field WHERE model_id=#{id} ORDER BY ordinal_position")
     List<ModelField> fields(long id);
     @Insert("INSERT INTO data_model(table_name,name,subject_area,layer,description,buckets,auto_buckets,distribution_type,distribution_columns,dimension_keys,dimension_label,dimension_strategy,model_type,replication_num,partition_type,partition_column,partition_unit,partition_range_style,dynamic_partition_properties) VALUES(#{tableName},#{name},#{subjectArea},#{layer},#{description},#{buckets},#{autoBuckets},#{distributionType},#{distributionColumns},#{dimensionKeys},#{dimensionLabel},#{dimensionStrategy},#{modelType},#{replicationNum},#{partitionType},#{partitionColumn},#{partitionUnit},#{partitionRangeStyle},#{dynamicPartitionProperties})")
@@ -43,4 +45,8 @@ public interface ModelMapper {
     void execution(ModelExecution execution);
     @Select("SELECT * FROM model_execution WHERE model_id=#{id} ORDER BY id DESC LIMIT 30")
     List<ModelExecution> executions(long id);
+    @Select("SELECT COUNT(*) FROM model_execution WHERE model_id=#{id} AND operation='CREATE' AND status='SUCCESS'")
+    long successfulCreateExecutions(long id);
+    @Select("<script>SELECT DISTINCT model_id FROM model_execution WHERE operation='CREATE' AND status='SUCCESS' AND model_id IN <foreach collection='ids' item='id' open='(' separator=',' close=')'>#{id}</foreach></script>")
+    List<Long> successfulCreateModelIds(@Param("ids") List<Long> ids);
 }

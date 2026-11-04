@@ -40,13 +40,17 @@ public interface WorkflowMapper {
     @Select("SELECT node_key FROM processing_workflow_node WHERE workflow_id=#{id} ORDER BY node_key") List<String> nodeKeys(long id);
     @Select("SELECT from_key `from`,to_key `to` FROM processing_workflow_edge WHERE workflow_id=#{id} ORDER BY from_key,to_key")
     List<com.litedata.workflow.WorkflowService.Edge> edges(long id);
+    record ModelFieldChoice(long modelId,String name) {}
+    @Select("SELECT f.model_id AS modelId,f.name FROM model_field f JOIN data_model m ON m.id=f.model_id "
+            +"WHERE m.archived=FALSE AND m.layer<>'ODS' AND m.model_type='UNIQUE' ORDER BY f.model_id,f.ordinal_position")
+    List<ModelFieldChoice> sqlModelFields();
     @Delete("DELETE FROM processing_workflow_edge WHERE workflow_id=#{id}") void deleteEdges(long id);
     @Delete("DELETE FROM processing_workflow_node WHERE workflow_id=#{id}") void deleteNodes(long id);
     @Insert("INSERT INTO processing_workflow_node(workflow_id,node_key,task_id,pipeline_id) VALUES(#{id},#{key},#{task},#{pipeline})")
     void node(@Param("id") long id,@Param("key") String key,@Param("task") Long task,@Param("pipeline") Long pipeline);
     @Insert("INSERT INTO processing_workflow_edge(workflow_id,from_key,to_key) VALUES(#{id},#{from},#{to})")
     void edge(@Param("id") long id,@Param("from") String from,@Param("to") String to);
-    String CATALOG=" FROM (SELECT CONCAT('pipeline-',p.id) node_key,p.id ref_id,p.name,'同步' kind,p.target_table table_name FROM pipeline p) n "
+    String CATALOG=" FROM (SELECT CONCAT('pipeline-',p.id) node_key,p.id ref_id,p.name,'同步' kind,p.target_table table_name FROM pipeline p WHERE p.archived=FALSE) n "
             +"WHERE LOWER(CONCAT(n.name,' ',n.table_name)) LIKE CONCAT('%',#{keyword},'%') ";
     record CatalogItem(String key,long refId,String name,String kind,String tableName) {}
     @Select("SELECT COUNT(*)"+CATALOG) long catalogCount(String keyword);
