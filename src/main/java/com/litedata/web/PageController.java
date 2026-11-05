@@ -4,7 +4,6 @@ import com.litedata.config.PlatformProperties;
 import com.litedata.data.SourceService;
 import com.litedata.pipeline.*;
 import com.litedata.service.DataApiService;
-import com.litedata.service.QueryPage;
 import com.litedata.store.PlatformMapper;
 import com.litedata.web.ResourceForms.*;
 import java.security.Principal;
@@ -113,7 +112,9 @@ public class PageController {
     }
     @GetMapping("/pipelines") String pipelines(@RequestParam Map<String,String> params,Model model) {
         var page=ListPagination.prepare(model,"/pipelines",params,mapper.pipelineCount());
-        model.addAttribute("pipelines",mapper.pipelinePage(page.pageSize(),page.offset()));
+        var items=mapper.pipelinePage(page.pageSize(),page.offset());
+        items.forEach(item->item.setLastRunAt(DisplayTime.beijing(item.getLastRunAt())));
+        model.addAttribute("pipelines",items);
         return "pipelines";
     }
     @GetMapping("/pipelines/{id}/runs") String pipelineRuns(@PathVariable long id,@RequestParam Map<String,String> params,Model model) {
@@ -200,7 +201,7 @@ public class PageController {
     }
     @PostMapping("/pipelines/{id}/run") String run(@PathVariable long id,RedirectAttributes redirect,Principal principal) {
         scheduler.run(id); audit(principal,"PIPELINE_SUBMIT",Long.toString(id));
-        redirect.addFlashAttribute("success","DolphinScheduler 已接受执行请求，刷新查看运行实例"); return "redirect:/pipelines";
+        redirect.addFlashAttribute("success","已接受执行请求，刷新查看运行记录"); return "redirect:/pipelines";
     }
     @PostMapping("/pipelines/{id}/schedule") String schedule(@PathVariable long id,RedirectAttributes redirect,Principal principal) {
         scheduler.schedule(id); audit(principal,"PIPELINE_SCHEDULE",Long.toString(id));
@@ -208,7 +209,7 @@ public class PageController {
     }
     @PostMapping("/pipelines/{id}/pause") String pause(@PathVariable long id,RedirectAttributes redirect,Principal principal) {
         scheduler.pause(id); audit(principal,"PIPELINE_PAUSE",Long.toString(id));
-        redirect.addFlashAttribute("success","定时调度已停用，已提交的实例继续执行"); return "redirect:/pipelines";
+        redirect.addFlashAttribute("success","定时调度已停用，已提交的任务继续执行"); return "redirect:/pipelines";
     }
     @PostMapping("/pipelines/{id}/archive") String archivePipeline(@PathVariable long id,RedirectAttributes redirect,Principal principal) {
         pipelines.archive(id); audit(principal,"PIPELINE_ARCHIVE",Long.toString(id));
@@ -230,13 +231,9 @@ public class PageController {
     }
     @GetMapping("/services/{id}/calls") String serviceCalls(@PathVariable long id,@RequestParam Map<String,String> params,Model model) {
         var service=services.get(id);
-        var page=QueryPage.parse(params,20);
-        var calls=services.calls(id,page);
-        boolean hasMore=calls.size()>page.pageSize();
+        var page=ListPagination.prepare(model,"/services/"+id+"/calls",params,services.countCalls(id));
         model.addAttribute("service",service);
-        model.addAttribute("calls",hasMore?calls.subList(0,page.pageSize()):calls);
-        model.addAttribute("pageNum",page.pageNum()); model.addAttribute("pageSize",page.pageSize());
-        model.addAttribute("hasMore",hasMore);
+        model.addAttribute("calls",services.calls(id,page));
         return "service-calls";
     }
     @PostMapping("/services") String createService(@ModelAttribute("draft") ServiceDraft draft,BindingResult errors,

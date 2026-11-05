@@ -14,6 +14,9 @@ public class ProcessingWorkflow {
     private boolean archived;
     private boolean reviewRequired;
     private String ownershipNotice;
+    private java.time.LocalDateTime lastRunAt;
+    public java.time.LocalDateTime getLastRunAt() { return lastRunAt; }
+    public void setLastRunAt(java.time.LocalDateTime value) { lastRunAt=value; }
     public boolean isReviewRequired() { return reviewRequired; }
     public void setReviewRequired(boolean value) { reviewRequired=value; }
     public String getOwnershipNotice() { return ownershipNotice; }

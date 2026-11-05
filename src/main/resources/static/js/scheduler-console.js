@@ -171,7 +171,7 @@
     if (!values.length) {
       const empty = document.createElement('tr'); empty.dataset.callbackEmpty = '';
       const cell = document.createElement('td'); cell.colSpan = 7; cell.className = 'text-center fg-2 py-7';
-      cell.append('尚未收到可关联回调。实例可能仍在排队、节点尚未领取，或回调尚未抵达平台。旧执行器未携带实例编号的记录请查看');
+      cell.append('尚未收到可关联回调。运行记录可能仍在排队、节点尚未领取，或回调尚未抵达平台。旧执行器未携带运行编号的记录请查看');
       if (panel.dataset.callbackHistoryUrl) {
         const history = document.createElement('a'); history.href = panel.dataset.callbackHistoryUrl; history.textContent = '历史未关联回调';
         cell.append(history, '。');

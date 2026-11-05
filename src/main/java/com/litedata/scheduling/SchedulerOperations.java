@@ -74,5 +74,5 @@ public class SchedulerOperations {
         return new LogPage(LogRedactor.redact(raw),offset,offset+lines,lines,lines==limit,isRunning(node.state()));
     }
     public static boolean isRunning(String state) { return !Set.of("SUCCESS","FAILURE","STOP","PAUSE","KILL","FORCED_SUCCESS","NEED_FAULT_TOLERANCE").contains(state); }
-    private static ResponseStatusException missing() { return new ResponseStatusException(HttpStatus.NOT_FOUND,"任务或运行实例不存在"); }
+    private static ResponseStatusException missing() { return new ResponseStatusException(HttpStatus.NOT_FOUND,"任务或运行记录不存在"); }
 }

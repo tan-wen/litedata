@@ -40,7 +40,7 @@ public class PipelineService {
     public void archive(long id) {
         var pipeline=mapper.lockPipeline(id);
         if(pipeline==null) throw new IllegalArgumentException("同步任务不存在");
-        if(pipeline.getActiveRunId()!=null || mapper.runningPipelineRuns(id)>0) throw new IllegalArgumentException("同步任务仍有运行中的实例，请等待完成后删除");
+        if(pipeline.getActiveRunId()!=null || mapper.runningPipelineRuns(id)>0) throw new IllegalArgumentException("同步任务仍在运行，请等待完成后删除");
         if("SCHEDULED".equals(pipeline.getStatus()) || "SCHEDULE_PENDING".equals(pipeline.getStatus()))
             throw new IllegalArgumentException("请先停用定时调度，再删除同步任务");
         if(mapper.activePipelineTaskReferences(id)>0)
@@ -51,7 +51,7 @@ public class PipelineService {
     public void update(long id,String name,long sourceId,String table,String column,String target,String transform,String cron) {
         var existing=mapper.lockPipeline(id);
         if(existing==null) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"同步任务不存在");
-        if(existing.getActiveRunId()!=null) throw new IllegalArgumentException("任务已有执行中的实例，请等待完成后编辑");
+        if(existing.getActiveRunId()!=null) throw new IllegalArgumentException("任务正在执行，请等待完成后编辑");
         if(existing.getTransformSql()!=null && !existing.getTransformSql().isBlank())
             throw new IllegalArgumentException("请先将旧加工 SQL 迁移到数据加工，再编辑同步管道");
         if(existing.getSourceId()!=sourceId || !Objects.equals(existing.getSourceTable(),table) ||
@@ -83,11 +83,15 @@ public class PipelineService {
     }
     @Transactional
     public Map<String,Object> claim(long id,Long workflowInstanceId,Long taskInstanceId) {
+        return claim(id,workflowInstanceId,taskInstanceId,null);
+    }
+    @Transactional
+    public Map<String,Object> claim(long id,Long workflowInstanceId,Long taskInstanceId,Long definitionCode) {
         if((workflowInstanceId==null)!=(taskInstanceId==null) || (workflowInstanceId!=null && (workflowInstanceId<=0 || taskInstanceId<=0)))
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"工作流实例和节点编号必须同时提供且为正整数");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"运行编号和节点编号必须同时提供且为正整数");
         Pipeline pipeline=mapper.lockPipeline(id);
         if(pipeline==null) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"任务不存在");
-        if(pipeline.getActiveRunId()!=null) throw new ResponseStatusException(HttpStatus.CONFLICT,"已有实例运行；确认执行节点停止后再恢复");
+        if(pipeline.getActiveRunId()!=null) throw new ResponseStatusException(HttpStatus.CONFLICT,"任务正在运行；确认执行节点停止后再恢复");
         // Recheck registered models at execution time, including edits made after pipeline creation.
         validateExecutable(pipeline);
         DataSource source=sources.require(pipeline.getSourceId());
@@ -103,6 +107,7 @@ public class PipelineService {
         if(lower.isBefore(epoch)) lower=epoch;
         PipelineRun run=new PipelineRun(); run.setPipelineId(id); run.setLowerBound(lower); run.setUpperBound(upper);
         run.setWorkflowInstanceId(workflowInstanceId); run.setTaskInstanceId(taskInstanceId);
+        run.setDefinitionCode(definitionCode);
         mapper.insertRun(run); mapper.activeRun(id,run.getId());
         var claim=new LinkedHashMap<String,Object>(Map.of("runId",run.getId(),"source",Map.of("jdbcUrl",source.getJdbcUrl(),"username",source.getUsername(),"password",sources.password(source),
                         "databaseType",source.getDatabaseType().name(),"schema",Objects.toString(sourceTable.schema(),""),"columns",sourceTable.columns(),"timestampColumns",sourceTable.timestampColumns()),
@@ -116,11 +121,11 @@ public class PipelineService {
     @Transactional
     public void finish(long runId,boolean success,String message) {
         PipelineRun run=mapper.run(runId);
-        if(run==null) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"实例不存在");
+        if(run==null) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"运行记录不存在");
         Pipeline pipeline=mapper.lockPipeline(run.getPipelineId());
         run=mapper.lockRun(runId);
         if(!"RUNNING".equals(run.getStatus())) return; // A lost HTTP acknowledgement may be retried safely.
-        if(!Objects.equals(pipeline.getActiveRunId(),runId)) throw new ResponseStatusException(HttpStatus.CONFLICT,"实例已失去执行权");
+        if(!Objects.equals(pipeline.getActiveRunId(),runId)) throw new ResponseStatusException(HttpStatus.CONFLICT,"本次运行已失去执行权");
         String safeMessage=success?"ODS 同步完成":"ODS 同步失败，请查看执行节点受限日志";
         mapper.finishRun(runId,success?"SUCCESS":"FAILED",safeMessage);
         if(success) mapper.advanceWatermark(pipeline.getId(),run.getUpperBound());

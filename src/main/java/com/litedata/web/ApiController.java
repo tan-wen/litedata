@@ -29,17 +29,18 @@ public class ApiController {
                                            @RequestBody(required=false) ClaimRequest request) {
         authorize(token);
         Long workflow=request==null?null:request.workflowInstanceId(),task=request==null?null:request.taskInstanceId();
+        Long definitionCode=null;
         if(workflow!=null || task!=null) {
             if(task==null || task<=0 || (workflow!=null && workflow<=0))
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"节点实例编号必须为正整数");
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"节点运行编号必须为正整数");
             try {
                 long actual=engine.workflowForTask(task);
-                if(workflow!=null && workflow!=actual) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"节点不属于提供的工作流实例");
-                operations.instance(operations.resource("pipeline",id),actual);
+                if(workflow!=null && workflow!=actual) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"节点不属于提供的运行记录");
+                definitionCode=operations.instance(operations.resource("pipeline",id),actual).definitionCode();
                 workflow=actual;
-            } catch(IllegalStateException exception) { throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"无法核验调度实例归属，请稍后重试"); }
+            } catch(IllegalStateException exception) { throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"无法核验运行记录归属，请稍后重试"); }
         }
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(pipelines.claim(id,workflow,task));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(pipelines.claim(id,workflow,task,definitionCode));
     }
     @PostMapping("/internal/runs/{id}/finish")
     Map<String,String> finish(@PathVariable long id,@RequestHeader(value="X-Internal-Token",required=false) String token,@RequestBody FinishRequest request) {

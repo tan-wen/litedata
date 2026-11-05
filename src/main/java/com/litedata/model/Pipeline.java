@@ -15,6 +15,9 @@ public class Pipeline {
     private Long definitionCode;
     private Integer scheduleId;
     private Long activeRunId;
+    private java.time.LocalDateTime lastRunAt;
+    public java.time.LocalDateTime getLastRunAt() { return lastRunAt; }
+    public void setLastRunAt(java.time.LocalDateTime value) { lastRunAt=value; }
     private String sourceSchemaHash;
     private String targetSchemaHash;
     private String sourceKeyColumns;

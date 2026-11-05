@@ -39,9 +39,9 @@ public class SchedulerController {
     String instances(@PathVariable String type,@PathVariable long id,@RequestParam Map<String,String> params,Model model) {
         var resource=operations.resource(type,id); prepare(model,resource);
         var page=QueryPage.parse(params,20);
-        if(page.pageSize()>100) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"运行实例每页最多100条");
+        if(page.pageSize()>100) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"运行记录每页最多100条");
         String state=params.getOrDefault("stateType","");
-        if(!state.isEmpty() && !FILTERS.containsKey(state)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"实例状态无效");
+        if(!state.isEmpty() && !FILTERS.containsKey(state)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"运行状态无效");
         long code=resource.codes().isEmpty()?0:resource.codes().getFirst();
         if(params.containsKey("workflowCode")) {
             try { code=Long.parseLong(params.get("workflowCode")); }
@@ -78,7 +78,7 @@ public class SchedulerController {
             model.addAttribute("executionGraph",operations.graph(resource,instance.definitionCode()));
             if(canEdit(request) && !nodes.isEmpty()) {
                 var selected=taskId==null?nodes.stream().filter(n->n.state().equals("FAILURE")).findFirst().orElse(nodes.getFirst())
-                        :nodes.stream().filter(n->n.id()==taskId).findFirst().orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"节点不属于该工作流实例"));
+                        :nodes.stream().filter(n->n.id()==taskId).findFirst().orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"节点不属于该运行记录"));
                 model.addAttribute("selectedNode",selected);
                 model.addAttribute("logUrl",resource.path()+"/instances/"+instanceId+"/tasks/"+selected.id()+"/log");
             }

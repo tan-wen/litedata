@@ -66,7 +66,7 @@ public class DolphinSchedulerClient {
         if(!configured()) throw new IllegalStateException("调度引擎尚未初始化，请先执行部署初始化脚本并配置访问令牌及项目编号");
         Pipeline pipeline=mapper.lockPipeline(id);
         if(pipeline==null) throw new IllegalArgumentException("任务不存在");
-        if(pipeline.getActiveRunId()!=null) throw new IllegalArgumentException("任务已有执行中的实例");
+        if(pipeline.getActiveRunId()!=null) throw new IllegalArgumentException("任务正在执行");
         pipelines.validateExecutable(pipeline);
         return pipeline;
     }

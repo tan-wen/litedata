@@ -11,7 +11,7 @@ LiteData 是面向单机试点的数据中台：多数据库时间水位同步 �
 | 范围 | 当前实现 |
 | --- | --- |
 | 接入与建模 | MySQL / PostgreSQL / SQL Server / Oracle，自动 ODS、DIM/DWD/DWS/ADS、Doris DDL 和结构核对 |
-| 加工与调度 | 独立 INSERT SELECT、依赖画布、定时和整链运行、运行互斥、实例及节点日志 |
+| 加工与调度 | 独立 INSERT SELECT、依赖画布、定时和整链运行、运行互斥、运行记录及节点日志 |
 | 数据治理 | 元数据与血缘、资产目录、18 类质量规则、三类指标及版本化字段血缘 |
 | 数据服务 | 受控 SELECT、命名参数、发布/下线、凭证轮换、限流与调用审计 |
 | 权限与界面 | ADMIN / DEVELOPER / VIEWER、Session/CSRF、用户 API Key/MCP、本地 Bootstrap 6、浅深主题与四套配色 |
@@ -110,7 +110,7 @@ sh deploy/start.sh
    SELECT id, customer_name, amount, updated_at FROM ods_demo_orders
    ```
 
-5. 在“工作流”创建以该加工任务为末端的工作流，在画布添加同步管道并连线到加工任务，保存后运行；通过运行实例确认本次各节点成功。按需在画布启用定时，避免为共享上游重复设置定时。操作与重试边界见 [数据加工](docs/sql-transforms.md)。
+5. 在“工作流”创建以该加工任务为末端的工作流，在画布添加同步管道并连线到加工任务，保存后运行；通过运行记录确认本次各节点成功。按需在画布启用定时，避免为共享上游重复设置定时。操作与重试边界见 [数据加工](docs/sql-transforms.md)。
 6. 在“数据服务”创建 `orders`，填写以下 SQL，发布并生成凭证（仅显示一次，重新生成会吊销旧凭证）：
 
    ```sql

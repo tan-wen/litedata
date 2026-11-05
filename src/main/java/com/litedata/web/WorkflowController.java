@@ -29,7 +29,9 @@ public class WorkflowController {
     @GetMapping String list(@RequestParam Map<String,String> params,Model model) {
         String keyword=params.getOrDefault("keyword",""); model.addAttribute("keyword",keyword);
         var page=ListPagination.prepare(model,"/workflows",params,workflows.count(keyword));
-        model.addAttribute("workflows",workflows.list(keyword,page)); return "workflows";
+        var items=workflows.list(keyword,page);
+        items.forEach(item->item.setLastRunAt(DisplayTime.beijing(item.getLastRunAt())));
+        model.addAttribute("workflows",items); return "workflows";
     }
     @GetMapping("/new") String create(Model model) { return form(model,new ProcessingWorkflow(),null); }
     @GetMapping("/{id}/edit") String edit(@PathVariable long id,Model model) { return form(model,workflows.require(id),id); }
@@ -80,7 +82,7 @@ public class WorkflowController {
     @PostMapping("/{id}/{action:run|schedule|pause}") String execute(@PathVariable long id,@PathVariable String action,@RequestParam int version,
             @RequestParam(defaultValue="") String graphHash,Principal principal,RedirectAttributes redirect) {
         workflows.execute(id,version,graphHash,action,principal.getName());
-        redirect.addFlashAttribute("success",switch(action) { case "run" -> "已提交整条加工流程，请进入运行实例查看结果"; case "schedule" -> "加工流程定时调度已启用"; default -> "加工流程定时调度已停用，已提交实例继续执行"; });
+        redirect.addFlashAttribute("success",switch(action) { case "run" -> "已提交整条加工流程，请进入运行记录查看结果"; case "schedule" -> "加工流程定时调度已启用"; default -> "加工流程定时调度已停用，已提交任务继续执行"; });
         return "redirect:/workflows/"+id;
     }
     @PostMapping("/{id}/delete") String delete(@PathVariable long id,@RequestParam int version,@RequestParam Map<String,String> params,

@@ -38,7 +38,7 @@ public interface PlatformMapper {
     void sourceStatus(@Param("id") long id,@Param("status") String status,@Param("error") String error);
     @Select("SELECT * FROM pipeline WHERE archived=FALSE ORDER BY id DESC") List<Pipeline> pipelines();
     @Select("SELECT COUNT(*) FROM pipeline WHERE archived=FALSE") long pipelineCount();
-    @Select("SELECT * FROM pipeline WHERE archived=FALSE ORDER BY id DESC LIMIT #{limit} OFFSET #{offset}")
+    @Select("SELECT p.*,(SELECT MAX(r.started_at) FROM pipeline_run r WHERE r.pipeline_id=p.id) last_run_at FROM pipeline p WHERE p.archived=FALSE ORDER BY p.id DESC LIMIT #{limit} OFFSET #{offset}")
     List<Pipeline> pipelinePage(@Param("limit") int limit,@Param("offset") long offset);
     @Select("SELECT * FROM pipeline WHERE id=#{id} AND archived=FALSE") Pipeline pipeline(long id);
     @Select("SELECT * FROM pipeline WHERE id=#{id} AND archived=FALSE FOR UPDATE") Pipeline lockPipeline(long id);
@@ -63,7 +63,7 @@ public interface PlatformMapper {
     void advanceWatermark(@Param("id") long id,@Param("watermark") LocalDateTime watermark);
     @Update("UPDATE pipeline SET active_run_id=NULL,last_error=#{error} WHERE id=#{id}")
     void failPipeline(@Param("id") long id,@Param("error") String error);
-    @Insert("INSERT INTO pipeline_run(pipeline_id,status,lower_bound,upper_bound,workflow_instance_id,task_instance_id) VALUES(#{pipelineId},'RUNNING',#{lowerBound},#{upperBound},#{workflowInstanceId},#{taskInstanceId})")
+    @Insert("INSERT INTO pipeline_run(pipeline_id,status,lower_bound,upper_bound,workflow_instance_id,task_instance_id,definition_code) VALUES(#{pipelineId},'RUNNING',#{lowerBound},#{upperBound},#{workflowInstanceId},#{taskInstanceId},#{definitionCode})")
     @Options(useGeneratedKeys=true,keyProperty="id") void insertRun(PipelineRun run);
     @Select("SELECT * FROM pipeline_run WHERE id=#{id}") PipelineRun run(long id);
     @Select("SELECT * FROM pipeline_run WHERE id=#{id} FOR UPDATE") PipelineRun lockRun(long id);

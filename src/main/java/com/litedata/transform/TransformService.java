@@ -221,9 +221,9 @@ public class TransformService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,"加工链配置已变化，请重新发布");
         var task=required(mapper.lockTask(id));
         if(task.getVersion()!=version) throw new ResponseStatusException(HttpStatus.CONFLICT,"任务版本已变化，请重新发布");
-        if(task.getActiveRunId()!=null) throw new ResponseStatusException(HttpStatus.LOCKED,"任务已有运行实例");
+        if(task.getActiveRunId()!=null) throw new ResponseStatusException(HttpStatus.LOCKED,"任务正在运行");
         var model=verifiedModel(task.getModelId()); var validated=policy.validate(task.getSqlText(),model.getTableName());
-        var run=new SqlTaskRun(); run.setTaskId(id); run.setRootTaskId(rootId); run.setWorkflowId(workflowId); run.setTaskVersion(version);
+        var run=new SqlTaskRun(); run.setTaskId(id); run.setRootTaskId(rootId); run.setWorkflowId(ownerId); run.setTaskVersion(version);
         run.setTargetTable(model.getTableName()); run.setSqlText(validated.sql());
         mapper.insertRun(run); mapper.activeRun(id,run.getId());
         return Map.of("runId",run.getId(),"sql",validated.sql(),"targetTable",model.getTableName(),"taskVersion",version);
@@ -232,10 +232,10 @@ public class TransformService {
     @Transactional
     public void finish(long runId,boolean success) {
         var run=mapper.run(runId);
-        if(run==null) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"加工实例不存在");
+        if(run==null) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"加工运行记录不存在");
         var task=required(mapper.lockTask(run.getTaskId())); run=mapper.lockRun(runId);
         if(!"RUNNING".equals(run.getStatus())) return;
-        if(!Objects.equals(task.getActiveRunId(),runId)) throw new ResponseStatusException(HttpStatus.CONFLICT,"实例已失去执行权");
+        if(!Objects.equals(task.getActiveRunId(),runId)) throw new ResponseStatusException(HttpStatus.CONFLICT,"本次运行已失去执行权");
         mapper.finishRun(runId,success?"SUCCESS":"FAILED",success?"Doris 数据加工完成":"数据加工失败，请查看调度节点受限日志");
         mapper.activeRun(task.getId(),null);
         platform.audit("worker","SQL_TASK_FINISH",Long.toString(runId),success?"SUCCESS":"FAILED");

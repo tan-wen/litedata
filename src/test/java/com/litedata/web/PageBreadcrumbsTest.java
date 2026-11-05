@@ -54,6 +54,8 @@ class PageBreadcrumbsTest {
         assertThat(PageBreadcrumbs.forView("metric-lineage",current)).hasSize(4);
         assertThat(PageBreadcrumbs.forView("scheduler-instance-detail",model())).extracting(PageBreadcrumbs.Item::href)
                 .containsExactly("/","/pipelines","/pipelines#pipeline-7","/scheduling/pipeline/7",null);
+        assertThat(PageBreadcrumbs.forView("scheduler-instance-detail",model())).extracting(PageBreadcrumbs.Item::label)
+                .contains("运行记录","运行记录 #42").noneMatch(label->label.contains("实例"));
         current.put("resource",new SchedulerOperations.Resource("transform",8,"加工任务","/transforms/8",List.of(99L)));
         assertThat(PageBreadcrumbs.forView("scheduler-instances",current)).extracting(PageBreadcrumbs.Item::href)
                 .containsExactly("/","/transforms","/transforms/8",null);

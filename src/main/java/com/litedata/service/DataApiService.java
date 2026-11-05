@@ -61,8 +61,9 @@ public class DataApiService {
         if(service==null) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"服务不存在");
         return service;
     }
+    public long countCalls(long id) { return calls.count(id); }
     public List<ServiceCall> calls(long id,QueryPage page) {
-        var records=calls.calls(id,page.pageSize()+1,page.offset());
+        var records=calls.calls(id,page.pageSize(),page.offset());
         for(var call:records) call.setStartedAt(call.getStartedAt().atOffset(ZoneOffset.UTC).atZoneSameInstant(DISPLAY_ZONE).toLocalDateTime());
         return records;
     }

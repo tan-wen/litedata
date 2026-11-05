@@ -55,7 +55,7 @@ public final class PageBreadcrumbs {
             case "asset-detail", "asset-form" -> asset(items,model,view.endsWith("form"));
             case "pipeline-runs" -> {
                 records(items,model,"pipelines","pipeline","历史未关联回调");
-                items.add(items.size()-1,link("运行实例","/scheduling/pipeline/"+number(property(model.get("pipeline"),"id"))));
+                items.add(items.size()-1,link("运行记录","/scheduling/pipeline/"+number(property(model.get("pipeline"),"id"))));
             }
             case "service-calls" -> records(items,model,"services","service","调用记录");
             case "quality-run-detail" -> {
@@ -115,9 +115,9 @@ public final class PageBreadcrumbs {
         parent(items,module);
         items.add(link(name(resource,"name","任务"),pipeline?row(module,id):workflow?Objects.toString(property(resource,"backPath"),resource(module,id)):resource(module,id)));
         if(instance) {
-            items.add(link("运行实例","/scheduling/"+(pipeline?"pipeline":workflow?"workflow":"transform")+"/"+number(id)));
-            items.add(current("实例 #"+number(model.get("instanceId"))));
-        } else items.add(current("运行实例"));
+            items.add(link("运行记录","/scheduling/"+(pipeline?"pipeline":workflow?"workflow":"transform")+"/"+number(id)));
+            items.add(current("运行记录 #"+number(model.get("instanceId"))));
+        } else items.add(current("运行记录"));
     }
     private static void parent(List<Item> items,String key) { var module=MODULES.get(key); items.add(link(module.label(),module.path())); }
     private static String resource(String module,Object id) { return MODULES.get(module).path()+"/"+number(id); }

@@ -11,13 +11,14 @@
 | 模型、DDL、分桶及分区 | [数据建模](modeling.md)、[公共维度](dimension-models.md) |
 | 数据加工流程创建、画布连线、SQL 编辑和运行排查 | [数据加工画布使用说明](workflow-canvas-guide.md) |
 | SQL、依赖执行语义与运行互斥 | [数据加工](sql-transforms.md) |
-| Cron、运行实例与节点日志 | [调度运维](scheduling-operations.md) |
+| Cron、运行记录与节点日志 | [调度运维](scheduling-operations.md) |
 | 元数据采集与血缘 | [元数据与血缘](metadata-lineage.md) |
 | 统一资产检索与业务说明 | [资产目录](asset-directory.md) |
 | 规则、阈值、时间窗口与质量运行 | [数据质量](data-quality.md) |
 | 指标口径、版本与字段血缘 | [指标管理](metrics.md) |
 | Agent 接入、用户 Key 与权限 | [MCP](mcp.md) |
 | 页面布局、主题与前端版本 | [UI 说明](ui-guide.md) |
+| 平台表用途、历史兼容与清理边界 | [平台数据库](platform-schema.md) |
 | 容量规划与瓶颈分析 | [Doris 容量分析](doris-capacity-and-bottlenecks.md) |
 | 端到端业务示例 | [化工园区](../examples/chemical-park/README.md)、[DIM 版本](../examples/chemical-park-dim/README.md) |
 

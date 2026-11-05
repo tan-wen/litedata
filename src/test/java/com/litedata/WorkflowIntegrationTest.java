@@ -444,6 +444,29 @@ class WorkflowIntegrationTest {
         assertThat(Arrays.stream(choices).map(WorkflowService.ModelChoice::id)).doesNotContain(ods,duplicate,archived);
     }
 
+    @Test void workflowListUsesHistoricalSqlAndVerifiedPipelineRunsWithoutGuessingSharedOwnership() throws Exception {
+        long flow=workflow("最近执行"),sql=task(flow,"dwd_recent"),pipe=pipeline("ods_recent"),empty=workflow("尚未执行");
+        jdbc.update("INSERT INTO sql_task_run(task_id,workflow_id,task_version,target_table,sql_text,status,started_at) VALUES(?,?,1,'dwd_recent','fixture','FAILED','2026-11-04 01:02:03')",sql,flow);
+        // A newer id with an older timestamp must not replace the latest start.
+        jdbc.update("INSERT INTO sql_task_run(task_id,workflow_id,task_version,target_table,sql_text,started_at) VALUES(?,?,1,'dwd_recent','fixture','2026-11-03 01:02:03')",sql,flow);
+        assertThat(workflows.list("最近执行",new com.litedata.service.QueryPage(1,20)).getFirst().getLastRunAt())
+                .isEqualTo(java.time.LocalDateTime.of(2026,11,4,1,2,3));
+        platform.rememberWorkflow("pipeline",pipe,808L);
+        jdbc.update("INSERT INTO workflow_definition_snapshot(workflow_id,definition_code,nodes_json) VALUES(?,808,'[]')",flow);
+        jdbc.update("INSERT INTO pipeline_run(pipeline_id,definition_code,status,started_at,lower_bound,upper_bound) VALUES(?,808,'FAILED','2026-11-04 20:03:04','2026-11-01','2026-11-02')",pipe);
+        // Sharing this pipeline in today's canvas is not evidence that a past run belongs to this flow.
+        jdbc.update("INSERT INTO processing_workflow_node(workflow_id,node_key,pipeline_id) VALUES(?,?,?)",empty,"pipeline-"+pipe,pipe);
+        jdbc.update("INSERT INTO pipeline_run(pipeline_id,definition_code,status,started_at,lower_bound,upper_bound) VALUES(?,999,'SUCCESS','2026-11-05 00:00:00','2026-11-01','2026-11-02')",pipe);
+        var listed=workflows.list("",new com.litedata.service.QueryPage(1,20));
+        assertThat(listed.stream().filter(w->w.getId()==flow).findFirst().orElseThrow().getLastRunAt()).isEqualTo(java.time.LocalDateTime.of(2026,11,4,20,3,4));
+        assertThat(listed.stream().filter(w->w.getId()==empty).findFirst().orElseThrow().getLastRunAt()).isNull();
+        mvc.perform(get("/workflows").with(user("viewer").roles("VIEWER"))).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("最近运行时间")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("2026-11-05 04:03:04")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("运行实例"))));
+        verifyNoInteractions(monitor);
+    }
+
     private long workflow(String name) { var w=new ProcessingWorkflow(); w.setName(name); return workflows.metadata(null,w,"dev"); }
     private WorkflowService.Node node(long w,long id) { return workflows.expand(w,"sql-"+id).getFirst(); }
     private WorkflowService.Save save(WorkflowService.View v,List<WorkflowService.Node> n,List<WorkflowService.Edge> e) { return new WorkflowService.Save(v.version(),v.graphHash(),v.cronExpression(),n,e,Map.of()); }

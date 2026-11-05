@@ -12,6 +12,9 @@ public class PipelineRun {
     private String message;
     private Long workflowInstanceId;
     private Long taskInstanceId;
+    private Long definitionCode;
+    public Long getDefinitionCode() { return definitionCode; }
+    public void setDefinitionCode(Long value) { definitionCode=value; }
     public Long getWorkflowInstanceId() { return workflowInstanceId; }
     public void setWorkflowInstanceId(Long workflowInstanceId) { this.workflowInstanceId = workflowInstanceId; }
     public Long getTaskInstanceId() { return taskInstanceId; }

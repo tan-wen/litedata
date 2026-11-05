@@ -567,7 +567,7 @@ class PlatformIntegrationTest {
         var pipeline=createPipeline();
         long runId=(Long)pipelineService.claim(pipeline.getId()).get("runId");
         mvc.perform(pipelineEdit(pipeline).param("name","running-edit"))
-                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("已有执行中的实例")));
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("正在执行")));
         assertThat(mapper.pipeline(pipeline.getId()).getName()).isEqualTo(pipeline.getName());
         pipelineService.finish(runId,true,"done");
         var watermark=mapper.pipeline(pipeline.getId()).getWatermark();
@@ -723,6 +723,33 @@ class PlatformIntegrationTest {
         }
     }
 
+    @Test
+    void serviceCallPaginationCountsOnlyItsServiceAndClampsToLastPage() throws Exception {
+        apiService.create("分页调用记录","call-pages","SELECT id FROM warehouse.api_fixture ORDER BY id");
+        long serviceId=mapper.services().getFirst().getId();
+        apiService.create("其他服务记录","other-call-pages","SELECT id FROM warehouse.api_fixture ORDER BY id");
+        long otherId=mapper.services().getFirst().getId();
+        for(int i=0;i<5;i++) jdbc.update("INSERT INTO service_call(service_id,started_at,duration_ms,status_code,row_count,page_num,page_size) VALUES(?,UTC_TIMESTAMP(),5,200,1,1,20)",serviceId);
+        jdbc.update("INSERT INTO service_call(service_id,started_at,duration_ms,status_code,row_count,page_num,page_size) VALUES(?,UTC_TIMESTAMP(),5,200,1,1,20)",otherId);
+        String path="/services/"+serviceId+"/calls";
+        var first=mvc.perform(get(path).with(user("reader").roles("VIEWER")).param("pageSize","2"))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("totalCount",5L))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("totalPages",3L))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(path+"?pageNum=3&amp;pageSize=2")))
+                .andReturn().getModelAndView().getModel();
+        assertThat((java.util.List<?>)first.get("calls")).hasSize(2);
+        assertThat(apiService.calls(serviceId,new com.litedata.service.QueryPage(1,2))).hasSize(2);
+        var last=mvc.perform(get(path).with(user("reader").roles("VIEWER")).param("pageSize","2").param("pageNum","999"))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("pageNum",3))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("hasMore",false))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("aria-label=\"第 3 页，当前页\"")))
+                .andReturn().getModelAndView().getModel();
+        assertThat((java.util.List<?>)last.get("calls")).hasSize(1);
+        mvc.perform(get(path).with(user("reader").roles("VIEWER")).param("pageSize","0")).andExpect(status().isBadRequest());
+    }
+
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder pipelineEdit(Pipeline pipeline) {
         return post("/pipelines/"+pipeline.getId()).with(csrf()).with(user("developer").roles("DEVELOPER"))
                 .param("sourceId",Long.toString(pipeline.getSourceId())).param("sourceTable",pipeline.getSourceTable())
@@ -816,6 +843,7 @@ class PlatformIntegrationTest {
         long first=mapper.pipeline(pipeline.getId()).getActiveRunId();
         assertThat(mapper.run(first).getWorkflowInstanceId()).isEqualTo(401L);
         assertThat(mapper.run(first).getTaskInstanceId()).isEqualTo(501L);
+        assertThat(mapper.run(first).getDefinitionCode()).isEqualTo(88L);
         var before=mapper.pipeline(pipeline.getId()).getWatermark();
         pipelineService.finish(first,false,"");
         assertThat(mapper.pipeline(pipeline.getId()).getWatermark()).isEqualTo(before);
@@ -826,6 +854,20 @@ class PlatformIntegrationTest {
         assertThat(mapper.instanceRunCount(pipeline.getId(),401)).isEqualTo(2);
         assertThat(mapper.run(retry).getStatus()).isEqualTo("SUCCESS");
         assertThat(mapper.pipelineRunCount(pipeline.getId())).isZero();
+    }
+
+    @Test void pipelineListShowsLatestActualRunInBeijingTimeWithoutEngineQueries() throws Exception {
+        var pipeline=createPipeline();
+        mvc.perform(get("/pipelines").with(user("viewer").roles("VIEWER")))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("最近运行时间")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("暂无执行记录")));
+        for(var time:java.util.List.of("2026-11-04 20:02:03","2026-11-03 01:02:03"))
+            jdbc.update("INSERT INTO pipeline_run(pipeline_id,status,started_at,lower_bound,upper_bound) VALUES(?,'FAILED',?,?,?)",pipeline.getId(),time,time,time);
+        mvc.perform(get("/pipelines?pageSize=1").with(user("viewer").roles("VIEWER")))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("2026-11-05 04:02:03")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("运行记录")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("运行实例"))));
+        verifyNoInteractions(monitor);
     }
 
     @Test void instanceCallbacksShowAllAttemptsWithoutPagingAndRefreshIndependentlyFromEngineSuccess() throws Exception {

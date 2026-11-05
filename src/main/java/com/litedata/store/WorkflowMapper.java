@@ -9,7 +9,11 @@ public interface WorkflowMapper {
     String FROM=" FROM processing_workflow w WHERE w.archived=FALSE ";
     String FILTER=" AND (LOWER(w.name) LIKE CONCAT('%',#{keyword},'%') OR LOWER(w.description) LIKE CONCAT('%',#{keyword},'%')) ";
     @Select("SELECT COUNT(*)"+FROM+FILTER) long count(String keyword);
-    @Select("SELECT w.*"+FROM+FILTER+" ORDER BY w.id DESC LIMIT #{limit} OFFSET #{offset}")
+    @Select("SELECT w.*,(SELECT MAX(recent.started_at) FROM ("
+            +"SELECT MAX(r.started_at) started_at FROM sql_task_run r WHERE r.workflow_id=w.id UNION ALL "
+            +"SELECT MAX(r.started_at) FROM workflow_definition_snapshot s JOIN pipeline_run r ON r.definition_code=s.definition_code WHERE s.workflow_id=w.id"
+            +") recent) last_run_at"
+            +FROM+FILTER+" ORDER BY w.id DESC LIMIT #{limit} OFFSET #{offset}")
     List<ProcessingWorkflow> page(@Param("keyword") String keyword,@Param("limit") int limit,@Param("offset") long offset);
     @Select("SELECT * FROM processing_workflow WHERE id=#{id} AND archived=FALSE") ProcessingWorkflow workflow(long id);
     @Select("SELECT * FROM processing_workflow WHERE id=#{id}") ProcessingWorkflow workflowIncludingArchived(long id);
