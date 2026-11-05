@@ -1,11 +1,13 @@
 package com.litedata.store;
 
 import java.util.List;
+
 import org.apache.ibatis.annotations.*;
 
 @Mapper
 public interface ModelDependencyMapper {
-    record SqlReference(String name, String sqlText) {}
+    record SqlReference(String name, String sqlText) {
+    }
 
     @Select("SELECT t.name,t.sql_text FROM sql_task t JOIN processing_workflow w ON w.id=t.workflow_id WHERE t.archived=FALSE AND w.archived=FALSE AND LOCATE(LOWER(#{table}),LOWER(t.sql_text))>0")
     List<SqlReference> tasks(String table);

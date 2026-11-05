@@ -8,21 +8,69 @@ public class DataSource {
     private String encryptedPassword;
     private String status;
     private String lastError;
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-    public String getJdbcUrl() { return jdbcUrl; }
-    public com.litedata.data.DatabaseType getDatabaseType() { return com.litedata.data.DatabaseType.fromUrl(jdbcUrl); }
-    public String getNamespace() { return getDatabaseType().namespace(jdbcUrl,username); }
-    public void setJdbcUrl(String jdbcUrl) { this.jdbcUrl = jdbcUrl; }
-    public String getUsername() { return username; }
-    public void setUsername(String username) { this.username = username; }
-    public String getEncryptedPassword() { return encryptedPassword; }
-    public void setEncryptedPassword(String encryptedPassword) { this.encryptedPassword = encryptedPassword; }
-    public String getStatus() { return status; }
-    public void setStatus(String status) { this.status = status; }
-    public String getLastError() { return lastError; }
-    public void setLastError(String lastError) { this.lastError = lastError; }
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getJdbcUrl() {
+        return jdbcUrl;
+    }
+
+    public com.litedata.data.DatabaseType getDatabaseType() {
+        return com.litedata.data.DatabaseType.fromUrl(jdbcUrl);
+    }
+
+    public String getNamespace() {
+        return getDatabaseType().namespace(jdbcUrl, username);
+    }
+
+    public void setJdbcUrl(String jdbcUrl) {
+        this.jdbcUrl = jdbcUrl;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    public String getEncryptedPassword() {
+        return encryptedPassword;
+    }
+
+    public void setEncryptedPassword(String encryptedPassword) {
+        this.encryptedPassword = encryptedPassword;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public String getLastError() {
+        return lastError;
+    }
+
+    public void setLastError(String lastError) {
+        this.lastError = lastError;
+    }
 }
 

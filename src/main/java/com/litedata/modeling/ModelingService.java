@@ -6,35 +6,58 @@ import com.litedata.store.MetricMapper;
 import com.litedata.store.PlatformMapper;
 import com.litedata.store.SqlTaskMapper;
 import com.litedata.service.QueryPage;
+
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.sql.SQLException;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.*;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ModelingService {
-    public record Preview(DataModel model, String ddl, String hash) {}
-    public record ExecutionResult(boolean success, String message) {}
+    public record Preview(DataModel model, String ddl, String hash) {
+    }
+
+    public record ExecutionResult(boolean success, String message) {
+    }
+
     public enum CreationStatus {
         CREATED("已建表"), NOT_CREATED("未建表"), UNKNOWN("状态未知");
         private final String label;
-        CreationStatus(String label) { this.label = label; }
-        public String getLabel() { return label; }
-        public boolean isCreated() { return this == CREATED; }
-        public boolean isNotCreated() { return this == NOT_CREATED; }
+
+        CreationStatus(String label) {
+            this.label = label;
+        }
+
+        public String getLabel() {
+            return label;
+        }
+
+        public boolean isCreated() {
+            return this == CREATED;
+        }
+
+        public boolean isNotCreated() {
+            return this == NOT_CREATED;
+        }
     }
+
     public record BackendStatus(boolean known, int total, int available) {
-        public int replicationLimit() { return known ? Math.min(10, available) : 10; }
+        public int replicationLimit() {
+            return known ? Math.min(10, available) : 10;
+        }
+
         public String hint() {
             if (!known) return "未获取到当前 BE 数量，请检查 Doris 连接和查询权限。可保存模型，建表时由 Doris 校验。";
             String counts = "当前可用 BE：" + available + " / 共 " + total + " 个；";
             return counts + (available == 0 ? "暂无可用节点，无法建表。" : "副本数上限：" + replicationLimit() + "。");
         }
     }
+
     private final ModelMapper mapper;
     private final PlatformMapper platform;
     private final DorisDdl ddl;
@@ -44,7 +67,10 @@ public class ModelingService {
     private final ModelDependencyGuard dependencies;
 
     public ModelingService(ModelMapper mapper, PlatformMapper platform, DorisDdl ddl, DorisModelGateway gateway, SqlTaskMapper sqlTasks, MetricMapper metrics, ModelDependencyGuard dependencies) {
-        this.mapper = mapper; this.platform = platform; this.ddl = ddl; this.gateway = gateway;
+        this.mapper = mapper;
+        this.platform = platform;
+        this.ddl = ddl;
+        this.gateway = gateway;
         this.sqlTasks = sqlTasks;
         this.metrics = metrics;
         this.dependencies = dependencies;
@@ -53,7 +79,7 @@ public class ModelingService {
     public List<DataModel> list(String keyword, String layer) {
         String query = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
         return mapper.models().stream().filter(m -> layer == null || layer.isBlank() || layer.equals(m.getLayer()))
-                .filter(m -> (m.getTableName() + " " + m.getName() + " " + m.getSubjectArea()).toLowerCase(Locale.ROOT).contains(query)).toList();
+            .filter(m -> (m.getTableName() + " " + m.getName() + " " + m.getSubjectArea()).toLowerCase(Locale.ROOT).contains(query)).toList();
     }
 
     public long count(String keyword, String layer) {
@@ -119,7 +145,8 @@ public class ModelingService {
             mapper.deletePartitions(id);
         }
         for (int i = 0; i < input.getFields().size(); i++) mapper.insertField(id, i + 1, input.getFields().get(i));
-        for (int i = 0; i < input.getPartitions().size(); i++) mapper.insertPartition(id, i + 1, input.getPartitions().get(i));
+        for (int i = 0; i < input.getPartitions().size(); i++)
+            mapper.insertPartition(id, i + 1, input.getPartitions().get(i));
         platform.audit(actor, "MODEL_SAVE", Long.toString(id), "SUCCESS");
         return id;
     }
@@ -135,9 +162,10 @@ public class ModelingService {
         metrics.lockGraph();
         var model = requireModel(mapper.lockModel(id));
         checkVersion(model, version);
-        if (mapper.pipelineReferences(model.getTableName())>0) throw new IllegalArgumentException("模型仍关联同步管道，请先删除相关管道");
-        if (sqlTasks.modelReferences(id)>0) throw new IllegalArgumentException("模型仍关联数据加工，请先删除加工任务");
-        if (metrics.modelReferences(id)>0) throw new IllegalArgumentException("模型仍关联指标，请先删除相关指标");
+        if (mapper.pipelineReferences(model.getTableName()) > 0)
+            throw new IllegalArgumentException("模型仍关联同步管道，请先删除相关管道");
+        if (sqlTasks.modelReferences(id) > 0) throw new IllegalArgumentException("模型仍关联数据加工，请先删除加工任务");
+        if (metrics.modelReferences(id) > 0) throw new IllegalArgumentException("模型仍关联指标，请先删除相关指标");
         dependencies.check(model.getTableName());
         if (model.getPhysicalVersion() != null)
             throw new IllegalArgumentException("模型已完成物理建表或结构核对，不能删除");
@@ -153,13 +181,16 @@ public class ModelingService {
         platform.audit(actor, "MODEL_ARCHIVE", Long.toString(id), "SUCCESS");
     }
 
-    /** Serialize metadata edits and execution against the same model row. No ALTER/DROP is generated. */
+    /**
+     * Serialize metadata edits and execution against the same model row. No ALTER/DROP is generated.
+     */
     @Transactional
     public ExecutionResult physicalize(long id, int version, String previewHash, String actor) {
         var model = withFields(requireModel(mapper.lockModel(id)));
         checkVersion(model, version);
         var preview = preview(model);
-        if (!preview.hash().equals(previewHash)) throw new IllegalArgumentException("DDL 预览已变化，请刷新页面重新确认");
+        if (!preview.hash().equals(previewHash))
+            throw new IllegalArgumentException("DDL 预览已变化，请刷新页面重新确认");
         String replicaError = replicationError(model);
         if (replicaError != null) {
             record(model, "CREATE", preview.ddl(), actor, "FAILED", replicaError);
@@ -192,7 +223,7 @@ public class ModelingService {
             var comparison = SchemaComparison.compare(model, gateway.inspect(model.getTableName()));
             mapper.physicalVersion(id, comparison.matches() ? model.getVersion() : null);
             record(model, "COMPARE", generated, actor, comparison.matches() ? "SUCCESS" : "DIFF",
-                    comparison.matches() ? "字段、键列、聚合函数、数据模型、默认副本、分区和分桶一致" : "存在结构差异，请查看比对结果");
+                comparison.matches() ? "字段、键列、聚合函数、数据模型、默认副本、分区和分桶一致" : "存在结构差异，请查看比对结果");
             return comparison;
         } catch (SQLException | IllegalStateException exception) {
             String message = safeFailure(exception);
@@ -203,8 +234,9 @@ public class ModelingService {
 
     public List<ModelExecution> executions(long id) {
         var executions = mapper.executions(id);
-        for (var execution : executions) if (execution.getCreatedAt() != null)
-            execution.setCreatedAt(execution.getCreatedAt().atOffset(ZoneOffset.UTC).atZoneSameInstant(ZoneId.of("Asia/Shanghai")).toLocalDateTime());
+        for (var execution : executions)
+            if (execution.getCreatedAt() != null)
+                execution.setCreatedAt(execution.getCreatedAt().atOffset(ZoneOffset.UTC).atZoneSameInstant(ZoneId.of("Asia/Shanghai")).toLocalDateTime());
         return executions;
     }
 
@@ -212,10 +244,13 @@ public class ModelingService {
         String generated = ddl.generate(model);
         try {
             var hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest((model.getId() + ":" + model.getVersion() + ":" + generated).getBytes(StandardCharsets.UTF_8)));
+                .digest((model.getId() + ":" + model.getVersion() + ":" + generated).getBytes(StandardCharsets.UTF_8)));
             return new Preview(model, generated, hash);
-        } catch (java.security.NoSuchAlgorithmException e) { throw new IllegalStateException("SHA-256 unavailable", e); }
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 unavailable", e);
+        }
     }
+
     private String replicationError(DataModel model) {
         Integer dynamicReplicas = null;
         if ("DYNAMIC".equals(model.getPartitionType())) {
@@ -230,32 +265,48 @@ public class ModelingService {
             return "动态分区副本数不能超过当前可用 BE 节点数（" + status.available() + " 个）";
         return null;
     }
+
     private DataModel withFields(DataModel model) {
         model.setFields(mapper.fields(model.getId()));
         model.setPartitions(mapper.partitions(model.getId()));
         return model;
     }
-    private static String query(String keyword) { return keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT); }
-    private static String normalizedLayer(String layer) { return layer == null || layer.isBlank() ? "" : layer; }
+
+    private static String query(String keyword) {
+        return keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static String normalizedLayer(String layer) {
+        return layer == null || layer.isBlank() ? "" : layer;
+    }
+
     private static DataModel requireModel(DataModel model) {
         if (model == null) throw new IllegalArgumentException("模型不存在或已归档");
         return model;
     }
+
     private static void checkVersion(DataModel model, int version) {
         if (model.getVersion() != version) throw new IllegalArgumentException("模型已被修改，请刷新页面后重试");
     }
+
     private void record(DataModel model, String operation, String generated, String actor, String status, String message) {
         var execution = new ModelExecution();
-        execution.setModelId(model.getId()); execution.setModelVersion(model.getVersion());
-        execution.setOperation(operation); execution.setTargetTable("warehouse." + model.getTableName());
-        execution.setDdl(generated); execution.setActor(actor); execution.setStatus(status); execution.setMessage(message);
+        execution.setModelId(model.getId());
+        execution.setModelVersion(model.getVersion());
+        execution.setOperation(operation);
+        execution.setTargetTable("warehouse." + model.getTableName());
+        execution.setDdl(generated);
+        execution.setActor(actor);
+        execution.setStatus(status);
+        execution.setMessage(message);
         mapper.execution(execution);
         platform.audit(actor, "MODEL_" + operation, model.getId() + ":v" + model.getVersion(), status);
     }
+
     private static String safeFailure(Exception exception) {
         if (exception instanceof SQLException sql)
             return "Doris 操作未确认成功（SQLState=" + Objects.toString(sql.getSQLState(), "unknown").replaceAll("[^A-Za-z0-9]", "")
-                    + "，code=" + sql.getErrorCode() + "）。请检查表是否已存在、账号权限及连接，并先比对结构再重试";
+                + "，code=" + sql.getErrorCode() + "）。请检查表是否已存在、账号权限及连接，并先比对结构再重试";
         return "Doris 建模连接未就绪，请检查建表账号配置与网络后重试";
     }
 }

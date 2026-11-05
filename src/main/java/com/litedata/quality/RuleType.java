@@ -21,7 +21,17 @@ public enum RuleType {
     CUSTOM_SQL("自定义异常 SQL", "仅 Doris；参数1为受控 SELECT，返回一行代表一条异常；不支持命名参数或时间窗口");
     private final String label;
     private final String hint;
-    RuleType(String label,String hint) { this.label=label; this.hint=hint; }
-    public String getLabel() { return label; }
-    public String getHint() { return hint; }
+
+    RuleType(String label, String hint) {
+        this.label = label;
+        this.hint = hint;
+    }
+
+    public String getLabel() {
+        return label;
+    }
+
+    public String getHint() {
+        return hint;
+    }
 }

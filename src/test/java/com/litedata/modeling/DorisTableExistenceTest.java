@@ -10,17 +10,20 @@ import static org.mockito.Mockito.*;
 import com.litedata.config.ModelingProperties;
 import com.litedata.config.PlatformProperties;
 import com.litedata.data.JdbcConnections;
+
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class DorisTableExistenceTest {
-    @Test void findsExistingRequestedTablesInOneQueryAndClosesResources() throws Exception {
+    @Test
+    void findsExistingRequestedTablesInOneQueryAndClosesResources() throws Exception {
         JdbcConnections connections = mock(JdbcConnections.class);
         Connection connection = mock(Connection.class);
         PreparedStatement statement = mock(PreparedStatement.class);
@@ -30,7 +33,7 @@ class DorisTableExistenceTest {
         when(statement.executeQuery()).thenReturn(result);
 
         assertThat(gateway(connections, new ModelingProperties("", "")).existingTables(List.of("ods_orders", "dwd_orders", "missing")))
-                .containsExactlyInAnyOrder("ods_orders", "dwd_orders");
+            .containsExactlyInAnyOrder("ods_orders", "dwd_orders");
 
         ArgumentCaptor<String> values = ArgumentCaptor.forClass(String.class);
         verify(statement, times(4)).setString(anyInt(), values.capture());
@@ -42,7 +45,8 @@ class DorisTableExistenceTest {
         verify(connection).close();
     }
 
-    @Test void emptyRequestDoesNotOpenConnection() throws Exception {
+    @Test
+    void emptyRequestDoesNotOpenConnection() throws Exception {
         JdbcConnections connections = mock(JdbcConnections.class);
 
         assertThat(gateway(connections, new ModelingProperties("", "")).existingTables(List.of())).isEmpty();
@@ -50,16 +54,18 @@ class DorisTableExistenceTest {
         verifyNoInteractions(connections);
     }
 
-    @Test void validatesEveryIdentifierBeforeOpeningConnection() {
+    @Test
+    void validatesEveryIdentifierBeforeOpeningConnection() {
         JdbcConnections connections = mock(JdbcConnections.class);
 
         assertThatIllegalArgumentException().isThrownBy(() -> gateway(connections, new ModelingProperties("", ""))
-                .existingTables(List.of("ods_valid", "bad-name")));
+            .existingTables(List.of("ods_valid", "bad-name")));
 
         verifyNoInteractions(connections);
     }
 
-    @Test void propagatesQueryFailureAndClosesResources() throws Exception {
+    @Test
+    void propagatesQueryFailureAndClosesResources() throws Exception {
         JdbcConnections connections = mock(JdbcConnections.class);
         Connection connection = mock(Connection.class);
         PreparedStatement statement = mock(PreparedStatement.class);
@@ -69,7 +75,7 @@ class DorisTableExistenceTest {
         when(statement.executeQuery()).thenThrow(failure);
 
         assertThatThrownBy(() -> gateway(connections, new ModelingProperties("", "")).existingTables(List.of("ods_orders")))
-                .isSameAs(failure);
+            .isSameAs(failure);
 
         verify(statement).close();
         verify(connection).close();
@@ -77,7 +83,7 @@ class DorisTableExistenceTest {
 
     private static DorisModelGateway gateway(JdbcConnections connections, ModelingProperties modeling) {
         return new DorisModelGateway(new PlatformProperties("key", "admin", "token", null,
-                new PlatformProperties.Doris("jdbc:mysql://doris.example:9030/warehouse", "reader", "reader-secret")), modeling, connections);
+            new PlatformProperties.Doris("jdbc:mysql://doris.example:9030/warehouse", "reader", "reader-secret")), modeling, connections);
     }
 
     private static ResultSet rows(String... names) throws SQLException {

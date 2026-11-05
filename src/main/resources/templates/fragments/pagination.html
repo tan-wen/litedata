@@ -1,5 +1,6 @@
 <!doctype html>
-<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org"><body>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<body>
 <div th:fragment="pagination" class="list-pagination">
   <div class="list-pagination-summary fg-2" th:text="${'共 ' + totalCount + ' 条，共 ' + totalPages + ' 页'}"></div>
   <div class="list-pagination-controls">
@@ -18,25 +19,40 @@
       <input th:if="${taskId != null}" type="hidden" name="taskId" th:value="${taskId}">
       <label class="text-nowrap fg-2" for="list-page-size">每页</label>
       <select class="form-control form-control-sm w-auto" id="list-page-size" name="pageSize" aria-label="每页条数">
-        <option th:if="${!#lists.contains(pageSizes,pageSize)}" th:value="${pageSize}" th:text="${pageSize}" selected></option>
-        <option th:each="size : ${pageSizes}" th:value="${size}" th:text="${size}" th:selected="${size == pageSize}"></option>
+        <option th:if="${!#lists.contains(pageSizes,pageSize)}" th:value="${pageSize}" th:text="${pageSize}"
+                selected></option>
+        <option th:each="size : ${pageSizes}" th:value="${size}" th:text="${size}"
+                th:selected="${size == pageSize}"></option>
       </select>
     </form>
-    <nav class="list-pagination-nav" aria-label="列表分页"><ul class="pagination theme-primary pagination-sm mb-0">
-      <li class="page-item" th:classappend="${!hasPrevious} ? 'disabled'">
-        <a th:if="${hasPrevious}" class="page-link" aria-label="上一页" th:href="@{${pagePath}(pageNum=${pageNum - 1},pageSize=${pageSize},keyword=${keyword},layer=${layer},metricType=${metricType},assetType=${assetType},subjectArea=${subjectArea},owner=${owner},tag=${tag},assetStatus=${assetStatus},workflowCode=${workflowCode},stateType=${stateType},taskId=${taskId})}"><span aria-hidden="true">&laquo;</span></a>
-        <span th:unless="${hasPrevious}" class="page-link" aria-disabled="true" aria-label="上一页"><span aria-hidden="true">&laquo;</span></span>
-      </li>
-      <li th:each="number : ${pageNumbers}" class="page-item" th:classappend="${number == 0 ? 'disabled' : (number == pageNum ? 'active' : '')}">
-        <span th:if="${number == 0}" class="page-link" aria-hidden="true">...</span>
-        <span th:if="${number == pageNum}" class="page-link" aria-current="page" th:attr="aria-label=${'第 ' + number + ' 页，当前页'}" th:text="${number}"></span>
-        <a th:if="${number != 0 and number != pageNum}" class="page-link" th:attr="aria-label=${'第 ' + number + ' 页'}" th:text="${number}" th:href="@{${pagePath}(pageNum=${number},pageSize=${pageSize},keyword=${keyword},layer=${layer},metricType=${metricType},assetType=${assetType},subjectArea=${subjectArea},owner=${owner},tag=${tag},assetStatus=${assetStatus},workflowCode=${workflowCode},stateType=${stateType},taskId=${taskId})}"></a>
-      </li>
-      <li class="page-item" th:classappend="${!hasMore} ? 'disabled'">
-        <a th:if="${hasMore}" class="page-link" aria-label="下一页" th:href="@{${pagePath}(pageNum=${pageNum + 1},pageSize=${pageSize},keyword=${keyword},layer=${layer},metricType=${metricType},assetType=${assetType},subjectArea=${subjectArea},owner=${owner},tag=${tag},assetStatus=${assetStatus},workflowCode=${workflowCode},stateType=${stateType},taskId=${taskId})}"><span aria-hidden="true">&raquo;</span></a>
-        <span th:unless="${hasMore}" class="page-link" aria-disabled="true" aria-label="下一页"><span aria-hidden="true">&raquo;</span></span>
-      </li>
-    </ul></nav>
+    <nav class="list-pagination-nav" aria-label="列表分页">
+      <ul class="pagination theme-primary pagination-sm mb-0">
+        <li class="page-item" th:classappend="${!hasPrevious} ? 'disabled'">
+          <a th:if="${hasPrevious}" class="page-link" aria-label="上一页"
+             th:href="@{${pagePath}(pageNum=${pageNum - 1},pageSize=${pageSize},keyword=${keyword},layer=${layer},metricType=${metricType},assetType=${assetType},subjectArea=${subjectArea},owner=${owner},tag=${tag},assetStatus=${assetStatus},workflowCode=${workflowCode},stateType=${stateType},taskId=${taskId})}"><span
+            aria-hidden="true">&laquo;</span></a>
+          <span th:unless="${hasPrevious}" class="page-link" aria-disabled="true" aria-label="上一页"><span
+            aria-hidden="true">&laquo;</span></span>
+        </li>
+        <li th:each="number : ${pageNumbers}" class="page-item"
+            th:classappend="${number == 0 ? 'disabled' : (number == pageNum ? 'active' : '')}">
+          <span th:if="${number == 0}" class="page-link" aria-hidden="true">...</span>
+          <span th:if="${number == pageNum}" class="page-link" aria-current="page"
+                th:attr="aria-label=${'第 ' + number + ' 页，当前页'}" th:text="${number}"></span>
+          <a th:if="${number != 0 and number != pageNum}" class="page-link"
+             th:attr="aria-label=${'第 ' + number + ' 页'}" th:text="${number}"
+             th:href="@{${pagePath}(pageNum=${number},pageSize=${pageSize},keyword=${keyword},layer=${layer},metricType=${metricType},assetType=${assetType},subjectArea=${subjectArea},owner=${owner},tag=${tag},assetStatus=${assetStatus},workflowCode=${workflowCode},stateType=${stateType},taskId=${taskId})}"></a>
+        </li>
+        <li class="page-item" th:classappend="${!hasMore} ? 'disabled'">
+          <a th:if="${hasMore}" class="page-link" aria-label="下一页"
+             th:href="@{${pagePath}(pageNum=${pageNum + 1},pageSize=${pageSize},keyword=${keyword},layer=${layer},metricType=${metricType},assetType=${assetType},subjectArea=${subjectArea},owner=${owner},tag=${tag},assetStatus=${assetStatus},workflowCode=${workflowCode},stateType=${stateType},taskId=${taskId})}"><span
+            aria-hidden="true">&raquo;</span></a>
+          <span th:unless="${hasMore}" class="page-link" aria-disabled="true" aria-label="下一页"><span
+            aria-hidden="true">&raquo;</span></span>
+        </li>
+      </ul>
+    </nav>
   </div>
 </div>
-</body></html>
+</body>
+</html>

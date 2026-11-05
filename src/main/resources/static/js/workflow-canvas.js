@@ -1,158 +1,871 @@
 (() => {
-  'use strict';
-  const execution=document.querySelector('[data-workflow-execution]');
-  if(execution){const graph=Array.isArray(window.executionGraph)?window.executionGraph:window.executionGraph?.nodes||[],layer=execution.querySelector('[data-workflow-nodes]'),svg=execution.querySelector('[data-workflow-edges]'),positions=new Map(),depth=new Map(),rows=new Map();for(const n of graph){const level=Math.max(0,...(n.upstreamKeys||[]).map(k=>(depth.get(k)||0)+1));depth.set(n.key,level);const row=rows.get(level)||0;rows.set(level,row+1);positions.set(n.key,{x:55+level*235,y:45+row*180});}const stage=execution.querySelector('.workflow-stage');stage.style.width=`${Math.max(760,...[...positions.values()].map(p=>p.x+240))}px`;stage.style.minHeight=`${Math.max(260,...[...positions.values()].map(p=>p.y+180))}px`;for(const n of graph){const p=positions.get(n.key),el=document.createElement('a'),title=document.createElement('strong'),meta=document.createElement('span'),state=document.createElement('span');el.className='workflow-node';el.dataset.executionEngine=n.engineName||'';el.style.left=`${p.x}px`;el.style.top=`${p.y}px`;title.className='workflow-node-title';title.textContent=n.name;meta.className='workflow-node-meta';meta.textContent=`${n.kind} · ${n.tableName||'—'}`;state.className='workflow-node-state badge theme-info';state.dataset.executionState='';state.textContent='等待派发';el.append(title,meta,state);layer.append(el);for(const from of n.upstreamKeys||[]){const a=positions.get(from);if(!a)continue;const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.classList.add('workflow-edge');path.setAttribute('d',`M ${a.x+190} ${a.y+75} C ${a.x+235} ${a.y+75}, ${p.x-45} ${p.y+75}, ${p.x} ${p.y+75}`);svg.append(path);}}const refresh=snapshot=>{const latest=new Map();for(const node of snapshot?.nodes||[]){const old=latest.get(node.name);if(!old||node.id>old.id)latest.set(node.name,node);}execution.querySelectorAll('[data-execution-engine]').forEach(el=>{const node=latest.get(el.dataset.executionEngine),state=el.querySelector('[data-execution-state]');if(node){state.textContent=(snapshot?.labels||window.schedulerLabels||{})[node.state]||node.state;state.className=`workflow-node-state badge ${node.state==='SUCCESS'?'theme-success':node.state==='FAILURE'?'theme-danger':'theme-warning'}`;el.href=`?taskId=${node.id}`;el.classList.remove('is-waiting');}else{state.textContent=snapshot?.finished?'未执行':'等待派发';state.className='workflow-node-state badge theme-info';el.removeAttribute('href');el.classList.add('is-waiting');}});};refresh({nodes:window.schedulerNodes||[]});window.addEventListener('scheduler:snapshot',e=>refresh(e.detail));}
+    'use strict';
+    const execution = document.querySelector('[data-workflow-execution]');
+    if (execution) {
+        const graph = Array.isArray(window.executionGraph) ? window.executionGraph : window.executionGraph?.nodes || [],
+            layer = execution.querySelector('[data-workflow-nodes]'),
+            svg = execution.querySelector('[data-workflow-edges]'), positions = new Map(), depth = new Map(),
+            rows = new Map();
+        for (const n of graph) {
+            const level = Math.max(0, ...(n.upstreamKeys || []).map(k => (depth.get(k) || 0) + 1));
+            depth.set(n.key, level);
+            const row = rows.get(level) || 0;
+            rows.set(level, row + 1);
+            positions.set(n.key, {x: 55 + level * 235, y: 45 + row * 180});
+        }
+        const stage = execution.querySelector('.workflow-stage');
+        stage.style.width = `${Math.max(760, ...[...positions.values()].map(p => p.x + 240))}px`;
+        stage.style.minHeight = `${Math.max(260, ...[...positions.values()].map(p => p.y + 180))}px`;
+        for (const n of graph) {
+            const p = positions.get(n.key), el = document.createElement('a'), title = document.createElement('strong'),
+                meta = document.createElement('span'), state = document.createElement('span');
+            el.className = 'workflow-node';
+            el.dataset.executionEngine = n.engineName || '';
+            el.style.left = `${p.x}px`;
+            el.style.top = `${p.y}px`;
+            title.className = 'workflow-node-title';
+            title.textContent = n.name;
+            meta.className = 'workflow-node-meta';
+            meta.textContent = `${n.kind} · ${n.tableName || '—'}`;
+            state.className = 'workflow-node-state badge theme-info';
+            state.dataset.executionState = '';
+            state.textContent = '等待派发';
+            el.append(title, meta, state);
+            layer.append(el);
+            for (const from of n.upstreamKeys || []) {
+                const a = positions.get(from);
+                if (!a) continue;
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.classList.add('workflow-edge');
+                path.setAttribute('d', `M ${a.x + 190} ${a.y + 75} C ${a.x + 235} ${a.y + 75}, ${p.x - 45} ${p.y + 75}, ${p.x} ${p.y + 75}`);
+                svg.append(path);
+            }
+        }
+        const refresh = snapshot => {
+            const latest = new Map();
+            for (const node of snapshot?.nodes || []) {
+                const old = latest.get(node.name);
+                if (!old || node.id > old.id) latest.set(node.name, node);
+            }
+            execution.querySelectorAll('[data-execution-engine]').forEach(el => {
+                const node = latest.get(el.dataset.executionEngine), state = el.querySelector('[data-execution-state]');
+                if (node) {
+                    state.textContent = (snapshot?.labels || window.schedulerLabels || {})[node.state] || node.state;
+                    state.className = `workflow-node-state badge ${node.state === 'SUCCESS' ? 'theme-success' : node.state === 'FAILURE' ? 'theme-danger' : 'theme-warning'}`;
+                    el.href = `?taskId=${node.id}`;
+                    el.classList.remove('is-waiting');
+                } else {
+                    state.textContent = snapshot?.finished ? '未执行' : '等待派发';
+                    state.className = 'workflow-node-state badge theme-info';
+                    el.removeAttribute('href');
+                    el.classList.add('is-waiting');
+                }
+            });
+        };
+        refresh({nodes: window.schedulerNodes || []});
+        window.addEventListener('scheduler:snapshot', e => refresh(e.detail));
+    }
 
-  const root=document.querySelector('[data-workflow-canvas]'); if(!root)return;
-  const stage=root.querySelector('[data-workflow-stage]'), layer=root.querySelector('[data-workflow-nodes]'), svg=root.querySelector('[data-workflow-edges]'), editable=root.dataset.editable==='true', csrf=root.querySelector('input[name="_csrf"]')?.value||'';
-  const status=root.querySelector('[data-workflow-status]'), saveButton=root.querySelector('[data-workflow-save]'), cron=root.querySelector('[data-workflow-cron]'), empty=root.querySelector('[data-workflow-empty]');
-  const dialog=root.querySelector('[data-workflow-sql-dialog]'), sqlForm=dialog?.querySelector('form'), sqlSave=dialog?.querySelector('[data-workflow-sql-save]');
-  let view=window.workflowCanvas||null, nodes=new Map(), positions=new Map(), sqlDrafts=new Map(), sqlModels=new Map(), generatedInsert=null, selected=null, edge=null, joining=null, layoutDirty=false, graphDirty=false, cronDirty=false, saving=false, sqlSaving=false, sqlOpening=false, adding=false, dialogInputDirty=false, loaded=false, catalogPage=1, catalogPages=1, catalogTotal=0, catalogTimer, catalogSerial=0;
-  const message=(value,level)=>{if(status)status.textContent=value;if(level)window.platformFeedback.show(value,{level,key:'workflow-status'});}, problem=value=>{if(value)window.platformFeedback.show(value,{key:'workflow'});else window.platformFeedback.clear('workflow');};
-  function position(key){
-    const saved=positions.get(key);if(saved)return saved;
-    for(let index=0;index<=positions.size*4+4;index++){
-      const point={x:70+(index%4)*235,y:55+Math.floor(index/4)*220};
-      if([...positions.values()].every(other=>Math.abs(other.x-point.x)>=215||Math.abs(other.y-point.y)>=210))return point;
+    const root = document.querySelector('[data-workflow-canvas]');
+    if (!root) return;
+    const stage = root.querySelector('[data-workflow-stage]'), layer = root.querySelector('[data-workflow-nodes]'),
+        svg = root.querySelector('[data-workflow-edges]'), editable = root.dataset.editable === 'true',
+        csrf = root.querySelector('input[name="_csrf"]')?.value || '';
+    const status = root.querySelector('[data-workflow-status]'),
+        saveButton = root.querySelector('[data-workflow-save]'), cron = root.querySelector('[data-workflow-cron]'),
+        empty = root.querySelector('[data-workflow-empty]');
+    const dialog = root.querySelector('[data-workflow-sql-dialog]'), sqlForm = dialog?.querySelector('form'),
+        sqlSave = dialog?.querySelector('[data-workflow-sql-save]');
+    let view = window.workflowCanvas || null, nodes = new Map(), positions = new Map(), sqlDrafts = new Map(),
+        sqlModels = new Map(), generatedInsert = null, selected = null, edge = null, joining = null,
+        layoutDirty = false, graphDirty = false, cronDirty = false, saving = false, sqlSaving = false,
+        sqlOpening = false, adding = false, dialogInputDirty = false, loaded = false, catalogPage = 1, catalogPages = 1,
+        catalogTotal = 0, catalogTimer, catalogSerial = 0;
+    const message = (value, level) => {
+        if (status) status.textContent = value;
+        if (level) window.platformFeedback.show(value, {level, key: 'workflow-status'});
+    }, problem = value => {
+        if (value) window.platformFeedback.show(value, {key: 'workflow'}); else window.platformFeedback.clear('workflow');
+    };
+
+    function position(key) {
+        const saved = positions.get(key);
+        if (saved) return saved;
+        for (let index = 0; index <= positions.size * 4 + 4; index++) {
+            const point = {x: 70 + (index % 4) * 235, y: 55 + Math.floor(index / 4) * 220};
+            if ([...positions.values()].every(other => Math.abs(other.x - point.x) >= 215 || Math.abs(other.y - point.y) >= 210)) return point;
+        }
+        return {x: 70, y: 55 + (positions.size + 1) * 220};
     }
-    return {x:70,y:55+(positions.size+1)*220};
-  }
-  const hasDraft=()=>layoutDirty||graphDirty||cronDirty||sqlDrafts.size>0;
-  const leaveDialog=root.querySelector('[data-workflow-leave-dialog]');
-  let pendingLeave=null, leaving=false;
-  const hasUnsavedChanges=()=>editable&&(hasDraft()||dialogInputDirty);
-  function confirmLeave(action){
-    pendingLeave=action;
-    if(!leaveDialog.open)leaveDialog.showModal();
-    leaveDialog.querySelector('[data-workflow-leave-cancel]').focus();
-  }
-  leaveDialog?.querySelector('[data-workflow-leave-cancel]').addEventListener('click',()=>leaveDialog.close());
-  leaveDialog?.addEventListener('close',()=>{pendingLeave=null;});
-  leaveDialog?.querySelector('[data-workflow-leave-confirm]').addEventListener('click',()=>{
-    const action=pendingLeave;
-    if(!action)return;
-    leaving=true;
-    leaveDialog.close();
-    action();
-  });
-  document.addEventListener('click',event=>{
-    if(event.defaultPrevented||event.button!==0||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey||!hasUnsavedChanges())return;
-    const link=event.target.closest('a[href]');
-    if(!link||link.hasAttribute('download')||link.target&&link.target!=='_self')return;
-    const url=new URL(link.href,location.href);
-    if(!['http:','https:'].includes(url.protocol)||link.getAttribute('href').startsWith('#')||url.hash&&url.origin===location.origin&&url.pathname===location.pathname&&url.search===location.search)return;
-    event.preventDefault();
-    confirmLeave(()=>location.assign(url.href));
-  });
-  document.addEventListener('submit',event=>{
-    if(leaving){if(event.defaultPrevented)leaving=false;return;}
-    if(event.defaultPrevented||!hasUnsavedChanges())return;
-    const form=event.target,submitter=event.submitter,target=submitter?.getAttribute('formtarget')??form.target,method=submitter?.getAttribute('formmethod')??form.method;
-    if(method==='dialog'||target&&target!=='_self')return;
-    event.preventDefault();
-    confirmLeave(()=>submitter?form.requestSubmit(submitter):form.requestSubmit());
-  });
-  const draftKey=()=>{const entropy=window.crypto;if(entropy?.randomUUID)return `draft-${entropy.randomUUID()}`;const bytes=new Uint8Array(16);if(entropy?.getRandomValues)entropy.getRandomValues(bytes);else for(let index=0;index<bytes.length;index++)bytes[index]=Math.floor(Math.random()*256);return `draft-${[...bytes].map(byte=>byte.toString(16).padStart(2,'0')).join('')}`;};
-  const edges=()=>[...nodes.values()].flatMap(node=>(node.upstreamKeys||[]).map(from=>({from,to:node.key})));
-  function resize(){const values=[...positions.values()];stage.style.width=`${Math.max(760,...values.map(p=>p.x+240))}px`;stage.style.minHeight=`${Math.max(300,...[...layer.querySelectorAll('.workflow-node')].map(el=>position(el.dataset.nodeKey).y+el.offsetHeight+20))}px`;}
-  function select(key,nextEdge){selected=key||null;edge=nextEdge||null;layer.querySelectorAll('.workflow-node').forEach(el=>el.classList.toggle('is-selected',el.dataset.nodeKey===selected));svg.querySelectorAll('.workflow-edge').forEach(el=>el.classList.toggle('is-selected',el.dataset.edge===edge));const remove=root.querySelector('[data-workflow-delete]');if(remove)remove.disabled=!(edge||selected);}
-  function draw(){svg.replaceChildren();const centers=new Map([...layer.querySelectorAll('.workflow-node')].map(el=>[el.dataset.nodeKey,el.offsetHeight/2]));for(const item of edges()){const a=position(item.from),b=position(item.to),ay=a.y+(centers.get(item.from)||75),by=b.y+(centers.get(item.to)||75),path=document.createElementNS('http://www.w3.org/2000/svg','path');path.classList.add('workflow-edge');path.dataset.edge=`${item.from}>${item.to}`;path.setAttribute('d',`M ${a.x+190} ${ay} C ${a.x+245} ${ay}, ${b.x-55} ${by}, ${b.x} ${by}`);if(editable)path.addEventListener('click',event=>{event.stopPropagation();select(null,path.dataset.edge);});svg.append(path);}}
-  function drag(el,node){let start;const release=event=>{if(!start||event.pointerId!==start.pointerId)return;const current=start;start=null;if(current.moved)el.dataset.suppressClick='true';if(el.hasPointerCapture?.(event.pointerId))el.releasePointerCapture(event.pointerId);};el.addEventListener('pointerdown',event=>{if(event.button!==0||event.target.closest('button,a,input,select,textarea'))return;start={pointerId:event.pointerId,x:event.clientX,y:event.clientY,p:{...position(node.key)},moved:false};el.setPointerCapture(event.pointerId);});el.addEventListener('pointermove',event=>{if(!start||event.pointerId!==start.pointerId)return;const dx=event.clientX-start.x,dy=event.clientY-start.y;if(!start.moved&&dx*dx+dy*dy<16)return;start.moved=true;const p=positions.get(node.key);p.x=Math.max(0,start.p.x+dx/(Number(stage.dataset.scale)||1));p.y=Math.max(0,start.p.y+dy/(Number(stage.dataset.scale)||1));el.style.left=`${p.x}px`;el.style.top=`${p.y}px`;layoutDirty=true;draw();resize();});el.addEventListener('pointerup',release);el.addEventListener('pointercancel',release);el.addEventListener('lostpointercapture',release);}
-  function hasPath(from,to){const seen=new Set(),visit=key=>{if(key===to)return true;if(seen.has(key))return false;seen.add(key);return (nodes.get(key)?.upstreamKeys||[]).some(visit);};return visit(from);}
-  function connect(from,to){joining=null;if(from===to||!nodes.has(from)||!nodes.has(to)){problem('请选择两个不同的画布节点。');return false;}const target=nodes.get(to);if(target.kind!=='SQL'){problem('下游节点必须是 SQL 加工任务。');return false;}if(hasPath(from,to)){problem('此连线会形成循环依赖。');return false;}if(!target.upstreamKeys.includes(from)){target.upstreamKeys=[...target.upstreamKeys,from];graphDirty=true;render();}return true;}
-  function layout(mark){const seen=new Set(),visiting=new Set(),ordered=[],levels=new Map(),rows=new Map(),visit=key=>{if(seen.has(key))return;if(visiting.has(key))throw Error('依赖存在循环，请删除无效连线。');visiting.add(key);for(const parent of nodes.get(key)?.upstreamKeys||[])visit(parent);visiting.delete(key);seen.add(key);ordered.push(key);};try{for(const key of nodes.keys())visit(key);}catch(e){problem(e.message);return;}for(const key of ordered){const level=Math.max(0,...(nodes.get(key)?.upstreamKeys||[]).map(parent=>(levels.get(parent)||0)+1));levels.set(key,level);const row=rows.get(level)||0;rows.set(level,row+1);positions.set(key,{x:70+level*235,y:55+row*220});}if(mark)layoutDirty=true;render();}
-  function modelTable(modelId){return [...(dialog?.querySelectorAll('[data-workflow-sql-model] option')||[])].find(option=>option.value===String(modelId))?.dataset.tableName||'—';}
-  function render(){layer.replaceChildren();empty.hidden=nodes.size>0;for(const node of nodes.values()){const draft=sqlDrafts.get(node.key),display=draft?{...node,name:draft.name,tableName:modelTable(draft.modelId)}:node,p=position(node.key);positions.set(node.key,p);const el=document.createElement('article'),title=document.createElement('strong'),meta=document.createElement('span');el.className='workflow-node';el.dataset.nodeKey=node.key;el.dataset.kind=node.kind;el.style.left=`${p.x}px`;el.style.top=`${p.y}px`;title.className='workflow-node-title';title.textContent=display.name;title.title=display.name;meta.className='workflow-node-meta';meta.textContent=`${display.kind} · ${display.tableName||'—'} · v${display.version??'—'}`;el.append(title,meta);if(draft){const hint=document.createElement('span');hint.className='workflow-node-warning badge theme-warning';hint.textContent='SQL 草稿待保存';el.append(hint);}if(node.kind==='同步'&&node.standaloneScheduled){const hint=document.createElement('span');hint.className='workflow-node-warning badge theme-warning';hint.textContent='独立调度已启用';el.append(hint);}if(editable){for(const [kind,label,handler]of [['in',`连接到 ${display.name}`,()=>joining&&connect(joining,node.key)],['out',`从 ${display.name} 连线`,()=>{joining=node.key;message(`请选择下游 SQL 节点以连接“${display.name}”。`,'info');} ]]){const port=document.createElement('button');port.type='button';port.className=`workflow-port ${kind}`;port.setAttribute('aria-label',label);port.addEventListener('click',event=>{event.stopPropagation();handler();});el.append(port);}if(node.kind==='SQL'){const edit=document.createElement('button');edit.type='button';edit.className='btn-link theme-primary btn-sm mt-2';edit.textContent='编辑 SQL';edit.addEventListener('click',()=>openSql(node));el.append(edit);}else if(node.editUrl){const edit=document.createElement('a');edit.href=node.editUrl;edit.className='btn-link theme-primary btn-sm mt-2';edit.textContent='编辑同步管道';el.append(edit);}drag(el,node);}el.addEventListener('click',event=>{event.stopPropagation();if(el.dataset.suppressClick==='true'){delete el.dataset.suppressClick;return;}if(event.target.closest('button,a'))return;joining?connect(joining,node.key):select(node.key);});layer.append(el);}draw();resize();}
-  let catalogLoadedPage=1;
-  function catalogPagination(loading=false){
-    const previous=root.querySelector('[data-catalog-prev]'),next=root.querySelector('[data-catalog-next]'),label=root.querySelector('[data-catalog-page]'),summary=root.querySelector('[data-catalog-summary]');
-    if(label){label.textContent=catalogLoadedPage;label.setAttribute('aria-label',`第 ${catalogLoadedPage} 页，当前页`);}
-    if(summary)summary.textContent=loading?'正在加载…':`第 ${catalogLoadedPage} / ${catalogPages} 页 · ${catalogTotal} 项`;
-    for(const [button,disabled] of [[previous,loading||catalogLoadedPage<=1],[next,loading||catalogLoadedPage>=catalogPages]]){
-      if(!button)continue;button.disabled=disabled;button.closest('.page-item')?.classList.toggle('disabled',disabled);
+
+    const hasDraft = () => layoutDirty || graphDirty || cronDirty || sqlDrafts.size > 0;
+    const leaveDialog = root.querySelector('[data-workflow-leave-dialog]');
+    let pendingLeave = null, leaving = false;
+    const hasUnsavedChanges = () => editable && (hasDraft() || dialogInputDirty);
+
+    function confirmLeave(action) {
+        pendingLeave = action;
+        if (!leaveDialog.open) leaveDialog.showModal();
+        leaveDialog.querySelector('[data-workflow-leave-cancel]').focus();
     }
-  }
-  async function catalog(){
-    const list=root.querySelector('[data-workflow-catalog-list]');if(!list)return;
-    const request=++catalogSerial,query=root.querySelector('[data-workflow-catalog]')?.value||'',url=new URL(root.dataset.catalogUrl,location.origin);
-    url.searchParams.set('keyword',query);url.searchParams.set('pageNum',catalogPage);url.searchParams.set('pageSize','10');catalogPagination(true);
-    try{
-      const response=await fetch(url,{headers:{Accept:'application/json'},cache:'no-store'}),data=await window.platformFeedback.readJson(response);
-      if(request!==catalogSerial)return;if(!response.ok)throw Error(data.message);
-      const items=data.items||[];
-      list.replaceChildren(...items.map(item=>{const button=document.createElement('button'),title=document.createElement('strong'),meta=document.createElement('span');button.type='button';button.className='workflow-catalog-item';title.textContent=item.name;meta.className='small fg-2';meta.textContent=`${item.kind} · ${item.tableName||'—'}`;button.append(title,meta);button.addEventListener('click',()=>add(item));return button;}));
-      if(!items.length){const empty=document.createElement('p');empty.className='small fg-2 my-3';empty.textContent=query?'未找到匹配的同步管道。':'暂无可添加的同步管道。';list.append(empty);}
-      catalogLoadedPage=catalogPage=Number(data.pageNum)||1;catalogTotal=Number(data.total)||0;catalogPages=Math.max(1,Math.ceil(catalogTotal/(data.pageSize||10)));catalogPagination();
-    }catch(e){if(request===catalogSerial){catalogPage=catalogLoadedPage;catalogPagination();problem(e);}}
-  }
-  async function add(item){if(adding||saving||sqlOpening)return;adding=true;updateActions();problem('');try{if(nodes.has(item.key)){select(item.key);message('该任务已在画布中。','info');return;}const response=await fetch(`${root.dataset.expandUrl}?key=${encodeURIComponent(item.key)}`,{headers:{Accept:'application/json'}}),data=await window.platformFeedback.readJson(response);if(!response.ok)throw Error(data.message);const node=data.node||data.nodes?.[0];if(!node)throw Error('未找到任务。');nodes.set(node.key,{...node,upstreamKeys:[]});positions.set(node.key,position(node.key));graphDirty=true;render();select(node.key);message('已添加到画布，请连接依赖后保存。','success');}catch(e){problem(e);}finally{adding=false;updateActions();}}
-  async function save(options={}){if(saving||adding||sqlOpening||sqlSaving)return false;saving=true;updateActions();problem('');const confirm=root.querySelector('[data-workflow-review-confirm]'),body={version:view.version,graphHash:view.graphHash,cronExpression:cron?cron.value:view.cronExpression,nodes:[...nodes.values()],edges:edges(),positions:Object.fromEntries(positions),sqlDrafts:[...sqlDrafts.values()],acknowledgeOwnershipMigration:Boolean(confirm?.checked)};try{const response=await fetch(root.dataset.graphUrl,{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json','X-CSRF-TOKEN':csrf},body:JSON.stringify(body)}),data=await window.platformFeedback.readJson(response);if(!response.ok)throw Error(data.message||'保存失败');hydrate(data);message(options.quiet?'节点位置已保存。':'画布已保存。','success');problem('');return true;}catch(e){problem(e);return false;}finally{saving=false;updateActions();}}
-  function ownershipNotice(){const warning=root.querySelector('[data-workflow-ownership-warning]'),notice=root.querySelector('[data-workflow-ownership-notice]'),confirm=root.querySelector('[data-workflow-review-confirm]'),required=Boolean(view?.reviewRequired);if(warning)warning.hidden=!required;if(notice)notice.textContent=required?(view?.ownershipNotice||'原跨流程 SQL 引用已移除，原拓扑已保留，请确认输入表和依赖。'):'';if(!required&&confirm)confirm.checked=false;}
-  function hydrate(data){view=data;joining=null;sqlDrafts.clear();dialogInputDirty=false;ownershipNotice();const current=root.querySelector('[data-workflow-current-cron]');if(current)current.textContent=data.cronExpression||'';nodes=new Map((data.nodes||[]).map(node=>[node.key,{...node,upstreamKeys:[...(node.upstreamKeys||[])]}]));positions=new Map(Object.entries(data.positions||{}));if(selected&&!nodes.has(selected))selected=null;if(edge){const [from,to]=edge.split('>');if(!nodes.has(from)||!nodes.has(to))edge=null;}root.querySelectorAll('[data-workflow-version]').forEach(el=>el.value=data.version);root.querySelectorAll('[data-workflow-hash]').forEach(el=>el.value=data.graphHash||'');if(cron)cron.value=data.cronExpression||cron.value;if(positions.size===0&&nodes.size)layout(false);else render();layoutDirty=false;graphDirty=false;cronDirty=false;select(selected);updateActions();}
-  function updateActions(){root.inert=adding||saving||sqlOpening||sqlSaving;if(saveButton)saveButton.disabled=adding||saving||sqlOpening||sqlSaving;const newSql=root.querySelector('[data-workflow-new-sql]');if(newSql)newSql.disabled=!loaded||adding||saving||sqlOpening||sqlSaving;const hasNodes=nodes.size>0,reviewRequired=Boolean(view?.reviewRequired);root.querySelectorAll('[data-workflow-action]').forEach(form=>{const pause=form.action.endsWith('/pause');form.querySelector('button').disabled=!loaded||(!pause&&(!hasNodes||reviewRequired));});}
-  function sqlProblem(value){if(value)window.platformFeedback.show(value,{key:'workflow-sql'});else window.platformFeedback.clear('workflow-sql');}
-  const insertTarget=/^(\s*INSERT\s+INTO\s+)(?:`[a-z_][a-z0-9_]*`|[a-z_][a-z0-9_]*)(?:\s*\.\s*(?:`[a-z_][a-z0-9_]*`|[a-z_][a-z0-9_]*))?(?=\s*(?:\(|SELECT\b|WITH\b|$))/i;
-  function modelColumnList(modelId){const columns=sqlModels.get(modelId)?.columns||[];return columns.length?` (${columns.map(name=>'`'+name.replaceAll('`','``')+'`').join(', ')})`:'';}
-  const showSqlDialog=()=>{
-    const model=dialog.querySelector('[data-workflow-sql-model]'),text=dialog.querySelector('[data-workflow-sql-text]'),insert=insertTarget.exec(text.value);
-    const target=model.value&&insert?`${insert[1]}warehouse.${model.selectedOptions[0].dataset.tableName}`:null,prefix=target?target+modelColumnList(model.value):null;
-    generatedInsert=prefix&&insert[0]===target&&text.value.startsWith(prefix)?prefix:null;
-    text.readOnly=!model.value;
-    dialog.showModal();requestAnimationFrame(()=>{text.dispatchEvent(new Event('input'));dialogInputDirty=false;});
-  };
-  function changeSqlModel(){
-    const model=dialog.querySelector('[data-workflow-sql-model]'),text=dialog.querySelector('[data-workflow-sql-text]'),table=model.selectedOptions[0]?.dataset.tableName;
-    text.readOnly=!table;
-    sqlProblem('');
-    if(!table)return;
-    const target=`warehouse.${table}`,columnList=modelColumnList(model.value);
-    // Match only a leading INSERT target; preserve custom column lists and query bodies.
-    const insert=insertTarget.exec(text.value);
-    if(!text.value.trim()){
-      generatedInsert=`INSERT INTO ${target}${columnList}`;
-      text.value=generatedInsert+'\n';
-    }else if(insert){
-      const automatic=generatedInsert&&text.value.startsWith(generatedInsert);
-      const rest=text.value.slice(automatic?generatedInsert.length:insert[0].length);
-      const customColumns=!automatic&&rest.trimStart().startsWith('(');
-      const prefix=`${insert[1]}${target}${customColumns?'':columnList}`;
-      text.value=prefix+rest;
-      generatedInsert=customColumns?null:prefix;
-    }else {generatedInsert=null;sqlProblem(`已切换目标模型，请手动将 SQL 写入表调整为 ${target}；原 SQL 已保留。`);return;}
-    text.dispatchEvent(new Event('input'));
-  }
-  function modelOccupancy(){const occupied=new Map(),saved=new Set((view?.nodes||[]).filter(node=>node.kind==='SQL').map(node=>String(node.refId)));for(const option of dialog.querySelectorAll('[data-workflow-sql-model] option[value]')){const taskId=option.dataset.taskId,key=`sql-${taskId}`;if(taskId&&saved.has(taskId)&&nodes.has(key)&&!sqlDrafts.has(key))occupied.set(option.value,key);else if(taskId&&!saved.has(taskId))occupied.set(option.value,key);}for(const [key,draft] of sqlDrafts)if(nodes.has(key))occupied.set(String(draft.modelId),key);return occupied;}
-  function configureModelOptions(model,nodeKey){const occupied=modelOccupancy();model.querySelectorAll('option[value]').forEach(option=>{const owner=occupied.get(option.value);option.disabled=Boolean(owner)&&owner!==nodeKey;});}
-  async function openSql(node){
-    if(!loaded||sqlOpening||saving||adding)return;
-    if(view?.reviewRequired){problem('请先核对迁移后的输入表和依赖，勾选确认后保存画布，再编辑 SQL。');return;}
-    sqlOpening=true;
+
+    leaveDialog?.querySelector('[data-workflow-leave-cancel]').addEventListener('click', () => leaveDialog.close());
+    leaveDialog?.addEventListener('close', () => {
+        pendingLeave = null;
+    });
+    leaveDialog?.querySelector('[data-workflow-leave-confirm]').addEventListener('click', () => {
+        const action = pendingLeave;
+        if (!action) return;
+        leaving = true;
+        leaveDialog.close();
+        action();
+    });
+    document.addEventListener('click', event => {
+        if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || !hasUnsavedChanges()) return;
+        const link = event.target.closest('a[href]');
+        if (!link || link.hasAttribute('download') || link.target && link.target !== '_self') return;
+        const url = new URL(link.href, location.href);
+        if (!['http:', 'https:'].includes(url.protocol) || link.getAttribute('href').startsWith('#') || url.hash && url.origin === location.origin && url.pathname === location.pathname && url.search === location.search) return;
+        event.preventDefault();
+        confirmLeave(() => location.assign(url.href));
+    });
+    document.addEventListener('submit', event => {
+        if (leaving) {
+            if (event.defaultPrevented) leaving = false;
+            return;
+        }
+        if (event.defaultPrevented || !hasUnsavedChanges()) return;
+        const form = event.target, submitter = event.submitter,
+            target = submitter?.getAttribute('formtarget') ?? form.target,
+            method = submitter?.getAttribute('formmethod') ?? form.method;
+        if (method === 'dialog' || target && target !== '_self') return;
+        event.preventDefault();
+        confirmLeave(() => submitter ? form.requestSubmit(submitter) : form.requestSubmit());
+    });
+    const draftKey = () => {
+        const entropy = window.crypto;
+        if (entropy?.randomUUID) return `draft-${entropy.randomUUID()}`;
+        const bytes = new Uint8Array(16);
+        if (entropy?.getRandomValues) entropy.getRandomValues(bytes); else for (let index = 0; index < bytes.length; index++) bytes[index] = Math.floor(Math.random() * 256);
+        return `draft-${[...bytes].map(byte => byte.toString(16).padStart(2, '0')).join('')}`;
+    };
+    const edges = () => [...nodes.values()].flatMap(node => (node.upstreamKeys || []).map(from => ({
+        from,
+        to: node.key
+    })));
+
+    function resize() {
+        const values = [...positions.values()];
+        stage.style.width = `${Math.max(760, ...values.map(p => p.x + 240))}px`;
+        stage.style.minHeight = `${Math.max(300, ...[...layer.querySelectorAll('.workflow-node')].map(el => position(el.dataset.nodeKey).y + el.offsetHeight + 20))}px`;
+    }
+
+    function select(key, nextEdge) {
+        selected = key || null;
+        edge = nextEdge || null;
+        layer.querySelectorAll('.workflow-node').forEach(el => el.classList.toggle('is-selected', el.dataset.nodeKey === selected));
+        svg.querySelectorAll('.workflow-edge').forEach(el => el.classList.toggle('is-selected', el.dataset.edge === edge));
+        const remove = root.querySelector('[data-workflow-delete]');
+        if (remove) remove.disabled = !(edge || selected);
+    }
+
+    function draw() {
+        svg.replaceChildren();
+        const centers = new Map([...layer.querySelectorAll('.workflow-node')].map(el => [el.dataset.nodeKey, el.offsetHeight / 2]));
+        for (const item of edges()) {
+            const a = position(item.from), b = position(item.to), ay = a.y + (centers.get(item.from) || 75),
+                by = b.y + (centers.get(item.to) || 75),
+                path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.classList.add('workflow-edge');
+            path.dataset.edge = `${item.from}>${item.to}`;
+            path.setAttribute('d', `M ${a.x + 190} ${ay} C ${a.x + 245} ${ay}, ${b.x - 55} ${by}, ${b.x} ${by}`);
+            if (editable) path.addEventListener('click', event => {
+                event.stopPropagation();
+                select(null, path.dataset.edge);
+            });
+            svg.append(path);
+        }
+    }
+
+    function drag(el, node) {
+        let start;
+        const release = event => {
+            if (!start || event.pointerId !== start.pointerId) return;
+            const current = start;
+            start = null;
+            if (current.moved) el.dataset.suppressClick = 'true';
+            if (el.hasPointerCapture?.(event.pointerId)) el.releasePointerCapture(event.pointerId);
+        };
+        el.addEventListener('pointerdown', event => {
+            if (event.button !== 0 || event.target.closest('button,a,input,select,textarea')) return;
+            start = {
+                pointerId: event.pointerId,
+                x: event.clientX,
+                y: event.clientY,
+                p: {...position(node.key)},
+                moved: false
+            };
+            el.setPointerCapture(event.pointerId);
+        });
+        el.addEventListener('pointermove', event => {
+            if (!start || event.pointerId !== start.pointerId) return;
+            const dx = event.clientX - start.x, dy = event.clientY - start.y;
+            if (!start.moved && dx * dx + dy * dy < 16) return;
+            start.moved = true;
+            const p = positions.get(node.key);
+            p.x = Math.max(0, start.p.x + dx / (Number(stage.dataset.scale) || 1));
+            p.y = Math.max(0, start.p.y + dy / (Number(stage.dataset.scale) || 1));
+            el.style.left = `${p.x}px`;
+            el.style.top = `${p.y}px`;
+            layoutDirty = true;
+            draw();
+            resize();
+        });
+        el.addEventListener('pointerup', release);
+        el.addEventListener('pointercancel', release);
+        el.addEventListener('lostpointercapture', release);
+    }
+
+    function hasPath(from, to) {
+        const seen = new Set(), visit = key => {
+            if (key === to) return true;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return (nodes.get(key)?.upstreamKeys || []).some(visit);
+        };
+        return visit(from);
+    }
+
+    function connect(from, to) {
+        joining = null;
+        if (from === to || !nodes.has(from) || !nodes.has(to)) {
+            problem('请选择两个不同的画布节点。');
+            return false;
+        }
+        const target = nodes.get(to);
+        if (target.kind !== 'SQL') {
+            problem('下游节点必须是 SQL 加工任务。');
+            return false;
+        }
+        if (hasPath(from, to)) {
+            problem('此连线会形成循环依赖。');
+            return false;
+        }
+        if (!target.upstreamKeys.includes(from)) {
+            target.upstreamKeys = [...target.upstreamKeys, from];
+            graphDirty = true;
+            render();
+        }
+        return true;
+    }
+
+    function layout(mark) {
+        const seen = new Set(), visiting = new Set(), ordered = [], levels = new Map(), rows = new Map(),
+            visit = key => {
+                if (seen.has(key)) return;
+                if (visiting.has(key)) throw Error('依赖存在循环，请删除无效连线。');
+                visiting.add(key);
+                for (const parent of nodes.get(key)?.upstreamKeys || []) visit(parent);
+                visiting.delete(key);
+                seen.add(key);
+                ordered.push(key);
+            };
+        try {
+            for (const key of nodes.keys()) visit(key);
+        } catch (e) {
+            problem(e.message);
+            return;
+        }
+        for (const key of ordered) {
+            const level = Math.max(0, ...(nodes.get(key)?.upstreamKeys || []).map(parent => (levels.get(parent) || 0) + 1));
+            levels.set(key, level);
+            const row = rows.get(level) || 0;
+            rows.set(level, row + 1);
+            positions.set(key, {x: 70 + level * 235, y: 55 + row * 220});
+        }
+        if (mark) layoutDirty = true;
+        render();
+    }
+
+    function modelTable(modelId) {
+        return [...(dialog?.querySelectorAll('[data-workflow-sql-model] option') || [])].find(option => option.value === String(modelId))?.dataset.tableName || '—';
+    }
+
+    function render() {
+        layer.replaceChildren();
+        empty.hidden = nodes.size > 0;
+        for (const node of nodes.values()) {
+            const draft = sqlDrafts.get(node.key),
+                display = draft ? {...node, name: draft.name, tableName: modelTable(draft.modelId)} : node,
+                p = position(node.key);
+            positions.set(node.key, p);
+            const el = document.createElement('article'), title = document.createElement('strong'),
+                meta = document.createElement('span');
+            el.className = 'workflow-node';
+            el.dataset.nodeKey = node.key;
+            el.dataset.kind = node.kind;
+            el.style.left = `${p.x}px`;
+            el.style.top = `${p.y}px`;
+            title.className = 'workflow-node-title';
+            title.textContent = display.name;
+            title.title = display.name;
+            meta.className = 'workflow-node-meta';
+            meta.textContent = `${display.kind} · ${display.tableName || '—'} · v${display.version ?? '—'}`;
+            el.append(title, meta);
+            if (draft) {
+                const hint = document.createElement('span');
+                hint.className = 'workflow-node-warning badge theme-warning';
+                hint.textContent = 'SQL 草稿待保存';
+                el.append(hint);
+            }
+            if (node.kind === '同步' && node.standaloneScheduled) {
+                const hint = document.createElement('span');
+                hint.className = 'workflow-node-warning badge theme-warning';
+                hint.textContent = '独立调度已启用';
+                el.append(hint);
+            }
+            if (editable) {
+                for (const [kind, label, handler] of [['in', `连接到 ${display.name}`, () => joining && connect(joining, node.key)], ['out', `从 ${display.name} 连线`, () => {
+                    joining = node.key;
+                    message(`请选择下游 SQL 节点以连接“${display.name}”。`, 'info');
+                }]]) {
+                    const port = document.createElement('button');
+                    port.type = 'button';
+                    port.className = `workflow-port ${kind}`;
+                    port.setAttribute('aria-label', label);
+                    port.addEventListener('click', event => {
+                        event.stopPropagation();
+                        handler();
+                    });
+                    el.append(port);
+                }
+                if (node.kind === 'SQL') {
+                    const edit = document.createElement('button');
+                    edit.type = 'button';
+                    edit.className = 'btn-link theme-primary btn-sm mt-2';
+                    edit.textContent = '编辑 SQL';
+                    edit.addEventListener('click', () => openSql(node));
+                    el.append(edit);
+                } else if (node.editUrl) {
+                    const edit = document.createElement('a');
+                    edit.href = node.editUrl;
+                    edit.className = 'btn-link theme-primary btn-sm mt-2';
+                    edit.textContent = '编辑同步管道';
+                    el.append(edit);
+                }
+                drag(el, node);
+            }
+            el.addEventListener('click', event => {
+                event.stopPropagation();
+                if (el.dataset.suppressClick === 'true') {
+                    delete el.dataset.suppressClick;
+                    return;
+                }
+                if (event.target.closest('button,a')) return;
+                joining ? connect(joining, node.key) : select(node.key);
+            });
+            layer.append(el);
+        }
+        draw();
+        resize();
+    }
+
+    let catalogLoadedPage = 1;
+
+    function catalogPagination(loading = false) {
+        const previous = root.querySelector('[data-catalog-prev]'), next = root.querySelector('[data-catalog-next]'),
+            label = root.querySelector('[data-catalog-page]'), summary = root.querySelector('[data-catalog-summary]');
+        if (label) {
+            label.textContent = catalogLoadedPage;
+            label.setAttribute('aria-label', `第 ${catalogLoadedPage} 页，当前页`);
+        }
+        if (summary) summary.textContent = loading ? '正在加载…' : `第 ${catalogLoadedPage} / ${catalogPages} 页 · ${catalogTotal} 项`;
+        for (const [button, disabled] of [[previous, loading || catalogLoadedPage <= 1], [next, loading || catalogLoadedPage >= catalogPages]]) {
+            if (!button) continue;
+            button.disabled = disabled;
+            button.closest('.page-item')?.classList.toggle('disabled', disabled);
+        }
+    }
+
+    async function catalog() {
+        const list = root.querySelector('[data-workflow-catalog-list]');
+        if (!list) return;
+        const request = ++catalogSerial, query = root.querySelector('[data-workflow-catalog]')?.value || '',
+            url = new URL(root.dataset.catalogUrl, location.origin);
+        url.searchParams.set('keyword', query);
+        url.searchParams.set('pageNum', catalogPage);
+        url.searchParams.set('pageSize', '10');
+        catalogPagination(true);
+        try {
+            const response = await fetch(url, {headers: {Accept: 'application/json'}, cache: 'no-store'}),
+                data = await window.platformFeedback.readJson(response);
+            if (request !== catalogSerial) return;
+            if (!response.ok) throw Error(data.message);
+            const items = data.items || [];
+            list.replaceChildren(...items.map(item => {
+                const button = document.createElement('button'), title = document.createElement('strong'),
+                    meta = document.createElement('span');
+                button.type = 'button';
+                button.className = 'workflow-catalog-item';
+                title.textContent = item.name;
+                meta.className = 'small fg-2';
+                meta.textContent = `${item.kind} · ${item.tableName || '—'}`;
+                button.append(title, meta);
+                button.addEventListener('click', () => add(item));
+                return button;
+            }));
+            if (!items.length) {
+                const empty = document.createElement('p');
+                empty.className = 'small fg-2 my-3';
+                empty.textContent = query ? '未找到匹配的同步管道。' : '暂无可添加的同步管道。';
+                list.append(empty);
+            }
+            catalogLoadedPage = catalogPage = Number(data.pageNum) || 1;
+            catalogTotal = Number(data.total) || 0;
+            catalogPages = Math.max(1, Math.ceil(catalogTotal / (data.pageSize || 10)));
+            catalogPagination();
+        } catch (e) {
+            if (request === catalogSerial) {
+                catalogPage = catalogLoadedPage;
+                catalogPagination();
+                problem(e);
+            }
+        }
+    }
+
+    async function add(item) {
+        if (adding || saving || sqlOpening) return;
+        adding = true;
+        updateActions();
+        problem('');
+        try {
+            if (nodes.has(item.key)) {
+                select(item.key);
+                message('该任务已在画布中。', 'info');
+                return;
+            }
+            const response = await fetch(`${root.dataset.expandUrl}?key=${encodeURIComponent(item.key)}`, {headers: {Accept: 'application/json'}}),
+                data = await window.platformFeedback.readJson(response);
+            if (!response.ok) throw Error(data.message);
+            const node = data.node || data.nodes?.[0];
+            if (!node) throw Error('未找到任务。');
+            nodes.set(node.key, {...node, upstreamKeys: []});
+            positions.set(node.key, position(node.key));
+            graphDirty = true;
+            render();
+            select(node.key);
+            message('已添加到画布，请连接依赖后保存。', 'success');
+        } catch (e) {
+            problem(e);
+        } finally {
+            adding = false;
+            updateActions();
+        }
+    }
+
+    async function save(options = {}) {
+        if (saving || adding || sqlOpening || sqlSaving) return false;
+        saving = true;
+        updateActions();
+        problem('');
+        const confirm = root.querySelector('[data-workflow-review-confirm]'), body = {
+            version: view.version,
+            graphHash: view.graphHash,
+            cronExpression: cron ? cron.value : view.cronExpression,
+            nodes: [...nodes.values()],
+            edges: edges(),
+            positions: Object.fromEntries(positions),
+            sqlDrafts: [...sqlDrafts.values()],
+            acknowledgeOwnershipMigration: Boolean(confirm?.checked)
+        };
+        try {
+            const response = await fetch(root.dataset.graphUrl, {
+                method: 'POST',
+                headers: {Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf},
+                body: JSON.stringify(body)
+            }), data = await window.platformFeedback.readJson(response);
+            if (!response.ok) throw Error(data.message || '保存失败');
+            hydrate(data);
+            message(options.quiet ? '节点位置已保存。' : '画布已保存。', 'success');
+            problem('');
+            return true;
+        } catch (e) {
+            problem(e);
+            return false;
+        } finally {
+            saving = false;
+            updateActions();
+        }
+    }
+
+    function ownershipNotice() {
+        const warning = root.querySelector('[data-workflow-ownership-warning]'),
+            notice = root.querySelector('[data-workflow-ownership-notice]'),
+            confirm = root.querySelector('[data-workflow-review-confirm]'), required = Boolean(view?.reviewRequired);
+        if (warning) warning.hidden = !required;
+        if (notice) notice.textContent = required ? (view?.ownershipNotice || '原跨流程 SQL 引用已移除，原拓扑已保留，请确认输入表和依赖。') : '';
+        if (!required && confirm) confirm.checked = false;
+    }
+
+    function hydrate(data) {
+        view = data;
+        joining = null;
+        sqlDrafts.clear();
+        dialogInputDirty = false;
+        ownershipNotice();
+        const current = root.querySelector('[data-workflow-current-cron]');
+        if (current) current.textContent = data.cronExpression || '';
+        nodes = new Map((data.nodes || []).map(node => [node.key, {
+            ...node,
+            upstreamKeys: [...(node.upstreamKeys || [])]
+        }]));
+        positions = new Map(Object.entries(data.positions || {}));
+        if (selected && !nodes.has(selected)) selected = null;
+        if (edge) {
+            const [from, to] = edge.split('>');
+            if (!nodes.has(from) || !nodes.has(to)) edge = null;
+        }
+        root.querySelectorAll('[data-workflow-version]').forEach(el => el.value = data.version);
+        root.querySelectorAll('[data-workflow-hash]').forEach(el => el.value = data.graphHash || '');
+        if (cron) cron.value = data.cronExpression || cron.value;
+        if (positions.size === 0 && nodes.size) layout(false); else render();
+        layoutDirty = false;
+        graphDirty = false;
+        cronDirty = false;
+        select(selected);
+        updateActions();
+    }
+
+    function updateActions() {
+        root.inert = adding || saving || sqlOpening || sqlSaving;
+        if (saveButton) saveButton.disabled = adding || saving || sqlOpening || sqlSaving;
+        const newSql = root.querySelector('[data-workflow-new-sql]');
+        if (newSql) newSql.disabled = !loaded || adding || saving || sqlOpening || sqlSaving;
+        const hasNodes = nodes.size > 0, reviewRequired = Boolean(view?.reviewRequired);
+        root.querySelectorAll('[data-workflow-action]').forEach(form => {
+            const pause = form.action.endsWith('/pause');
+            form.querySelector('button').disabled = !loaded || (!pause && (!hasNodes || reviewRequired));
+        });
+    }
+
+    function sqlProblem(value) {
+        if (value) window.platformFeedback.show(value, {key: 'workflow-sql'}); else window.platformFeedback.clear('workflow-sql');
+    }
+
+    const insertTarget = /^(\s*INSERT\s+INTO\s+)(?:`[a-z_][a-z0-9_]*`|[a-z_][a-z0-9_]*)(?:\s*\.\s*(?:`[a-z_][a-z0-9_]*`|[a-z_][a-z0-9_]*))?(?=\s*(?:\(|SELECT\b|WITH\b|$))/i;
+
+    function modelColumnList(modelId) {
+        const columns = sqlModels.get(modelId)?.columns || [];
+        return columns.length ? ` (${columns.map(name => '`' + name.replaceAll('`', '``') + '`').join(', ')})` : '';
+    }
+
+    const showSqlDialog = () => {
+        const model = dialog.querySelector('[data-workflow-sql-model]'),
+            text = dialog.querySelector('[data-workflow-sql-text]'), insert = insertTarget.exec(text.value);
+        const target = model.value && insert ? `${insert[1]}warehouse.${model.selectedOptions[0].dataset.tableName}` : null,
+            prefix = target ? target + modelColumnList(model.value) : null;
+        generatedInsert = prefix && insert[0] === target && text.value.startsWith(prefix) ? prefix : null;
+        text.readOnly = !model.value;
+        dialog.showModal();
+        requestAnimationFrame(() => {
+            text.dispatchEvent(new Event('input'));
+            dialogInputDirty = false;
+        });
+    };
+
+    function changeSqlModel() {
+        const model = dialog.querySelector('[data-workflow-sql-model]'),
+            text = dialog.querySelector('[data-workflow-sql-text]'),
+            table = model.selectedOptions[0]?.dataset.tableName;
+        text.readOnly = !table;
+        sqlProblem('');
+        if (!table) return;
+        const target = `warehouse.${table}`, columnList = modelColumnList(model.value);
+        // Match only a leading INSERT target; preserve custom column lists and query bodies.
+        const insert = insertTarget.exec(text.value);
+        if (!text.value.trim()) {
+            generatedInsert = `INSERT INTO ${target}${columnList}`;
+            text.value = generatedInsert + '\n';
+        } else if (insert) {
+            const automatic = generatedInsert && text.value.startsWith(generatedInsert);
+            const rest = text.value.slice(automatic ? generatedInsert.length : insert[0].length);
+            const customColumns = !automatic && rest.trimStart().startsWith('(');
+            const prefix = `${insert[1]}${target}${customColumns ? '' : columnList}`;
+            text.value = prefix + rest;
+            generatedInsert = customColumns ? null : prefix;
+        } else {
+            generatedInsert = null;
+            sqlProblem(`已切换目标模型，请手动将 SQL 写入表调整为 ${target}；原 SQL 已保留。`);
+            return;
+        }
+        text.dispatchEvent(new Event('input'));
+    }
+
+    function modelOccupancy() {
+        const occupied = new Map(),
+            saved = new Set((view?.nodes || []).filter(node => node.kind === 'SQL').map(node => String(node.refId)));
+        for (const option of dialog.querySelectorAll('[data-workflow-sql-model] option[value]')) {
+            const taskId = option.dataset.taskId, key = `sql-${taskId}`;
+            if (taskId && saved.has(taskId) && nodes.has(key) && !sqlDrafts.has(key)) occupied.set(option.value, key); else if (taskId && !saved.has(taskId)) occupied.set(option.value, key);
+        }
+        for (const [key, draft] of sqlDrafts) if (nodes.has(key)) occupied.set(String(draft.modelId), key);
+        return occupied;
+    }
+
+    function configureModelOptions(model, nodeKey) {
+        const occupied = modelOccupancy();
+        model.querySelectorAll('option[value]').forEach(option => {
+            const owner = occupied.get(option.value);
+            option.disabled = Boolean(owner) && owner !== nodeKey;
+        });
+    }
+
+    async function openSql(node) {
+        if (!loaded || sqlOpening || saving || adding) return;
+        if (view?.reviewRequired) {
+            problem('请先核对迁移后的输入表和依赖，勾选确认后保存画布，再编辑 SQL。');
+            return;
+        }
+        sqlOpening = true;
+        updateActions();
+        problem('');
+        try {
+            const response = await fetch(root.dataset.sqlUrl.replace(/sql-tasks$/, 'sql-models'), {
+                headers: {Accept: 'application/json'},
+                cache: 'no-store'
+            }), models = await window.platformFeedback.readJson(response);
+            if (!response.ok) throw Error(models.message || '目标模型读取失败');
+            sqlModels = new Map(models.map(item => [String(item.id), item]));
+            generatedInsert = null;
+            const model = dialog.querySelector('[data-workflow-sql-model]');
+            model.querySelectorAll('option[value]').forEach(option => {
+                const current = sqlModels.get(option.value);
+                option.dataset.taskId = current?.taskId ? String(current.taskId) : '';
+                option.dataset.tableName = current?.tableName || option.dataset.tableName || '';
+            });
+            const id = dialog.querySelector('[data-workflow-sql-id]'),
+                version = dialog.querySelector('[data-workflow-sql-version]'),
+                name = dialog.querySelector('[data-workflow-sql-name]'),
+                text = dialog.querySelector('[data-workflow-sql-text]'),
+                refresh = () => text.dispatchEvent(new Event('input'));
+            sqlProblem('');
+            dialog.querySelector('[data-workflow-sql-title]').textContent = node ? '编辑 SQL 加工' : '新增 SQL 加工';
+            if (!node) {
+                dialog.dataset.nodeKey = '';
+                id.value = '';
+                version.value = '';
+                name.value = '';
+                configureModelOptions(model, null);
+                model.value = '';
+                text.value = '';
+                refresh();
+                showSqlDialog();
+                return;
+            }
+            dialog.dataset.nodeKey = node.key;
+            const draft = sqlDrafts.get(node.key);
+            if (draft) {
+                id.value = draft.taskId || '';
+                version.value = draft.version || 0;
+                name.value = draft.name;
+                configureModelOptions(model, node.key);
+                model.value = draft.modelId;
+                text.value = draft.sqlText;
+                refresh();
+                showSqlDialog();
+                return;
+            }
+            const taskResponse = await fetch(`${root.dataset.sqlUrl}/${node.refId}`, {
+                headers: {Accept: 'application/json'},
+                cache: 'no-store'
+            }), data = await window.platformFeedback.readJson(taskResponse);
+            if (!taskResponse.ok) throw Error(data.message || '读取 SQL 失败。');
+            id.value = data.id;
+            version.value = data.version;
+            name.value = data.name;
+            configureModelOptions(model, node.key);
+            model.value = data.modelId;
+            text.value = data.sqlText;
+            refresh();
+            showSqlDialog();
+        } catch (e) {
+            problem(e);
+        } finally {
+            sqlOpening = false;
+            updateActions();
+        }
+    }
+
+    dialog?.querySelector('[data-workflow-sql-model]')?.addEventListener('change', changeSqlModel);
+
+    function saveSql() {
+        if (view?.reviewRequired) {
+            sqlProblem('请先核对迁移后的输入表和依赖，勾选确认后保存画布，再修改 SQL。');
+            return;
+        }
+        if (sqlSaving || !sqlForm.reportValidity()) return;
+        sqlSaving = true;
+        updateActions();
+        sqlProblem('');
+        try {
+            const get = s => dialog.querySelector(s), key = dialog.dataset.nodeKey || draftKey(),
+                existing = nodes.get(key), draft = {
+                    key,
+                    taskId: existing?.refId || null,
+                    version: existing?.version || 0,
+                    name: get('[data-workflow-sql-name]').value.trim(),
+                    modelId: Number(get('[data-workflow-sql-model]').value),
+                    sqlText: get('[data-workflow-sql-text]').value
+                };
+            if (!existing) {
+                nodes.set(key, {
+                    key,
+                    name: draft.name,
+                    kind: 'SQL',
+                    refId: 0,
+                    version: 0,
+                    configHash: null,
+                    tableName: modelTable(draft.modelId),
+                    upstreamKeys: [],
+                    editUrl: null,
+                    engineName: '',
+                    standaloneScheduled: false
+                });
+                positions.set(key, position(key));
+                graphDirty = true;
+            }
+            sqlDrafts.set(key, draft);
+            dialogInputDirty = false;
+            dialog.close();
+            render();
+            select(key);
+            message('SQL 修改已加入画布草稿，请保存画布。', 'success');
+            problem('');
+        } finally {
+            sqlSaving = false;
+            updateActions();
+        }
+    }
+
+    root.querySelector('[data-workflow-layout]')?.addEventListener('click', () => layout(true));
+    root.querySelector('[data-workflow-delete]')?.addEventListener('click', () => {
+        if (edge) {
+            const [from, to] = edge.split('>');
+            nodes.get(to).upstreamKeys = nodes.get(to).upstreamKeys.filter(key => key !== from);
+        } else if (selected) {
+            sqlDrafts.delete(selected);
+            nodes.delete(selected);
+            positions.delete(selected);
+            for (const node of nodes.values()) node.upstreamKeys = (node.upstreamKeys || []).filter(key => key !== selected);
+        } else return;
+        graphDirty = true;
+        select();
+        render();
+    });
+    saveButton?.addEventListener('click', save);
+    root.querySelector('[data-workflow-catalog]')?.addEventListener('input', () => {
+        catalogPage = 1;
+        clearTimeout(catalogTimer);
+        catalogTimer = setTimeout(catalog, 220);
+    });
+    root.querySelector('[data-catalog-prev]')?.addEventListener('click', () => {
+        if (catalogPage > 1) {
+            catalogPage--;
+            catalog();
+        }
+    });
+    root.querySelector('[data-catalog-next]')?.addEventListener('click', () => {
+        catalogPage++;
+        catalog();
+    });
+    cron?.addEventListener('input', () => cronDirty = true);
+    root.querySelector('[data-workflow-new-sql]')?.addEventListener('click', () => openSql());
+    dialog?.querySelectorAll('input,select,textarea').forEach(control => {
+        const mark = () => {
+            if (dialog.open) dialogInputDirty = true;
+        };
+        control.addEventListener('input', mark);
+        control.addEventListener('change', mark);
+    });
+    dialog?.querySelector('[data-workflow-sql-close]')?.addEventListener('click', () => {
+        dialog.close();
+        sqlProblem('');
+    });
+    dialog?.querySelector('[data-workflow-sql-cancel]')?.addEventListener('click', () => {
+        dialog.close();
+        sqlProblem('');
+    });
+    dialog?.addEventListener('close', () => {
+        dialogInputDirty = false;
+        sqlProblem('');
+    });
+    sqlForm?.addEventListener('submit', event => {
+        event.preventDefault();
+        saveSql();
+    });
+    root.querySelectorAll('[data-workflow-action]').forEach(form => {
+        const pause = form.action.endsWith('/pause');
+        form.addEventListener('submit', event => {
+            if (!pause && view?.reviewRequired) {
+                event.preventDefault();
+                problem('请先核对迁移后的输入表和依赖，勾选确认并保存画布后再运行或启用调度。');
+            } else if (hasDraft() && !pause) {
+                event.preventDefault();
+                problem('请先保存画布草稿后再运行或调整调度。');
+            } else if (!pause && !nodes.size) {
+                event.preventDefault();
+                problem('请至少添加一个节点后再运行或启用调度。');
+            }
+        });
+    });
+    window.addEventListener('beforeunload', event => {
+        if (leaving) {
+            leaving = false;
+            return;
+        }
+        if (hasUnsavedChanges()) {
+            event.preventDefault();
+            event.returnValue = '';
+        }
+    });
+    root.querySelectorAll('[data-workflow-zoom]').forEach(button => button.addEventListener('click', () => {
+        if (button.dataset.workflowZoom === 'fit') {
+            const factor = Math.max(.3, Math.min(1, stage.parentElement.clientWidth / stage.offsetWidth));
+            stage.dataset.scale = String(factor);
+            stage.style.transform = `scale(${factor})`;
+            return;
+        }
+        const factor = button.dataset.workflowZoom === 'in' ? 1.1 : .9,
+            next = Math.max(.55, Math.min(1.35, (Number(stage.dataset.scale) || 1) * factor));
+        stage.style.transform = `scale(${next})`;
+        stage.dataset.scale = String(next);
+    }));
+    stage.addEventListener('click', () => select());
+    stage.addEventListener('click', event => {
+        const link = event.target.closest('.workflow-node a');
+        if (!link) return;
+        if (hasDraft() || dialogInputDirty) {
+            event.preventDefault();
+            event.stopPropagation();
+            problem('画布有未保存草稿，请先保存画布再编辑同步管道。');
+        }
+    }, true);
     updateActions();
-    problem('');
-    try{
-      const response=await fetch(root.dataset.sqlUrl.replace(/sql-tasks$/, 'sql-models'),{headers:{Accept:'application/json'},cache:'no-store'}),models=await window.platformFeedback.readJson(response);
-      if(!response.ok)throw Error(models.message||'目标模型读取失败');
-      sqlModels=new Map(models.map(item=>[String(item.id),item]));
-      generatedInsert=null;
-      const model=dialog.querySelector('[data-workflow-sql-model]');
-      model.querySelectorAll('option[value]').forEach(option=>{const current=sqlModels.get(option.value);option.dataset.taskId=current?.taskId?String(current.taskId):'';option.dataset.tableName=current?.tableName||option.dataset.tableName||'';});
-      const id=dialog.querySelector('[data-workflow-sql-id]'),version=dialog.querySelector('[data-workflow-sql-version]'),name=dialog.querySelector('[data-workflow-sql-name]'),text=dialog.querySelector('[data-workflow-sql-text]'),refresh=()=>text.dispatchEvent(new Event('input'));
-      sqlProblem('');
-      dialog.querySelector('[data-workflow-sql-title]').textContent=node?'编辑 SQL 加工':'新增 SQL 加工';
-      if(!node){dialog.dataset.nodeKey='';id.value='';version.value='';name.value='';configureModelOptions(model,null);model.value='';text.value='';refresh();showSqlDialog();return;}
-      dialog.dataset.nodeKey=node.key;
-      const draft=sqlDrafts.get(node.key);
-      if(draft){id.value=draft.taskId||'';version.value=draft.version||0;name.value=draft.name;configureModelOptions(model,node.key);model.value=draft.modelId;text.value=draft.sqlText;refresh();showSqlDialog();return;}
-      const taskResponse=await fetch(`${root.dataset.sqlUrl}/${node.refId}`,{headers:{Accept:'application/json'},cache:'no-store'}),data=await window.platformFeedback.readJson(taskResponse);
-      if(!taskResponse.ok)throw Error(data.message||'读取 SQL 失败。');
-      id.value=data.id;version.value=data.version;name.value=data.name;configureModelOptions(model,node.key);model.value=data.modelId;text.value=data.sqlText;refresh();showSqlDialog();
-    }catch(e){problem(e);}
-    finally{sqlOpening=false;updateActions();}
-  }
-  dialog?.querySelector('[data-workflow-sql-model]')?.addEventListener('change',changeSqlModel);
-  function saveSql(){if(view?.reviewRequired){sqlProblem('请先核对迁移后的输入表和依赖，勾选确认后保存画布，再修改 SQL。');return;}if(sqlSaving||!sqlForm.reportValidity())return;sqlSaving=true;updateActions();sqlProblem('');try{const get=s=>dialog.querySelector(s),key=dialog.dataset.nodeKey||draftKey(),existing=nodes.get(key),draft={key,taskId:existing?.refId||null,version:existing?.version||0,name:get('[data-workflow-sql-name]').value.trim(),modelId:Number(get('[data-workflow-sql-model]').value),sqlText:get('[data-workflow-sql-text]').value};if(!existing){nodes.set(key,{key,name:draft.name,kind:'SQL',refId:0,version:0,configHash:null,tableName:modelTable(draft.modelId),upstreamKeys:[],editUrl:null,engineName:'',standaloneScheduled:false});positions.set(key,position(key));graphDirty=true;}sqlDrafts.set(key,draft);dialogInputDirty=false;dialog.close();render();select(key);message('SQL 修改已加入画布草稿，请保存画布。','success');problem('');}finally{sqlSaving=false;updateActions();}}
-  root.querySelector('[data-workflow-layout]')?.addEventListener('click',()=>layout(true));root.querySelector('[data-workflow-delete]')?.addEventListener('click',()=>{if(edge){const [from,to]=edge.split('>');nodes.get(to).upstreamKeys=nodes.get(to).upstreamKeys.filter(key=>key!==from);}else if(selected){sqlDrafts.delete(selected);nodes.delete(selected);positions.delete(selected);for(const node of nodes.values())node.upstreamKeys=(node.upstreamKeys||[]).filter(key=>key!==selected);}else return;graphDirty=true;select();render();});saveButton?.addEventListener('click',save);root.querySelector('[data-workflow-catalog]')?.addEventListener('input',()=>{catalogPage=1;clearTimeout(catalogTimer);catalogTimer=setTimeout(catalog,220);});root.querySelector('[data-catalog-prev]')?.addEventListener('click',()=>{if(catalogPage>1){catalogPage--;catalog();}});root.querySelector('[data-catalog-next]')?.addEventListener('click',()=>{catalogPage++;catalog();});cron?.addEventListener('input',()=>cronDirty=true);root.querySelector('[data-workflow-new-sql]')?.addEventListener('click',()=>openSql());dialog?.querySelectorAll('input,select,textarea').forEach(control=>{const mark=()=>{if(dialog.open)dialogInputDirty=true;};control.addEventListener('input',mark);control.addEventListener('change',mark);});dialog?.querySelector('[data-workflow-sql-close]')?.addEventListener('click',()=>{dialog.close();sqlProblem('');});dialog?.querySelector('[data-workflow-sql-cancel]')?.addEventListener('click',()=>{dialog.close();sqlProblem('');});dialog?.addEventListener('close',()=>{dialogInputDirty=false;sqlProblem('');});sqlForm?.addEventListener('submit',event=>{event.preventDefault();saveSql();});root.querySelectorAll('[data-workflow-action]').forEach(form=>{const pause=form.action.endsWith('/pause');form.addEventListener('submit',event=>{if(!pause&&view?.reviewRequired){event.preventDefault();problem('请先核对迁移后的输入表和依赖，勾选确认并保存画布后再运行或启用调度。');}else if(hasDraft()&&!pause){event.preventDefault();problem('请先保存画布草稿后再运行或调整调度。');}else if(!pause&&!nodes.size){event.preventDefault();problem('请至少添加一个节点后再运行或启用调度。');}});});window.addEventListener('beforeunload',event=>{if(leaving){leaving=false;return;}if(hasUnsavedChanges()){event.preventDefault();event.returnValue='';}});root.querySelectorAll('[data-workflow-zoom]').forEach(button=>button.addEventListener('click',()=>{if(button.dataset.workflowZoom==='fit'){const factor=Math.max(.3,Math.min(1,stage.parentElement.clientWidth/stage.offsetWidth));stage.dataset.scale=String(factor);stage.style.transform=`scale(${factor})`;return;}const factor=button.dataset.workflowZoom==='in'?1.1:.9,next=Math.max(.55,Math.min(1.35,(Number(stage.dataset.scale)||1)*factor));stage.style.transform=`scale(${next})`;stage.dataset.scale=String(next);}));stage.addEventListener('click',()=>select());
-  stage.addEventListener('click',event=>{const link=event.target.closest('.workflow-node a');if(!link)return;if(hasDraft()||dialogInputDirty){event.preventDefault();event.stopPropagation();problem('画布有未保存草稿，请先保存画布再编辑同步管道。');}},true);
-  updateActions();
-  (async()=>{try{const response=await fetch(root.dataset.graphUrl,{headers:{Accept:'application/json'},cache:'no-store'}),data=await window.platformFeedback.readJson(response);if(!response.ok)throw Error(data.message);loaded=true;hydrate(data);if(window.innerWidth>=1024)root.querySelector('[data-workflow-zoom="fit"]')?.click();message('画布已加载。');catalog();}catch(e){problem(e);message('画布加载失败。');}})();
+    (async () => {
+        try {
+            const response = await fetch(root.dataset.graphUrl, {
+                headers: {Accept: 'application/json'},
+                cache: 'no-store'
+            }), data = await window.platformFeedback.readJson(response);
+            if (!response.ok) throw Error(data.message);
+            loaded = true;
+            hydrate(data);
+            if (window.innerWidth >= 1024) root.querySelector('[data-workflow-zoom="fit"]')?.click();
+            message('画布已加载。');
+            catalog();
+        } catch (e) {
+            problem(e);
+            message('画布加载失败。');
+        }
+    })();
 })();

@@ -1,7 +1,8 @@
 <!doctype html>
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
 <head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title th:text="${status} + ' · 请求未完成'">请求未完成 · 数据中台</title>
   <script th:src="@{/js/theme.js}"></script>
@@ -9,7 +10,8 @@
   <link rel="stylesheet" th:href="@{/css/app.css}">
 </head>
 <body class="login-page">
-  <th:block th:with="title=${status == 401 ? '需要登录' : status == 403 ? '无权访问' : status == 404 ? '页面不存在' : status == 409 ? '请求发生冲突' : status == 429 ? '操作过于频繁' : '请求未完成'}, message=${status == 401 ? '登录后即可继续访问该页面。' : status == 403 ? '当前账号没有访问此内容的权限。' : status == 404 ? '请检查访问地址，或返回工作台继续操作。' : status == 409 ? '当前数据已被其他操作更新，请刷新后核对再试。' : status == 429 ? '操作过于频繁，请稍后重试。' : '当前请求无法完成，请检查访问地址或权限后重试。'}">
+<th:block
+  th:with="title=${status == 401 ? '需要登录' : status == 403 ? '无权访问' : status == 404 ? '页面不存在' : status == 409 ? '请求发生冲突' : status == 429 ? '操作过于频繁' : '请求未完成'}, message=${status == 401 ? '登录后即可继续访问该页面。' : status == 403 ? '当前账号没有访问此内容的权限。' : status == 404 ? '请检查访问地址，或返回工作台继续操作。' : status == 409 ? '当前数据已被其他操作更新，请刷新后核对再试。' : status == 429 ? '操作过于频繁，请稍后重试。' : '当前请求无法完成，请检查访问地址或权限后重试。'}">
   <main class="login-card platform-error-card" aria-labelledby="error-title">
     <p class="page-kicker">LiteData 数据中台</p>
     <h1 id="error-title" class="page-title mb-3" th:text="${title}">请求未完成</h1>
@@ -17,9 +19,11 @@
     <p class="small fg-2 mb-6">状态码：<span th:text="${status}">404</span></p>
     <a class="btn-solid theme-primary" th:href="@{/}">返回工作台</a>
   </main>
-  <div hidden data-platform-notification="warning" th:attr="data-notification-status=${status}" th:text="${message}">当前请求无法完成，请检查访问地址或权限后重试。</div>
-  </th:block>
-  <script type="module" th:src="@{/vendor/bootstrap/bootstrap.bundle.min.js}"></script>
-  <script th:src="@{/js/notifications.js}" defer></script>
+  <div hidden data-platform-notification="warning" th:attr="data-notification-status=${status}" th:text="${message}">
+    当前请求无法完成，请检查访问地址或权限后重试。
+  </div>
+</th:block>
+<script type="module" th:src="@{/vendor/bootstrap/bootstrap.bundle.min.js}"></script>
+<script th:src="@{/js/notifications.js}" defer></script>
 </body>
 </html>

@@ -3,6 +3,7 @@ package com.litedata.modeling;
 import com.litedata.data.JdbcConnections;
 import com.litedata.model.DataModel;
 import com.litedata.model.ModelField;
+
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -10,14 +11,17 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.springframework.stereotype.Component;
 
-/** Generates a validated, structured Doris CREATE TABLE; no raw DDL fragments are accepted. */
+/**
+ * Generates a validated, structured Doris CREATE TABLE; no raw DDL fragments are accepted.
+ */
 @Component
 public class DorisDdl {
     public static final List<String> TYPE_OPTIONS = List.of(
-            "TINYINT", "SMALLINT", "INT", "BIGINT", "LARGEINT", "BOOLEAN", "DATE", "DATETIME",
-            "CHAR(1)", "VARCHAR(128)", "STRING", "DECIMAL(18,2)", "FLOAT", "DOUBLE");
+        "TINYINT", "SMALLINT", "INT", "BIGINT", "LARGEINT", "BOOLEAN", "DATE", "DATETIME",
+        "CHAR(1)", "VARCHAR(128)", "STRING", "DECIMAL(18,2)", "FLOAT", "DOUBLE");
     private static final Pattern SIMPLE = Pattern.compile("^(TINYINT|SMALLINT|INT|BIGINT|LARGEINT|BOOLEAN|DATE|STRING|FLOAT|DOUBLE)$");
     private static final Pattern INTEGER_WIDTH = Pattern.compile("^(TINYINT|SMALLINT|INT|BIGINT|LARGEINT)\\s*\\(\\s*\\d+\\s*\\)$");
     private static final Pattern DATETIME = Pattern.compile("^(?:DATETIME|DATETIMEV2)(?:\\s*\\(\\s*([0-6])\\s*\\))?$");
@@ -32,7 +36,8 @@ public class DorisDdl {
         model.setLayer(layer(model.getLayer()));
         model.setDescription(metadata(model.getDescription(), "描述", 500, false));
         model.setModelType(choice(model.getModelType(), Set.of("DUPLICATE", "UNIQUE", "AGGREGATE"), "数据模型仅支持 DUPLICATE、UNIQUE、AGGREGATE"));
-        if (model.getReplicationNum() < 1 || model.getReplicationNum() > 10) throw invalid("副本数须在 1 到 10 之间，且不能超过可用 BE 节点数");
+        if (model.getReplicationNum() < 1 || model.getReplicationNum() > 10)
+            throw invalid("副本数须在 1 到 10 之间，且不能超过可用 BE 节点数");
         if (!model.isAutoBuckets() && model.getBuckets() < 1) throw invalid("分桶数须为正整数（最大 2147483647）");
         if (model.getFields() == null || model.getFields().isEmpty() || model.getFields().size() > 100)
             throw invalid("字段数量须在 1 到 100 之间");
@@ -59,7 +64,7 @@ public class DorisDdl {
                 keys.add(name);
             } else encounteredNonKey = true;
             columns.add("  `" + name + "` " + type + (aggregation.isEmpty() ? "" : " " + aggregation) + (field.isNullable() ? " NULL" : " NOT NULL")
-                    + " COMMENT '" + sqlComment(field.getComment()) + "'");
+                + " COMMENT '" + sqlComment(field.getComment()) + "'");
         }
         if (keys.isEmpty()) throw invalid("至少需要一个键列");
         if ("AGGREGATE".equals(model.getModelType()) && keys.size() == model.getFields().size())
@@ -70,11 +75,11 @@ public class DorisDdl {
         String distribution = distribution(model, keys, seen);
 
         String tableComment = model.getDescription().isBlank() ? model.getName()
-                : model.getName() + " - " + model.getDescription();
+            : model.getName() + " - " + model.getDescription();
         return "CREATE TABLE `warehouse`.`" + model.getTableName() + "` (\n"
-                + String.join(",\n", columns) + "\n)\nENGINE=OLAP\n" + model.getModelType() + " KEY(" + quoted(keys) + ")\nCOMMENT '"
-                + sqlComment(tableComment) + "'\n" + partition + distribution + " BUCKETS " + (model.isAutoBuckets() ? "AUTO" : model.getBuckets())
-                + "\nPROPERTIES (\n" + properties(model, partitionDefinition.dynamicProperties()) + "\n);";
+            + String.join(",\n", columns) + "\n)\nENGINE=OLAP\n" + model.getModelType() + " KEY(" + quoted(keys) + ")\nCOMMENT '"
+            + sqlComment(tableComment) + "'\n" + partition + distribution + " BUCKETS " + (model.isAutoBuckets() ? "AUTO" : model.getBuckets())
+            + "\nPROPERTIES (\n" + properties(model, partitionDefinition.dynamicProperties()) + "\n);";
     }
 
     private static String distribution(DataModel model, List<String> keys, Set<String> fields) {
@@ -88,7 +93,8 @@ public class DorisDdl {
         String raw = model.getDistributionColumns();
         if (raw == null) raw = String.join(",", keys);
         String[] parts = raw.split(",", -1);
-        if (raw.isBlank() || parts.length > fields.size()) throw invalid("HASH 分桶须选择至少一个有效分桶键，且不能重复");
+        if (raw.isBlank() || parts.length > fields.size())
+            throw invalid("HASH 分桶须选择至少一个有效分桶键，且不能重复");
         var selected = new LinkedHashSet<String>();
         for (String part : parts) {
             String column = identifier(part, "分桶键");
@@ -112,7 +118,7 @@ public class DorisDdl {
             if (!Set.of("SUM", "MIN", "MAX", "REPLACE", "REPLACE_IF_NOT_NULL").contains(function))
                 throw invalid("AGGREGATE 的每个非键字段须选择 SUM、MIN、MAX、REPLACE 或 REPLACE_IF_NOT_NULL：" + field.getName());
             if (function.equals("SUM") && !(Set.of("TINYINT", "SMALLINT", "INT", "BIGINT", "LARGEINT", "FLOAT", "DOUBLE").contains(type)
-                    || type.startsWith("DECIMAL("))) throw invalid("SUM 仅支持数值类型：" + field.getName());
+                || type.startsWith("DECIMAL("))) throw invalid("SUM 仅支持数值类型：" + field.getName());
             if (function.equals("REPLACE_IF_NOT_NULL") && !field.isNullable())
                 throw invalid("REPLACE_IF_NOT_NULL 字段须允许 NULL：" + field.getName());
         }
@@ -125,9 +131,9 @@ public class DorisDdl {
         values.put("replication_num", Integer.toString(model.getReplicationNum()));
         if ("UNIQUE".equals(model.getModelType())) values.put("enable_unique_key_merge_on_write", "true");
         dynamicProperties.entrySet().stream().sorted(java.util.Map.Entry.comparingByKey())
-                .forEach(entry -> values.put(entry.getKey(), entry.getValue()));
+            .forEach(entry -> values.put(entry.getKey(), entry.getValue()));
         return values.entrySet().stream().map(entry -> "  \"" + entry.getKey() + "\" = \"" + entry.getValue() + "\"")
-                .reduce((left, right) -> left + ",\n" + right).orElseThrow();
+            .reduce((left, right) -> left + ",\n" + right).orElseThrow();
     }
 
     private static String choice(String value, Set<String> supported, String message) {
@@ -136,7 +142,9 @@ public class DorisDdl {
         return normalized;
     }
 
-    /** Canonical form is also used for comparing Doris metadata aliases. */
+    /**
+     * Canonical form is also used for comparing Doris metadata aliases.
+     */
     public static String canonicalType(String input) {
         if (input == null) return "";
         String value = input.trim().toUpperCase(Locale.ROOT);
@@ -146,7 +154,7 @@ public class DorisDdl {
         if (integer.matches()) return integer.group(1);
         Matcher datetime = DATETIME.matcher(value);
         if (datetime.matches()) return datetime.group(1) == null || datetime.group(1).equals("0")
-                ? "DATETIME" : "DATETIME(" + datetime.group(1) + ")";
+            ? "DATETIME" : "DATETIME(" + datetime.group(1) + ")";
         Matcher sized = CHAR_OR_VARCHAR.matcher(value);
         if (sized.matches()) return sized.group(1) + "(" + sized.group(2) + ")";
         Matcher decimal = DECIMAL.matcher(value);
@@ -165,7 +173,8 @@ public class DorisDdl {
                 int size = Integer.parseInt(sized.group(2));
                 int max = sized.group(1).equals("CHAR") ? 255 : 65533;
                 if (size >= 1 && size <= max) return canonical;
-            } catch (NumberFormatException ignored) { }
+            } catch (NumberFormatException ignored) {
+            }
         }
         Matcher decimal = DECIMAL.matcher(canonical);
         if (decimal.matches()) {
@@ -173,7 +182,8 @@ public class DorisDdl {
                 int precision = Integer.parseInt(decimal.group(1));
                 int scale = Integer.parseInt(decimal.group(2));
                 if (precision >= 1 && precision <= 38 && scale >= 0 && scale <= precision) return canonical;
-            } catch (NumberFormatException ignored) { }
+            } catch (NumberFormatException ignored) {
+            }
         }
         throw invalid("不支持的 Doris 字段类型：" + input);
     }
@@ -181,7 +191,9 @@ public class DorisDdl {
     private static String identifier(String value, String label) {
         try {
             return JdbcConnections.identifier(value == null ? null : value.trim()).toLowerCase(Locale.ROOT);
-        } catch (IllegalArgumentException exception) { throw invalid(label + "仅支持字母、数字和下划线，最长64字符"); }
+        } catch (IllegalArgumentException exception) {
+            throw invalid(label + "仅支持字母、数字和下划线，最长64字符");
+        }
     }
 
     private static String metadata(String value, String label, int max, boolean required) {
@@ -193,13 +205,16 @@ public class DorisDdl {
 
     private static String layer(String value) {
         String normalized = value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
-        if (!Set.of("ODS", "DIM", "DWD", "DWS", "ADS").contains(normalized)) throw invalid("分层仅支持 ODS、DIM、DWD、DWS、ADS");
+        if (!Set.of("ODS", "DIM", "DWD", "DWS", "ADS").contains(normalized))
+            throw invalid("分层仅支持 ODS、DIM、DWD、DWS、ADS");
         return normalized;
     }
 
     private static void validateDimension(DataModel model, List<String> keys, Set<String> fields) {
         if (!"DIM".equals(model.getLayer())) {
-            model.setDimensionKeys(""); model.setDimensionLabel(""); model.setDimensionStrategy("");
+            model.setDimensionKeys("");
+            model.setDimensionLabel("");
+            model.setDimensionStrategy("");
             return;
         }
         if (!"UNIQUE".equals(model.getModelType())) throw invalid("DIM/SCD1 仅支持 UNIQUE 主键模型");
@@ -243,5 +258,7 @@ public class DorisDdl {
         return names.stream().map(name -> "`" + name + "`").reduce((left, right) -> left + ", " + right).orElseThrow();
     }
 
-    private static IllegalArgumentException invalid(String message) { return new IllegalArgumentException(message); }
+    private static IllegalArgumentException invalid(String message) {
+        return new IllegalArgumentException(message);
+    }
 }

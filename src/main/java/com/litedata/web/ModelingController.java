@@ -5,10 +5,12 @@ import com.litedata.model.ModelField;
 import com.litedata.modeling.ModelingService;
 import com.litedata.modeling.DorisDdl;
 import jakarta.servlet.http.HttpServletRequest;
+
 import java.security.Principal;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
@@ -21,54 +23,97 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 public class ModelingController {
     private static final List<String> LAYERS = List.of("ODS", "DIM", "DWD", "DWS", "ADS");
     private final ModelingService modeling;
-    public ModelingController(ModelingService modeling) { this.modeling = modeling; }
+
+    public ModelingController(ModelingService modeling) {
+        this.modeling = modeling;
+    }
 
     @InitBinder("draft")
     void bind(WebDataBinder binder) {
         binder.setAutoGrowCollectionLimit(100);
         binder.setAllowedFields("tableName", "name", "subjectArea", "layer", "description", "buckets", "autoBuckets", "version",
-                "dimensionKeys", "dimensionLabel", "dimensionStrategy", "modelType", "replicationNum", "partitionType", "partitionColumn", "partitionUnit", "distributionType", "distributionColumns",
-                "partitionRangeStyle", "dynamicPartitionProperties", "partitions[*].name", "partitions[*].lowerBound", "partitions[*].upperBound", "partitions[*].valuesText",
-                "fields[*].name", "fields[*].dataType", "fields[*].keyColumn", "fields[*].nullable", "fields[*].comment", "fields[*].standard", "fields[*].aggregation");
+            "dimensionKeys", "dimensionLabel", "dimensionStrategy", "modelType", "replicationNum", "partitionType", "partitionColumn", "partitionUnit", "distributionType", "distributionColumns",
+            "partitionRangeStyle", "dynamicPartitionProperties", "partitions[*].name", "partitions[*].lowerBound", "partitions[*].upperBound", "partitions[*].valuesText",
+            "fields[*].name", "fields[*].dataType", "fields[*].keyColumn", "fields[*].nullable", "fields[*].comment", "fields[*].standard", "fields[*].aggregation");
     }
-    @ModelAttribute("activeNav") String activeNav() { return "models"; }
-    @ModelAttribute("canEdit") boolean canEdit(HttpServletRequest request) {
+
+    @ModelAttribute("activeNav")
+    String activeNav() {
+        return "models";
+    }
+
+    @ModelAttribute("canEdit")
+    boolean canEdit(HttpServletRequest request) {
         return request.isUserInRole("ADMIN") || request.isUserInRole("DEVELOPER");
     }
-    @ModelAttribute("canManageUsers") boolean canManageUsers(HttpServletRequest request) { return request.isUserInRole("ADMIN"); }
-    @ModelAttribute("layers") List<String> layers() { return LAYERS; }
-    @ModelAttribute("fieldDataTypes") List<String> fieldDataTypes() { return DorisDdl.TYPE_OPTIONS; }
 
-    @GetMapping String list(@RequestParam(defaultValue="") String keyword, @RequestParam(defaultValue="") String layer,
-            @RequestParam Map<String,String> params, Model model) {
+    @ModelAttribute("canManageUsers")
+    boolean canManageUsers(HttpServletRequest request) {
+        return request.isUserInRole("ADMIN");
+    }
+
+    @ModelAttribute("layers")
+    List<String> layers() {
+        return LAYERS;
+    }
+
+    @ModelAttribute("fieldDataTypes")
+    List<String> fieldDataTypes() {
+        return DorisDdl.TYPE_OPTIONS;
+    }
+
+    @GetMapping
+    String list(@RequestParam(defaultValue = "") String keyword, @RequestParam(defaultValue = "") String layer,
+                @RequestParam Map<String, String> params, Model model) {
         var page = ListPagination.prepare(model, "/models", params, modeling.count(keyword, layer));
         var models = modeling.list(keyword, layer, page);
         model.addAttribute("models", models);
         model.addAttribute("creationStatuses", modeling.creationStatuses(models));
-        model.addAttribute("keyword", keyword); model.addAttribute("layer", layer);
+        model.addAttribute("keyword", keyword);
+        model.addAttribute("layer", layer);
         return "models";
     }
-    @GetMapping("/new") String create(@RequestParam(defaultValue="ODS") String layer, Model model) {
+
+    @GetMapping("/new")
+    String create(@RequestParam(defaultValue = "ODS") String layer, Model model) {
         var draft = new DataModel();
         draft.setAutoBuckets(true);
         if (LAYERS.contains(layer)) draft.setLayer(layer);
-        var field = new ModelField(); field.setName("id"); field.setDataType("BIGINT"); field.setKeyColumn(true); field.setComment("业务主键");
+        var field = new ModelField();
+        field.setName("id");
+        field.setDataType("BIGINT");
+        field.setKeyColumn(true);
+        field.setComment("业务主键");
         draft.getFields().add(field);
         if ("DIM".equals(layer)) {
-            draft.setLayer("DIM"); draft.setDimensionKeys("id"); draft.setDimensionLabel("name"); draft.setDimensionStrategy("SCD1");
-            var label = new ModelField(); label.setName("name"); label.setDataType("VARCHAR(128)"); label.setComment("维度名称");
+            draft.setLayer("DIM");
+            draft.setDimensionKeys("id");
+            draft.setDimensionLabel("name");
+            draft.setDimensionStrategy("SCD1");
+            var label = new ModelField();
+            label.setName("name");
+            label.setDataType("VARCHAR(128)");
+            label.setComment("维度名称");
             draft.getFields().add(label);
         }
         return form(model, draft, null);
     }
-    @GetMapping("/{id}/edit") String edit(@PathVariable long id, Model model) { return form(model, modeling.require(id), id); }
-    @GetMapping("/{id:\\d+}") String detail(@PathVariable long id, Model model) {
+
+    @GetMapping("/{id}/edit")
+    String edit(@PathVariable long id, Model model) {
+        return form(model, modeling.require(id), id);
+    }
+
+    @GetMapping("/{id:\\d+}")
+    String detail(@PathVariable long id, Model model) {
         var definition = modeling.require(id);
         model.addAttribute("definition", definition);
         model.addAttribute("creationStatus", modeling.creationStatuses(List.of(definition)).get(id));
         try {
             var preview = modeling.preview(id);
-            model.addAttribute("definition", preview.model()); model.addAttribute("ddl", preview.ddl()); model.addAttribute("ddlHash", preview.hash());
+            model.addAttribute("definition", preview.model());
+            model.addAttribute("ddl", preview.ddl());
+            model.addAttribute("ddlHash", preview.hash());
         } catch (IllegalArgumentException exception) {
             model.addAttribute("ddlError", exception.getMessage());
         }
@@ -76,8 +121,10 @@ public class ModelingController {
         model.addAttribute("executions", executions);
         return "model-detail";
     }
-    @PostMapping String create(@ModelAttribute("draft") DataModel draft, BindingResult errors,
-            @RequestParam(name = "tableNameSuffix", required = false) String tableNameSuffix, Model model, Principal principal, RedirectAttributes redirect) {
+
+    @PostMapping
+    String create(@ModelAttribute("draft") DataModel draft, BindingResult errors,
+                  @RequestParam(name = "tableNameSuffix", required = false) String tableNameSuffix, Model model, Principal principal, RedirectAttributes redirect) {
         if (tableNameSuffix != null) {
             try {
                 draft.setTableName(prefixedTableName(draft.getLayer(), tableNameSuffix));
@@ -91,10 +138,13 @@ public class ModelingController {
         }
         return save(null, draft, errors, model, principal, redirect);
     }
-    @PostMapping("/{id:\\d+}") String update(@PathVariable long id, @ModelAttribute("draft") DataModel draft, BindingResult errors,
-            Model model, Principal principal, RedirectAttributes redirect) {
+
+    @PostMapping("/{id:\\d+}")
+    String update(@PathVariable long id, @ModelAttribute("draft") DataModel draft, BindingResult errors,
+                  Model model, Principal principal, RedirectAttributes redirect) {
         return save(id, draft, errors, model, principal, redirect);
     }
+
     private String save(Long id, DataModel draft, BindingResult errors, Model model, Principal principal, RedirectAttributes redirect) {
         try {
             if (errors.hasErrors()) {
@@ -107,7 +157,8 @@ public class ModelingController {
             return "redirect:/models/" + saved;
         } catch (IllegalArgumentException exception) {
             model.addAttribute("error", exception.getMessage());
-            if (!model.containsAttribute("errorStep")) model.addAttribute("errorStep", errorStep(exception.getMessage()));
+            if (!model.containsAttribute("errorStep"))
+                model.addAttribute("errorStep", errorStep(exception.getMessage()));
             return form(model, draft, id);
         } catch (org.springframework.dao.DuplicateKeyException exception) {
             model.addAttribute("error", "表名已被模型使用（含已删除模型），请选择其他表名");
@@ -115,26 +166,34 @@ public class ModelingController {
             return form(model, draft, id);
         }
     }
-    @PostMapping("/{id}/physicalize") String physicalize(@PathVariable long id, @RequestParam int version, @RequestParam String ddlHash,
-            @RequestParam(defaultValue="false") boolean confirmed, Principal principal, RedirectAttributes redirect) {
+
+    @PostMapping("/{id}/physicalize")
+    String physicalize(@PathVariable long id, @RequestParam int version, @RequestParam String ddlHash,
+                       @RequestParam(defaultValue = "false") boolean confirmed, Principal principal, RedirectAttributes redirect) {
         if (!confirmed) throw new IllegalArgumentException("请在预览 DDL 后勾选建表确认");
         var result = modeling.physicalize(id, version, ddlHash, principal.getName());
         redirect.addFlashAttribute(result.success() ? "success" : "error", result.message());
         return "redirect:/models/" + id;
     }
-    @PostMapping("/{id}/compare") String compare(@PathVariable long id, @RequestParam int version, Principal principal, RedirectAttributes redirect) {
+
+    @PostMapping("/{id}/compare")
+    String compare(@PathVariable long id, @RequestParam int version, Principal principal, RedirectAttributes redirect) {
         var comparison = modeling.compare(id, version, principal.getName());
         redirect.addFlashAttribute("comparison", comparison);
         redirect.addFlashAttribute(comparison.matches() ? "success" : "error", comparison.matches() ? "逻辑模型与物理结构一致" : "核对未通过，请查看结构比对结果");
         return "redirect:/models/" + id;
     }
-    @PostMapping("/{id}/archive") String archive(@PathVariable long id, @RequestParam int version, Principal principal, RedirectAttributes redirect) {
+
+    @PostMapping("/{id}/archive")
+    String archive(@PathVariable long id, @RequestParam int version, Principal principal, RedirectAttributes redirect) {
         modeling.archive(id, version, principal.getName());
         redirect.addFlashAttribute("success", "模型已删除；字段和执行记录已保留");
         return "redirect:/models";
     }
+
     private String form(Model model, DataModel draft, Long id) {
-        model.addAttribute("draft", draft); model.addAttribute("modelId", id);
+        model.addAttribute("draft", draft);
+        model.addAttribute("modelId", id);
         String layer = normalizedLayer(draft.getLayer());
         String prefix = layer.isEmpty() ? "" : layer.toLowerCase(Locale.ROOT) + "_";
         String tableName = draft.getTableName() == null ? "" : draft.getTableName();
@@ -164,9 +223,10 @@ public class ModelingController {
     private static int errorStep(String message) {
         if (message == null) return 1;
         if (message.contains("分区") || message.contains("dynamic_partition") || message.contains("PROPERTIES") || message.contains("副本") || message.contains("分桶") || message.contains("AGGREGATE")
-                || message.contains("数据模型") || message.contains("聚合函数") || message.contains("SUM") || message.contains("REPLACE_IF_NOT_NULL")
-                || message.contains("DIM/SCD1")) return 3;
-        if (message.contains("表名") || message.contains("模型中文名") || message.contains("主题域") || message.contains("分层") || message.contains("描述")) return 1;
+            || message.contains("数据模型") || message.contains("聚合函数") || message.contains("SUM") || message.contains("REPLACE_IF_NOT_NULL")
+            || message.contains("DIM/SCD1")) return 3;
+        if (message.contains("表名") || message.contains("模型中文名") || message.contains("主题域") || message.contains("分层") || message.contains("描述"))
+            return 1;
         return 2;
     }
 }

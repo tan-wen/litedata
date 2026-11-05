@@ -11,4 +11,5 @@
 Both distribution files were verified against the SHA-384 integrity values in the official installation guide:
 https://getbootstrap.com/docs/6.0/getting-started/install/
 
-Use `type="module"` for the JavaScript bundle. The application loads these files locally and does not require a CDN at runtime. Migration and browser requirements are documented in `docs/ui-guide.md`.
+Use `type="module"` for the JavaScript bundle. The application loads these files locally and does not require a CDN at
+runtime. Migration and browser requirements are documented in `docs/ui-guide.md`.

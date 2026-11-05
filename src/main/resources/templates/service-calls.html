@@ -1,8 +1,51 @@
 <!doctype html>
-<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
 <head><title>服务调用记录 · 数据中台</title></head>
-<body><section>
-  <div class="d-flex justify-content-between align-items-start mb-7 gap-5"><div><h1 class="page-title">调用记录</h1><p class="page-subtitle mb-0"><span th:text="${service.name}">客户查询</span> · <code th:text="${service.slug}">customers</code> · 按时间查看调用状态、耗时和返回行数。</p></div><a class="btn-outline theme-secondary" th:href="@{/services}">返回服务列表</a></div>
-  <article class="platform-card card"><div class="card-header">调用记录 <small class="fw-normal fg-2">北京时间</small></div><div class="card-body p-0"><div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>调用时间</th><th>HTTP 状态</th><th>结果</th><th>耗时</th><th>返回行数</th><th>请求页码</th><th>每页条数</th></tr></thead><tbody><tr th:each="call : ${calls}"><td th:text="${#temporals.format(call.startedAt, 'yyyy-MM-dd HH:mm:ss')}">2026-10-23 12:00:00</td><td th:text="${call.statusCode}">200</td><td><span class="badge" th:classappend="${call.statusCode >= 200 and call.statusCode < 300} ? ' theme-success' : ' theme-danger'" th:text="${call.statusCode >= 200 and call.statusCode < 300} ? '成功' : '失败'">成功</span></td><td th:text="${call.durationMs + ' ms'}">10 ms</td><td th:text="${call.rowCount}">1</td><td th:text="${call.pageNum}">1</td><td th:text="${call.pageSize}">20</td></tr><tr th:if="${#lists.isEmpty(calls)}"><td colspan="7" class="text-center fg-2 py-7">暂无调用记录</td></tr></tbody></table></div></div></article>
+<body>
+<section>
+  <div class="d-flex justify-content-between align-items-start mb-7 gap-5">
+    <div><h1 class="page-title">调用记录</h1>
+      <p class="page-subtitle mb-0"><span th:text="${service.name}">客户查询</span> · <code th:text="${service.slug}">customers</code>
+        · 按时间查看调用状态、耗时和返回行数。</p></div>
+    <a class="btn-outline theme-secondary" th:href="@{/services}">返回服务列表</a></div>
+  <article class="platform-card card">
+    <div class="card-header">调用记录 <small class="fw-normal fg-2">北京时间</small></div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0">
+          <thead>
+          <tr>
+            <th>调用时间</th>
+            <th>HTTP 状态</th>
+            <th>结果</th>
+            <th>耗时</th>
+            <th>返回行数</th>
+            <th>请求页码</th>
+            <th>每页条数</th>
+          </tr>
+          </thead>
+          <tbody>
+          <tr th:each="call : ${calls}">
+            <td th:text="${#temporals.format(call.startedAt, 'yyyy-MM-dd HH:mm:ss')}">2026-10-23 12:00:00</td>
+            <td th:text="${call.statusCode}">200</td>
+            <td><span class="badge"
+                      th:classappend="${call.statusCode >= 200 and call.statusCode < 300} ? ' theme-success' : ' theme-danger'"
+                      th:text="${call.statusCode >= 200 and call.statusCode < 300} ? '成功' : '失败'">成功</span></td>
+            <td th:text="${call.durationMs + ' ms'}">10 ms</td>
+            <td th:text="${call.rowCount}">1</td>
+            <td th:text="${call.pageNum}">1</td>
+            <td th:text="${call.pageSize}">20</td>
+          </tr>
+          <tr th:if="${#lists.isEmpty(calls)}">
+            <td colspan="7" class="text-center fg-2 py-7">暂无调用记录</td>
+          </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </article>
   <div th:replace="~{fragments/pagination :: pagination}"></div>
-</section></body></html>
+</section>
+</body>
+</html>

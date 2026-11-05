@@ -2,10 +2,12 @@ package com.litedata.web;
 
 import com.litedata.security.UserApiKeyService;
 import jakarta.servlet.http.HttpServletResponse;
+
 import java.security.Principal;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
+
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -19,20 +21,29 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
-/** Self-service lifecycle for MCP credentials. Plaintext keys never enter a redirect or session. */
+/**
+ * Self-service lifecycle for MCP credentials. Plaintext keys never enter a redirect or session.
+ */
 @Controller
 public class UserApiKeyController {
     private final UserApiKeyService keys;
 
-    public UserApiKeyController(UserApiKeyService keys) { this.keys = keys; }
+    public UserApiKeyController(UserApiKeyService keys) {
+        this.keys = keys;
+    }
 
-    @ModelAttribute("activeNav") String activeNav() { return "api-keys"; }
+    @ModelAttribute("activeNav")
+    String activeNav() {
+        return "api-keys";
+    }
 
-    @ModelAttribute("canManageUsers") boolean canManageUsers(jakarta.servlet.http.HttpServletRequest request) {
+    @ModelAttribute("canManageUsers")
+    boolean canManageUsers(jakarta.servlet.http.HttpServletRequest request) {
         return request.isUserInRole("ADMIN");
     }
 
-    @InitBinder("draft") void bind(WebDataBinder binder) {
+    @InitBinder("draft")
+    void bind(WebDataBinder binder) {
         binder.setAllowedFields("name", "validDays", "scopes", "serviceSlugs", "pipelineIds");
     }
 
@@ -60,7 +71,7 @@ public class UserApiKeyController {
         try {
             if (errors.hasErrors()) throw new IllegalArgumentException();
             var issued = keys.create(principal.getName(), draft.name, draft.validDays, normalizedScopes(draft.scopes),
-                    draft.serviceSlugs, draft.pipelineIds);
+                draft.serviceSlugs, draft.pipelineIds);
             model.addAttribute("issued", issued);
             return "api-key-created";
         } catch (IllegalArgumentException exception) {
@@ -90,7 +101,9 @@ public class UserApiKeyController {
         return Set.copyOf(result);
     }
 
-    private void noStore(HttpServletResponse response) { response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store"); }
+    private void noStore(HttpServletResponse response) {
+        response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
+    }
 
     public static class ApiKeyDraft {
         private String name = "";
@@ -98,15 +111,45 @@ public class UserApiKeyController {
         private String[] scopes = {};
         private String serviceSlugs = "";
         private String pipelineIds = "";
-        public String getName() { return name; }
-        public void setName(String name) { this.name = name; }
-        public int getValidDays() { return validDays; }
-        public void setValidDays(int validDays) { this.validDays = validDays; }
-        public String[] getScopes() { return scopes; }
-        public void setScopes(String[] scopes) { this.scopes = scopes; }
-        public String getServiceSlugs() { return serviceSlugs; }
-        public void setServiceSlugs(String serviceSlugs) { this.serviceSlugs = serviceSlugs; }
-        public String getPipelineIds() { return pipelineIds; }
-        public void setPipelineIds(String pipelineIds) { this.pipelineIds = pipelineIds; }
+
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name;
+        }
+
+        public int getValidDays() {
+            return validDays;
+        }
+
+        public void setValidDays(int validDays) {
+            this.validDays = validDays;
+        }
+
+        public String[] getScopes() {
+            return scopes;
+        }
+
+        public void setScopes(String[] scopes) {
+            this.scopes = scopes;
+        }
+
+        public String getServiceSlugs() {
+            return serviceSlugs;
+        }
+
+        public void setServiceSlugs(String serviceSlugs) {
+            this.serviceSlugs = serviceSlugs;
+        }
+
+        public String getPipelineIds() {
+            return pipelineIds;
+        }
+
+        public void setPipelineIds(String pipelineIds) {
+            this.pipelineIds = pipelineIds;
+        }
     }
 }

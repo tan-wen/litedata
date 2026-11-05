@@ -5,6 +5,7 @@ import com.litedata.data.DatabaseType;
 import com.litedata.data.JdbcConnections;
 import com.litedata.data.SourceService;
 import com.litedata.model.DataSource;
+
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
@@ -13,19 +14,22 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+
 import org.springframework.stereotype.Component;
 
-/** Reads only schema metadata from registered sources or the Doris warehouse. */
+/**
+ * Reads only schema metadata from registered sources or the Doris warehouse.
+ */
 @Component
 public class JdbcMetadataCollector {
     static final int MAX_TABLES = 2_000;
     static final int MAX_COLUMNS_PER_TABLE = 500;
     private static final String TABLES_SQL = "SELECT TABLE_NAME,TABLE_COMMENT FROM information_schema.TABLES "
-            + "WHERE TABLE_SCHEMA=? AND TABLE_TYPE IN (?,?) ORDER BY TABLE_NAME";
+        + "WHERE TABLE_SCHEMA=? AND TABLE_TYPE IN (?,?) ORDER BY TABLE_NAME";
     private static final String COLUMNS_SQL = "SELECT COLUMN_NAME,COLUMN_TYPE,IS_NULLABLE,COLUMN_KEY,COLUMN_COMMENT,ORDINAL_POSITION "
-            + "FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME=? ORDER BY ORDINAL_POSITION";
+        + "FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME=? ORDER BY ORDINAL_POSITION";
     private static final String COLUMNS_WITHOUT_KEY_SQL = "SELECT COLUMN_NAME,COLUMN_TYPE,IS_NULLABLE,COLUMN_COMMENT,ORDINAL_POSITION "
-            + "FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME=? ORDER BY ORDINAL_POSITION";
+        + "FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME=? ORDER BY ORDINAL_POSITION";
 
     private final SourceService sources;
     private final PlatformProperties properties;
@@ -60,10 +64,11 @@ public class JdbcMetadataCollector {
     private List<Table> jdbcTables(Connection connection, String schema) throws SQLException {
         DatabaseMetaData metadata = connection.getMetaData();
         var tables = new ArrayList<Table>();
-        try (ResultSet result = metadata.getTables(connection.getCatalog(), schema, "%", new String[] {"TABLE", "VIEW"})) {
+        try (ResultSet result = metadata.getTables(connection.getCatalog(), schema, "%", new String[]{"TABLE", "VIEW"})) {
             while (result.next()) {
                 if (!schema.equals(result.getString("TABLE_SCHEM"))) continue;
-                if (tables.size() == MAX_TABLES) throw new IllegalArgumentException("元数据表数量超过2000，拒绝采集部分结果");
+                if (tables.size() == MAX_TABLES)
+                    throw new IllegalArgumentException("元数据表数量超过2000，拒绝采集部分结果");
                 String name = JdbcConnections.identifier(result.getString("TABLE_NAME"));
                 tables.add(new Table(name, Objects.toString(result.getString("REMARKS"), ""), jdbcColumns(metadata, connection.getCatalog(), schema, name)));
             }
@@ -79,12 +84,14 @@ public class JdbcMetadataCollector {
         var columns = new ArrayList<Column>();
         try (ResultSet result = metadata.getColumns(catalog, schema, table, "%")) {
             while (result.next()) {
-                if (!schema.equals(result.getString("TABLE_SCHEM")) || !table.equals(result.getString("TABLE_NAME"))) continue;
-                if (columns.size() == MAX_COLUMNS_PER_TABLE) throw new IllegalArgumentException("表 " + table + " 的字段数量超过500，拒绝采集部分结果");
+                if (!schema.equals(result.getString("TABLE_SCHEM")) || !table.equals(result.getString("TABLE_NAME")))
+                    continue;
+                if (columns.size() == MAX_COLUMNS_PER_TABLE)
+                    throw new IllegalArgumentException("表 " + table + " 的字段数量超过500，拒绝采集部分结果");
                 String name = JdbcConnections.identifier(result.getString("COLUMN_NAME"));
                 columns.add(new Column(name, Objects.toString(result.getString("TYPE_NAME"), ""),
-                        result.getInt("NULLABLE") != DatabaseMetaData.columnNoNulls, keys.contains(name),
-                        Objects.toString(result.getString("REMARKS"), ""), result.getInt("ORDINAL_POSITION")));
+                    result.getInt("NULLABLE") != DatabaseMetaData.columnNoNulls, keys.contains(name),
+                    Objects.toString(result.getString("REMARKS"), ""), result.getInt("ORDINAL_POSITION")));
             }
         }
         if (columns.isEmpty()) throw new IllegalArgumentException("表 " + table + " 未读取到字段，拒绝采集不完整结构");
@@ -100,7 +107,8 @@ public class JdbcMetadataCollector {
             statement.setQueryTimeout(15);
             try (ResultSet result = statement.executeQuery()) {
                 while (result.next()) {
-                    if (tables.size() == MAX_TABLES) throw new IllegalArgumentException("元数据表数量超过2000，拒绝采集部分结果");
+                    if (tables.size() == MAX_TABLES)
+                        throw new IllegalArgumentException("元数据表数量超过2000，拒绝采集部分结果");
                     String name = JdbcConnections.identifier(result.getString(1));
                     tables.add(new Table(name, Objects.toString(result.getString(2), ""), columns(connection, catalog, name)));
                 }
@@ -126,11 +134,12 @@ public class JdbcMetadataCollector {
             statement.setQueryTimeout(15);
             try (ResultSet result = statement.executeQuery()) {
                 while (result.next()) {
-                    if (columns.size() == MAX_COLUMNS_PER_TABLE) throw new IllegalArgumentException("表 " + table + " 的字段数量超过500，拒绝采集部分结果");
+                    if (columns.size() == MAX_COLUMNS_PER_TABLE)
+                        throw new IllegalArgumentException("表 " + table + " 的字段数量超过500，拒绝采集部分结果");
                     String name = JdbcConnections.identifier(result.getString(1));
                     columns.add(new Column(name, Objects.toString(result.getString(2), ""), "YES".equalsIgnoreCase(result.getString(3)),
-                            includeKey && "PRI".equalsIgnoreCase(result.getString(4)),
-                            Objects.toString(result.getString(includeKey ? 5 : 4), ""), result.getInt(includeKey ? 6 : 5)));
+                        includeKey && "PRI".equalsIgnoreCase(result.getString(4)),
+                        Objects.toString(result.getString(includeKey ? 5 : 4), ""), result.getInt(includeKey ? 6 : 5)));
                 }
             }
         }
@@ -141,10 +150,16 @@ public class JdbcMetadataCollector {
     private static boolean unsupportedColumnKey(SQLException exception) {
         String message = exception.getMessage();
         return message != null && message.toLowerCase(java.util.Locale.ROOT).contains("column_key")
-                && (message.toLowerCase(java.util.Locale.ROOT).contains("unknown") || message.toLowerCase(java.util.Locale.ROOT).contains("not found"));
+            && (message.toLowerCase(java.util.Locale.ROOT).contains("unknown") || message.toLowerCase(java.util.Locale.ROOT).contains("not found"));
     }
 
-    public record Column(String name, String dataType, boolean nullable, boolean keyColumn, String comment, int position) {}
-    public record Table(String name, String comment, List<Column> columns) {}
-    public record Snapshot(String catalog, List<Table> tables) {}
+    public record Column(String name, String dataType, boolean nullable, boolean keyColumn, String comment,
+                         int position) {
+    }
+
+    public record Table(String name, String comment, List<Column> columns) {
+    }
+
+    public record Snapshot(String catalog, List<Table> tables) {
+    }
 }

@@ -8,15 +8,19 @@ import com.litedata.model.SqlTask;
 import com.litedata.store.LineageMapper;
 import com.litedata.store.MetadataMapper;
 import com.litedata.store.PlatformMapper;
+
 import java.util.ArrayList;
 import java.util.List;
+
 import org.junit.jupiter.api.Test;
 
 class LineageServiceTest {
-    @Test void boundsNodeExpansionAt120WithoutReturningAnUnboundedGraph() {
+    @Test
+    void boundsNodeExpansionAt120WithoutReturningAnUnboundedGraph() {
         Fixture fixture = fixture("root");
         var tasks = new ArrayList<SqlTask>();
-        for (int index = 0; index < 121; index++) tasks.add(task(index + 1L, "fan-" + index, "INSERT INTO node_" + index + " SELECT id FROM root"));
+        for (int index = 0; index < 121; index++)
+            tasks.add(task(index + 1L, "fan-" + index, "INSERT INTO node_" + index + " SELECT id FROM root"));
         when(fixture.mapper.tasks()).thenReturn(tasks);
 
         LineageService.Graph graph = fixture.service.graph(1L, "downstream", 1);
@@ -26,10 +30,12 @@ class LineageServiceTest {
         assertThat(graph.edges()).hasSize(119);
     }
 
-    @Test void boundsSelectedEdgesAt300() {
+    @Test
+    void boundsSelectedEdgesAt300() {
         Fixture fixture = fixture("root");
         var tasks = new ArrayList<SqlTask>();
-        for (int index = 0; index < 301; index++) tasks.add(task(index + 1L, "edge-" + index, "INSERT INTO sink SELECT id FROM root"));
+        for (int index = 0; index < 301; index++)
+            tasks.add(task(index + 1L, "edge-" + index, "INSERT INTO sink SELECT id FROM root"));
         when(fixture.mapper.tasks()).thenReturn(tasks);
 
         LineageService.Graph graph = fixture.service.graph(1L, "downstream", 1);
@@ -39,17 +45,18 @@ class LineageServiceTest {
         assertThat(graph.edges()).hasSize(300);
     }
 
-    @Test void parsesSqlAndKeepsDiamondDuplicatesAndCyclesFiniteWhileRespectingDirectionAndDepth() {
+    @Test
+    void parsesSqlAndKeepsDiamondDuplicatesAndCyclesFiniteWhileRespectingDirectionAndDepth() {
         Fixture fixture = fixture("dwd_orders");
         when(fixture.mapper.tasks()).thenReturn(List.of(
-                task(1, "to-root", "INSERT INTO dwd_orders SELECT id FROM ods_orders"),
-                task(2, "to-root", "INSERT INTO dwd_orders SELECT id FROM ods_orders"),
-                task(3, "left", "INSERT INTO dws_left SELECT id FROM dwd_orders"),
-                task(4, "right", "INSERT INTO dws_right SELECT id FROM dwd_orders"),
-                task(5, "ads-left", "INSERT INTO ads_orders SELECT id FROM dws_left"),
-                task(6, "ads-right", "INSERT INTO ads_orders SELECT id FROM dws_right"),
-                task(7, "cycle", "INSERT INTO dwd_orders SELECT id FROM ads_orders"),
-                task(8, "cte", "INSERT INTO ads_cte WITH chosen AS (SELECT id FROM dwd_orders) SELECT id FROM chosen")));
+            task(1, "to-root", "INSERT INTO dwd_orders SELECT id FROM ods_orders"),
+            task(2, "to-root", "INSERT INTO dwd_orders SELECT id FROM ods_orders"),
+            task(3, "left", "INSERT INTO dws_left SELECT id FROM dwd_orders"),
+            task(4, "right", "INSERT INTO dws_right SELECT id FROM dwd_orders"),
+            task(5, "ads-left", "INSERT INTO ads_orders SELECT id FROM dws_left"),
+            task(6, "ads-right", "INSERT INTO ads_orders SELECT id FROM dws_right"),
+            task(7, "cycle", "INSERT INTO dwd_orders SELECT id FROM ads_orders"),
+            task(8, "cte", "INSERT INTO ads_cte WITH chosen AS (SELECT id FROM dwd_orders) SELECT id FROM chosen")));
 
         LineageService.Graph upstream = fixture.service.graph(1L, "upstream", 1);
         LineageService.Graph downstream = fixture.service.graph(1L, "downstream", 1);
@@ -67,10 +74,12 @@ class LineageServiceTest {
         });
     }
 
-    @Test void rejectsIndexesBeyondTheTaskSafetyLimit() {
+    @Test
+    void rejectsIndexesBeyondTheTaskSafetyLimit() {
         Fixture fixture = fixture("root");
         var tooMany = new ArrayList<SqlTask>();
-        for (int index = 0; index < 5_001; index++) tooMany.add(task(index + 1L, "task-" + index, "INSERT INTO sink SELECT id FROM root"));
+        for (int index = 0; index < 5_001; index++)
+            tooMany.add(task(index + 1L, "task-" + index, "INSERT INTO sink SELECT id FROM root"));
         when(fixture.mapper.tasks()).thenReturn(tooMany);
 
         assertThatIllegalArgumentException().isThrownBy(() -> fixture.service.graph(1L, "both", 3)).withMessageContaining("最多5000条");
@@ -81,7 +90,11 @@ class LineageServiceTest {
         LineageMapper mapper = mock(LineageMapper.class);
         PlatformMapper platform = mock(PlatformMapper.class);
         MetadataTable root = new MetadataTable();
-        root.setId(1L); root.setScopeKey("doris"); root.setCatalogName("warehouse"); root.setTableName(rootTable); root.setSourceName("Doris 数仓");
+        root.setId(1L);
+        root.setScopeKey("doris");
+        root.setCatalogName("warehouse");
+        root.setTableName(rootTable);
+        root.setSourceName("Doris 数仓");
         when(metadata.table(1L)).thenReturn(root);
         when(metadata.find(anyString(), anyString(), anyString())).thenReturn(null);
         when(platform.sources()).thenReturn(List.of());
@@ -92,9 +105,12 @@ class LineageServiceTest {
 
     private static SqlTask task(long id, String name, String sql) {
         SqlTask task = new SqlTask();
-        task.setId(id); task.setName(name); task.setSqlText(sql);
+        task.setId(id);
+        task.setName(name);
+        task.setSqlText(sql);
         return task;
     }
 
-    private record Fixture(LineageService service, LineageMapper mapper) {}
+    private record Fixture(LineageService service, LineageMapper mapper) {
+    }
 }

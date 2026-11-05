@@ -9,6 +9,8 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 @SpringBootApplication
 @EnableConfigurationProperties({PlatformProperties.class, ModelingProperties.class})
 public class PlatformApplication {
-    public static void main(String[] args) { SpringApplication.run(PlatformApplication.class, args); }
+    public static void main(String[] args) {
+        SpringApplication.run(PlatformApplication.class, args);
+    }
 }
 

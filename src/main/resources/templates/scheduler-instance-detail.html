@@ -1,79 +1,225 @@
 <!doctype html>
-<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
-<head><title>运行记录详情 · LiteData</title></head><body><section data-scheduler-console
-  th:attr="data-status-url=${statusUrl ?: resource.path() + '/instances/' + instanceId + '/status'},data-instance-path=${resource.path() + '/instances/' + instanceId},data-can-read-logs=${canEdit}">
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title>运行记录详情 · LiteData</title></head>
+<body>
+<section data-scheduler-console
+         th:attr="data-status-url=${statusUrl ?: resource.path() + '/instances/' + instanceId + '/status'},data-instance-path=${resource.path() + '/instances/' + instanceId},data-can-read-logs=${canEdit}">
   <link rel="stylesheet" th:href="@{/css/scheduler-console.css}">
   <link rel="stylesheet" th:href="@{/css/workflow-canvas.css}">
   <div class="d-flex flex-wrap justify-content-between align-items-start gap-5 mb-7">
     <div>
       <h1 class="page-title">运行记录详情</h1>
-      <p class="page-subtitle mb-0" th:text="${resource.type == 'pipeline' ? '查看本次调度执行的节点日志，以及该记录收到的同步回调结果。' : '查看本次调度执行的节点日志，失败节点优先展开。'}">查看本次调度执行的节点日志。</p>
-      <p class="scheduler-status small fg-2 mb-0" data-scheduler-status role="status" aria-live="polite">每 5 秒自动更新状态</p>
+      <p class="page-subtitle mb-0"
+         th:text="${resource.type == 'pipeline' ? '查看本次调度执行的节点日志，以及该记录收到的同步回调结果。' : '查看本次调度执行的节点日志，失败节点优先展开。'}">
+        查看本次调度执行的节点日志。</p>
+      <p class="scheduler-status small fg-2 mb-0" data-scheduler-status role="status" aria-live="polite">每 5
+        秒自动更新状态</p>
 
     </div>
     <div class="d-flex flex-wrap gap-3">
-      <button th:if="${instance != null}" class="btn-outline theme-primary" type="button" data-scheduler-refresh>刷新状态</button>
-      <button th:unless="${instance != null}" class="btn-outline theme-primary" type="button" onclick="location.reload()">刷新状态</button>
+      <button th:if="${instance != null}" class="btn-outline theme-primary" type="button" data-scheduler-refresh>
+        刷新状态
+      </button>
+      <button th:unless="${instance != null}" class="btn-outline theme-primary" type="button"
+              onclick="location.reload()">刷新状态
+      </button>
       <a class="btn-outline theme-secondary" th:href="${resource.path()}">返回运行记录</a>
     </div>
   </div>
   <div th:if="${engineError}" hidden data-platform-notification="danger" th:text="${engineError}"></div>
   <th:block th:if="${instance != null}">
-    <article class="platform-card card mb-5"><div class="card-body"><div class="scheduler-summary">
-      <div class="scheduler-summary-item"><div class="small fg-2 mb-2">运行编号</div><strong th:text="${'#' + instance.id}"></strong></div>
-      <div class="scheduler-summary-item"><div class="small fg-2 mb-2">执行状态</div><span class="badge" data-workflow-state th:classappend="${instance.state == 'SUCCESS' ? 'theme-success' : instance.state == 'FAILURE' ? 'theme-danger' : 'theme-info'}" th:text="${statusLabels[instance.state] ?: instance.state}"></span></div>
-      <div class="scheduler-summary-item"><div class="small fg-2 mb-2">开始 / 结束（引擎时间）</div><time data-workflow-start th:text="${instance.startedAt}"></time><time class="fg-2 d-block" data-workflow-end th:text="${#strings.isEmpty(instance.finishedAt) ? '尚未结束' : instance.finishedAt}"></time></div>
-      <div class="scheduler-summary-item"><div class="small fg-2 mb-2">运行次数</div><strong data-workflow-runs th:text="${instance.runTimes}"></strong></div>
-      <div class="scheduler-summary-item"><div class="small fg-2 mb-2">节点统计</div><strong data-node-count th:text="${#lists.size(nodes)}"></strong></div>
-    </div></div></article>
+    <article class="platform-card card mb-5">
+      <div class="card-body">
+        <div class="scheduler-summary">
+          <div class="scheduler-summary-item">
+            <div class="small fg-2 mb-2">运行编号</div>
+            <strong th:text="${'#' + instance.id}"></strong></div>
+          <div class="scheduler-summary-item">
+            <div class="small fg-2 mb-2">执行状态</div>
+            <span class="badge" data-workflow-state
+                  th:classappend="${instance.state == 'SUCCESS' ? 'theme-success' : instance.state == 'FAILURE' ? 'theme-danger' : 'theme-info'}"
+                  th:text="${statusLabels[instance.state] ?: instance.state}"></span></div>
+          <div class="scheduler-summary-item">
+            <div class="small fg-2 mb-2">开始 / 结束（引擎时间）</div>
+            <time data-workflow-start th:text="${instance.startedAt}"></time>
+            <time class="fg-2 d-block" data-workflow-end
+                  th:text="${#strings.isEmpty(instance.finishedAt) ? '尚未结束' : instance.finishedAt}"></time>
+          </div>
+          <div class="scheduler-summary-item">
+            <div class="small fg-2 mb-2">运行次数</div>
+            <strong data-workflow-runs th:text="${instance.runTimes}"></strong></div>
+          <div class="scheduler-summary-item">
+            <div class="small fg-2 mb-2">节点统计</div>
+            <strong data-node-count th:text="${#lists.size(nodes)}"></strong></div>
+        </div>
+      </div>
+    </article>
   </th:block>
-  <article class="platform-card card mb-5" th:if="${callbackPage != null}" data-callback-records th:attr="data-callback-history-url=@{/pipelines/{id}/runs(id=${resource.id})}">
-    <div class="card-header d-flex justify-content-between gap-3"><span>同步回调记录</span><small class="fw-normal fg-2" data-callback-total th:text="${'共 ' + callbackPage.total + ' 条 · 平台回调' }"></small></div>
-    <div class="card-body border-bottom"><p class="mb-0">回调在执行节点实际领取同步后登记，并回传 ODS 同步结果和水位区间。它独立于工作流状态：工作流成功不等于已经收到成功回调。</p></div>
-    <div class="card-body p-0"><div class="table-responsive"><table class="table table-hover mb-0">
-      <thead><tr><th>平台记录 ID</th><th>节点运行编号</th><th>回调状态</th><th>开始时间（北京时间）</th><th>结束时间（北京时间）</th><th>水位区间</th><th>结果摘要</th></tr></thead>
-      <tbody data-callback-rows>
-        <tr th:each="run : ${callbackPage.items}">
-          <td><code data-callback-id th:text="${run.id}"></code></td>
-          <td><code data-callback-task-id th:text="${run.taskInstanceId ?: '—'}"></code></td>
-          <td><span class="badge" data-callback-state th:classappend="${run.status == 'SUCCESS' ? 'theme-success' : run.status == 'FAILED' ? 'theme-danger' : 'theme-warning'}" th:text="${run.status == 'SUCCESS' ? '成功' : run.status == 'FAILED' ? '失败' : '运行中'}"></span></td>
-          <td data-callback-start th:text="${run.startedAt ?: '—'}"></td><td data-callback-end th:text="${run.finishedAt ?: '—'}"></td>
-          <td><code data-callback-range th:text="${'[' + (run.lowerBound ?: '—') + ', ' + (run.upperBound ?: '—') + ')'}"></code><div class="small fg-2 mt-1">源库时间 · 左闭右开</div></td>
-          <td class="small" style="max-width:24rem;overflow-wrap:anywhere" data-callback-message th:text="${run.message ?: '等待执行节点回传结果'}"></td>
-        </tr>
-        <tr th:if="${#lists.isEmpty(callbackPage.items)}" data-callback-empty><td colspan="7" class="text-center fg-2 py-7">尚未收到可关联回调。运行记录可能仍在排队、节点尚未领取，或回调尚未抵达平台。旧执行器未携带运行编号的记录请查看<a th:href="@{/pipelines/{id}/runs(id=${resource.id})}">历史未关联回调</a>。</td></tr>
-      </tbody>
-    </table></div></div>
-    <template data-callback-row-template><tr><td><code data-callback-id></code></td><td><code data-callback-task-id></code></td><td><span class="badge" data-callback-state></span></td><td data-callback-start></td><td data-callback-end></td><td><code data-callback-range></code><div class="small fg-2 mt-1">源库时间 · 左闭右开</div></td><td class="small" style="max-width:24rem;overflow-wrap:anywhere" data-callback-message></td></tr></template>
+  <article class="platform-card card mb-5" th:if="${callbackPage != null}" data-callback-records
+           th:attr="data-callback-history-url=@{/pipelines/{id}/runs(id=${resource.id})}">
+    <div class="card-header d-flex justify-content-between gap-3"><span>同步回调记录</span><small class="fw-normal fg-2"
+                                                                                                  data-callback-total
+                                                                                                  th:text="${'共 ' + callbackPage.total + ' 条 · 平台回调' }"></small>
+    </div>
+    <div class="card-body border-bottom"><p class="mb-0">回调在执行节点实际领取同步后登记，并回传 ODS
+      同步结果和水位区间。它独立于工作流状态：工作流成功不等于已经收到成功回调。</p></div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0">
+          <thead>
+          <tr>
+            <th>平台记录 ID</th>
+            <th>节点运行编号</th>
+            <th>回调状态</th>
+            <th>开始时间（北京时间）</th>
+            <th>结束时间（北京时间）</th>
+            <th>水位区间</th>
+            <th>结果摘要</th>
+          </tr>
+          </thead>
+          <tbody data-callback-rows>
+          <tr th:each="run : ${callbackPage.items}">
+            <td><code data-callback-id th:text="${run.id}"></code></td>
+            <td><code data-callback-task-id th:text="${run.taskInstanceId ?: '—'}"></code></td>
+            <td><span class="badge" data-callback-state
+                      th:classappend="${run.status == 'SUCCESS' ? 'theme-success' : run.status == 'FAILED' ? 'theme-danger' : 'theme-warning'}"
+                      th:text="${run.status == 'SUCCESS' ? '成功' : run.status == 'FAILED' ? '失败' : '运行中'}"></span>
+            </td>
+            <td data-callback-start th:text="${run.startedAt ?: '—'}"></td>
+            <td data-callback-end th:text="${run.finishedAt ?: '—'}"></td>
+            <td><code data-callback-range
+                      th:text="${'[' + (run.lowerBound ?: '—') + ', ' + (run.upperBound ?: '—') + ')'}"></code>
+              <div class="small fg-2 mt-1">源库时间 · 左闭右开</div>
+            </td>
+            <td class="small" style="max-width:24rem;overflow-wrap:anywhere" data-callback-message
+                th:text="${run.message ?: '等待执行节点回传结果'}"></td>
+          </tr>
+          <tr th:if="${#lists.isEmpty(callbackPage.items)}" data-callback-empty>
+            <td colspan="7" class="text-center fg-2 py-7">尚未收到可关联回调。运行记录可能仍在排队、节点尚未领取，或回调尚未抵达平台。旧执行器未携带运行编号的记录请查看<a
+              th:href="@{/pipelines/{id}/runs(id=${resource.id})}">历史未关联回调</a>。
+            </td>
+          </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <template data-callback-row-template>
+      <tr>
+        <td><code data-callback-id></code></td>
+        <td><code data-callback-task-id></code></td>
+        <td><span class="badge" data-callback-state></span></td>
+        <td data-callback-start></td>
+        <td data-callback-end></td>
+        <td><code data-callback-range></code>
+          <div class="small fg-2 mt-1">源库时间 · 左闭右开</div>
+        </td>
+        <td class="small" style="max-width:24rem;overflow-wrap:anywhere" data-callback-message></td>
+      </tr>
+    </template>
   </article>
   <th:block th:if="${instance != null}">
-    <article th:if="${executionGraph != null}" class="platform-card card mb-5"><div class="card-header">工作流运行图 <small class="fw-normal fg-2">仅显示本次工作流快照，不推测历史版本</small></div><div class="card-body workflow-execution" data-workflow-execution><div class="workflow-stage-wrap"><div class="workflow-stage"><svg data-workflow-edges aria-hidden="true"></svg><div data-workflow-nodes></div></div></div></div></article>
+    <article th:if="${executionGraph != null}" class="platform-card card mb-5">
+      <div class="card-header">工作流运行图 <small class="fw-normal fg-2">仅显示本次工作流快照，不推测历史版本</small>
+      </div>
+      <div class="card-body workflow-execution" data-workflow-execution>
+        <div class="workflow-stage-wrap">
+          <div class="workflow-stage">
+            <svg data-workflow-edges aria-hidden="true"></svg>
+            <div data-workflow-nodes></div>
+          </div>
+        </div>
+      </div>
+    </article>
     <div class="scheduler-workspace">
-      <article class="platform-card card scheduler-node-panel"><div class="card-header">执行节点</div><div class="card-body p-0"><nav aria-label="执行节点选择" class="scheduler-node-list" data-scheduler-nodes>
-        <a th:each="node : ${nodes}" class="scheduler-node" th:classappend="${selectedNode != null and selectedNode.id == node.id} ? 'is-selected'" th:attr="aria-current=${selectedNode != null and selectedNode.id == node.id ? 'true' : null},data-node-id=${node.id}" th:href="${resource.path() + '/instances/' + instance.id + '?taskId=' + node.id}">
-          <strong data-node-name th:text="${node.name}"></strong>
-          <div class="scheduler-node-meta"><span class="small fg-2">状态</span><span class="badge" data-node-state th:classappend="${node.state == 'SUCCESS' ? 'theme-success' : node.state == 'FAILURE' ? 'theme-danger' : 'theme-info'}" th:text="${statusLabels[node.state] ?: node.state}"></span></div>
-          <div class="scheduler-node-meta"><span class="small fg-2">重试次数</span><span data-node-retries th:text="${node.retryTimes}"></span></div>
-          <div class="scheduler-node-meta"><span class="small fg-2">节点编号</span><span data-node-id-text th:text="${'#' + node.id}"></span></div>
-          <div class="scheduler-node-time"><span class="small fg-2">开始</span><time data-node-start th:text="${node.startedAt}"></time></div>
-          <div class="scheduler-node-time"><span class="small fg-2">结束</span><time data-node-end th:text="${#strings.isEmpty(node.finishedAt) ? '尚未结束' : node.finishedAt}"></time></div>
-        </a>
-      </nav><p th:if="${#lists.isEmpty(nodes)}" class="fg-2 p-5 mb-0" data-scheduler-empty>尚未派发节点，正在等待上游或调度资源；状态将自动更新。</p></div></article>
-      <template data-scheduler-node-template><a class="scheduler-node" data-node-id><strong data-node-name></strong><div class="scheduler-node-meta"><span class="small fg-2">状态</span><span class="badge" data-node-state></span></div><div class="scheduler-node-meta"><span class="small fg-2">重试次数</span><span data-node-retries></span></div><div class="scheduler-node-meta"><span class="small fg-2">节点编号</span><span data-node-id-text></span></div><div class="scheduler-node-time"><span class="small fg-2">开始</span><time data-node-start></time></div><div class="scheduler-node-time"><span class="small fg-2">结束</span><time data-node-end></time></div></a></template>
-      <article class="platform-card card scheduler-log-panel" th:if="${canEdit}" data-log-console th:attr="data-log-url=${selectedNode != null ? (logUrl ?: '') : ''},data-selected-id=${selectedNode != null ? selectedNode.id : ''},data-selected-name=${selectedNode != null ? selectedNode.name : ''}">
-        <div class="card-header scheduler-log-heading"><span data-log-title th:text="${selectedNode != null ? selectedNode.name : '等待节点派发'}"></span><span class="badge" data-log-node-state th:classappend="${selectedNode != null and selectedNode.state == 'SUCCESS' ? 'theme-success' : selectedNode != null and selectedNode.state == 'FAILURE' ? 'theme-danger' : 'theme-info'}" th:text="${selectedNode != null ? (statusLabels[selectedNode.state] ?: selectedNode.state) : '等待中'}"></span><small class="fw-normal fg-2">节点日志</small></div>
+      <article class="platform-card card scheduler-node-panel">
+        <div class="card-header">执行节点</div>
+        <div class="card-body p-0">
+          <nav aria-label="执行节点选择" class="scheduler-node-list" data-scheduler-nodes>
+            <a th:each="node : ${nodes}" class="scheduler-node"
+               th:classappend="${selectedNode != null and selectedNode.id == node.id} ? 'is-selected'"
+               th:attr="aria-current=${selectedNode != null and selectedNode.id == node.id ? 'true' : null},data-node-id=${node.id}"
+               th:href="${resource.path() + '/instances/' + instance.id + '?taskId=' + node.id}">
+              <strong data-node-name th:text="${node.name}"></strong>
+              <div class="scheduler-node-meta"><span class="small fg-2">状态</span><span class="badge" data-node-state
+                                                                                         th:classappend="${node.state == 'SUCCESS' ? 'theme-success' : node.state == 'FAILURE' ? 'theme-danger' : 'theme-info'}"
+                                                                                         th:text="${statusLabels[node.state] ?: node.state}"></span>
+              </div>
+              <div class="scheduler-node-meta"><span class="small fg-2">重试次数</span><span data-node-retries
+                                                                                             th:text="${node.retryTimes}"></span>
+              </div>
+              <div class="scheduler-node-meta"><span class="small fg-2">节点编号</span><span data-node-id-text
+                                                                                             th:text="${'#' + node.id}"></span>
+              </div>
+              <div class="scheduler-node-time"><span class="small fg-2">开始</span>
+                <time data-node-start th:text="${node.startedAt}"></time>
+              </div>
+              <div class="scheduler-node-time"><span class="small fg-2">结束</span>
+                <time data-node-end
+                      th:text="${#strings.isEmpty(node.finishedAt) ? '尚未结束' : node.finishedAt}"></time>
+              </div>
+            </a>
+          </nav>
+          <p th:if="${#lists.isEmpty(nodes)}" class="fg-2 p-5 mb-0" data-scheduler-empty>
+            尚未派发节点，正在等待上游或调度资源；状态将自动更新。</p></div>
+      </article>
+      <template data-scheduler-node-template><a class="scheduler-node" data-node-id><strong data-node-name></strong>
+        <div class="scheduler-node-meta"><span class="small fg-2">状态</span><span class="badge" data-node-state></span>
+        </div>
+        <div class="scheduler-node-meta"><span class="small fg-2">重试次数</span><span data-node-retries></span></div>
+        <div class="scheduler-node-meta"><span class="small fg-2">节点编号</span><span data-node-id-text></span></div>
+        <div class="scheduler-node-time"><span class="small fg-2">开始</span>
+          <time data-node-start></time>
+        </div>
+        <div class="scheduler-node-time"><span class="small fg-2">结束</span>
+          <time data-node-end></time>
+        </div>
+      </a></template>
+      <article class="platform-card card scheduler-log-panel" th:if="${canEdit}" data-log-console
+               th:attr="data-log-url=${selectedNode != null ? (logUrl ?: '') : ''},data-selected-id=${selectedNode != null ? selectedNode.id : ''},data-selected-name=${selectedNode != null ? selectedNode.name : ''}">
+        <div class="card-header scheduler-log-heading"><span data-log-title
+                                                             th:text="${selectedNode != null ? selectedNode.name : '等待节点派发'}"></span><span
+          class="badge" data-log-node-state
+          th:classappend="${selectedNode != null and selectedNode.state == 'SUCCESS' ? 'theme-success' : selectedNode != null and selectedNode.state == 'FAILURE' ? 'theme-danger' : 'theme-info'}"
+          th:text="${selectedNode != null ? (statusLabels[selectedNode.state] ?: selectedNode.state) : '等待中'}"></span><small
+          class="fw-normal fg-2">节点日志</small></div>
         <div class="card-body">
-          <div class="scheduler-log-toolbar"><div class="scheduler-log-actions"><button class="btn-solid theme-primary btn-sm" type="button" data-log-load>加载下一段</button><button class="btn-outline theme-secondary btn-sm" type="button" data-log-reset>从头读取</button><button class="btn-outline theme-secondary btn-sm" type="button" data-log-download disabled>下载已加载日志</button></div><div class="scheduler-log-options"><label><input class="check" type="checkbox" data-log-auto checked> 自动追踪日志</label><label><input class="check" type="checkbox" data-log-follow checked> 跟随底部</label></div></div>
-          <label class="form-label mt-5" for="log-filter">检索已加载日志</label><input class="form-control" type="search" id="log-filter" data-log-filter placeholder="输入关键字筛选已加载的行" maxlength="200">
-          <div class="d-flex justify-content-between gap-3 small fg-2 my-3"><span data-log-status role="status" aria-live="polite">准备读取日志…</span><span data-log-count>已读取 0 行</span></div>
+          <div class="scheduler-log-toolbar">
+            <div class="scheduler-log-actions">
+              <button class="btn-solid theme-primary btn-sm" type="button" data-log-load>加载下一段</button>
+              <button class="btn-outline theme-secondary btn-sm" type="button" data-log-reset>从头读取</button>
+              <button class="btn-outline theme-secondary btn-sm" type="button" data-log-download disabled>
+                下载已加载日志
+              </button>
+            </div>
+            <div class="scheduler-log-options"><label><input class="check" type="checkbox" data-log-auto checked> 自动追踪日志</label><label><input
+              class="check" type="checkbox" data-log-follow checked> 跟随底部</label></div>
+          </div>
+          <label class="form-label mt-5" for="log-filter">检索已加载日志</label><input class="form-control"
+                                                                                       type="search" id="log-filter"
+                                                                                       data-log-filter
+                                                                                       placeholder="输入关键字筛选已加载的行"
+                                                                                       maxlength="200">
+          <div class="d-flex justify-content-between gap-3 small fg-2 my-3"><span data-log-status role="status"
+                                                                                  aria-live="polite">准备读取日志…</span><span
+            data-log-count>已读取 0 行</span></div>
 
           <pre class="scheduler-log-output" data-log-output tabindex="0" aria-label="执行日志内容"></pre>
-          <p class="small fg-2 mt-3 mb-0">每批最多读取 200 行，当前窗口保留最近 10000 行。配置敏感行与连接地址已隐藏；下载与检索仅覆盖当前已加载窗口。节点尚未派发或日志已清理时可能暂不可读。</p>
+          <p class="small fg-2 mt-3 mb-0">每批最多读取 200 行，当前窗口保留最近 10000
+            行。配置敏感行与连接地址已隐藏；下载与检索仅覆盖当前已加载窗口。节点尚未派发或日志已清理时可能暂不可读。</p>
           <noscript><p class="alert theme-info mt-3">请启用 JavaScript 以分段读取节点日志。</p></noscript>
         </div>
       </article>
-      <article th:if="${!canEdit}" class="platform-card card"><div class="card-body fg-2">当前账号可查看运行状态。节点执行日志仅向管理员和开发者开放。</div></article>
+      <article th:if="${!canEdit}" class="platform-card card">
+        <div class="card-body fg-2">当前账号可查看运行状态。节点执行日志仅向管理员和开发者开放。</div>
+      </article>
     </div>
   </th:block>
-  <script th:inline="javascript">window.executionGraph = /*[[${executionGraph}]]*/ null; window.schedulerNodes = /*[[${nodes}]]*/ []; window.schedulerLabels = /*[[${statusLabels}]]*/ {};</script><script th:src="@{/js/workflow-canvas.js}" defer></script><script th:src="@{/js/scheduler-console.js}" defer></script>
-</section></body></html>
+  <script th:inline="javascript">window.executionGraph = /*[[${executionGraph}]]*/ null;
+  window.schedulerNodes = /*[[${nodes}]]*/ [];
+  window.schedulerLabels = /*[[${statusLabels}]]*/ {};</script>
+  <script th:src="@{/js/workflow-canvas.js}" defer></script>
+  <script th:src="@{/js/scheduler-console.js}" defer></script>
+</section>
+</body>
+</html>
