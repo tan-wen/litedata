@@ -4,6 +4,7 @@ import com.litedata.config.PlatformProperties;
 import com.litedata.data.SourceService;
 import com.litedata.pipeline.*;
 import com.litedata.service.DataApiService;
+import com.litedata.service.QueryPolicy;
 import com.litedata.store.PlatformMapper;
 import com.litedata.web.ResourceForms.*;
 
@@ -20,6 +21,7 @@ import org.springframework.web.bind.WebDataBinder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 @Controller
 public class PageController {
@@ -28,6 +30,7 @@ public class PageController {
     private final PipelineService pipelines;
     private final DolphinSchedulerClient scheduler;
     private final DataApiService services;
+    private final QueryPolicy queryPolicy;
     private final PlatformProperties properties;
     private final com.litedata.store.ModelMapper models;
     private final PipelineTransformMigration migration;
@@ -36,12 +39,13 @@ public class PageController {
 
     public PageController(PlatformMapper mapper, SourceService sources, PipelineService pipelines, DolphinSchedulerClient scheduler, DataApiService services, PlatformProperties properties,
                           com.litedata.store.ModelMapper models, PipelineTransformMigration migration, OdsPipelineService odsPipelines,
-                          com.litedata.data.SourceSchemaInspector sourceSchemas) {
+                          com.litedata.data.SourceSchemaInspector sourceSchemas, QueryPolicy queryPolicy) {
         this.mapper = mapper;
         this.sources = sources;
         this.pipelines = pipelines;
         this.scheduler = scheduler;
         this.services = services;
+        this.queryPolicy = queryPolicy;
         this.properties = properties;
         this.models = models;
         this.migration = migration;
@@ -417,7 +421,14 @@ public class PageController {
 
     @PostMapping("/services/{id}/credentials")
     String credential(@PathVariable long id, RedirectAttributes redirect, Principal principal) {
-        redirect.addFlashAttribute("apiKey", services.credential(id));
+        var service = services.get(id);
+        var parameters = queryPolicy.validate(service.getQuerySql()).parameters();
+        String endpoint = ServletUriComponentsBuilder.fromCurrentContextPath()
+            .path("/api/data/{slug}").buildAndExpand(service.getSlug()).toUriString();
+        String apiKey = services.credential(id);
+        redirect.addFlashAttribute("apiKey", apiKey);
+        redirect.addFlashAttribute("serviceCurl", ServiceCurlCommand.create(endpoint, apiKey, parameters));
+        redirect.addFlashAttribute("serviceCurlName", service.getName());
         audit(principal, "CREDENTIAL_ROTATE", Long.toString(id));
         redirect.addFlashAttribute("success", "新凭证仅显示本次，旧凭证已吊销");
         return "redirect:/services";

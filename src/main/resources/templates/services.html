@@ -10,6 +10,11 @@
       </p></div>
     <a th:if="${canEdit}" class="btn-solid theme-primary" th:href="@{/services/new}">创建数据服务</a></div>
   <div th:replace="~{fragments/messages :: messages}"></div>
+  <div class="alert theme-info" th:if="${serviceCurl}">
+    <p class="fw-semibold mb-2" th:text="${'接口测试命令：' + serviceCurlName}">接口测试命令</p>
+    <pre class="code-preview user-select-all mb-2"><code th:text="${serviceCurl}"></code></pre>
+    <p class="mb-0">请保存此命令，密钥仅本次显示。将 <code>&lt;参数名&gt;</code> 替换为实际值后执行；服务需处于已发布状态。</p>
+  </div>
   <article class="platform-card card">
     <div class="card-header">已配置服务 <small class="fw-normal fg-2">日调用量按 Asia/Shanghai
       当天统计，包含成功和失败请求</small></div>
@@ -30,7 +35,8 @@
           <tr th:each="service : ${services}" th:id="${'service-' + service.id}">
             <td class="fw-semibold" th:text="${service.name}">客户查询</td>
             <td><code th:text="${service.slug}">customers</code></td>
-            <td class="text-truncate" style="max-width:290px" th:text="${service.querySql}">SELECT * FROM customers</td>
+            <td class="text-truncate" style="max-width:290px" th:text="${service.querySql}"
+                th:title="${service.querySql}">SELECT * FROM customers</td>
             <td th:text="${service.dailyCalls}">0</td>
             <td><span class="badge" th:classappend="${service.published} ? ' theme-success' : ' theme-secondary'"
                       th:text="${service.published} ? '已发布' : '草稿'">草稿</span></td>
@@ -48,9 +54,9 @@
                       method="post"><input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
                   <button class="btn-outline theme-secondary btn-sm" type="submit">生成密钥</button>
                 </form>
-                <form th:if="${canEdit}" th:action="@{/services/{id}/archive(id=${service.id})}" method="post"><input
+                <form th:if="${canEdit and !service.published}" th:action="@{/services/{id}/archive(id=${service.id})}" method="post"><input
                   type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
-                  <button class="btn-outline theme-danger btn-sm" type="submit" th:disabled="${service.published}">
+                  <button class="btn-outline theme-danger btn-sm" type="submit">
                     删除
                   </button>
                 </form>

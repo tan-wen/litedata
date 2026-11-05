@@ -261,7 +261,7 @@ class PlatformIntegrationTest {
         when(monitor.log(201, 0, 200)).thenReturn("INFO start\npassword=must-stay-private\n<script>alert(1)</script>\n");
         String path = "/scheduling/pipeline/" + id;
         mvc.perform(get(path).with(user("viewer").roles("VIEWER"))).andExpect(status().isOk())
-            .andExpect(content().string(org.hamcrest.Matchers.containsString("节点 / 日志")));
+            .andExpect(content().string(org.hamcrest.Matchers.matchesPattern("(?s).*节点\\s*/\\s*日志.*")));
         mvc.perform(get(path + "/instances/101").with(user("admin").roles("ADMIN"))).andExpect(status().isOk())
             .andExpect(content().string(org.hamcrest.Matchers.containsString("data-log-console")));
         mvc.perform(get(path + "/instances/101").with(user("viewer").roles("VIEWER"))).andExpect(status().isOk())
@@ -380,6 +380,57 @@ class PlatformIntegrationTest {
         assertThat(source.getEncryptedPassword()).isEqualTo(persisted);
         assertThat(persisted).doesNotContain(secret);
         assertThat(sourceService.password(source)).isEqualTo(secret);
+    }
+
+    @Test
+    void serviceListShowsFullSqlAndOnlyDraftsCanBeDeleted() throws Exception {
+        String sql = "SELECT id, name FROM warehouse.api_fixture WHERE name <> ':literal' AND id = :customerId";
+        apiService.create("悬浮 SQL", "sql-preview", sql);
+        long id = mapper.services().getFirst().getId();
+        String archiveAction = "action=\"/services/" + id + "/archive\"";
+        mvc.perform(get("/services").with(user("developer").roles("DEVELOPER")))
+            .andExpect(status().isOk())
+            .andExpect(content().string(org.hamcrest.Matchers.containsString("title=\"" + org.springframework.web.util.HtmlUtils.htmlEscape(sql) + "\"")))
+            .andExpect(content().string(org.hamcrest.Matchers.containsString(archiveAction)));
+        apiService.publish(id);
+        mvc.perform(get("/services").with(user("developer").roles("DEVELOPER")))
+            .andExpect(status().isOk())
+            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(archiveAction))));
+        apiService.publish(id);
+        mvc.perform(get("/services").with(user("reader").roles("VIEWER")))
+            .andExpect(status().isOk())
+            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(archiveAction))));
+    }
+
+    @Test
+    void generatedServiceCredentialIncludesACompleteCurlCommandShownOnce() throws Exception {
+        apiService.create("客户测试接口", "curl-customers",
+            "SELECT id, name FROM warehouse.api_fixture WHERE id = :customerId OR (id = :customerId AND name <> ':ignored')");
+        long id = mapper.services().getFirst().getId();
+        apiService.publish(id);
+        String oldKey = apiService.credential(id);
+        var generated = mvc.perform(post("https://data.example.test:8443/litedata/services/" + id + "/credentials")
+                .contextPath("/litedata").with(csrf()).with(user("admin").roles("ADMIN")))
+            .andExpect(status().is3xxRedirection())
+            .andExpect(header().string("Location", "/litedata/services")).andReturn();
+        String key = (String) generated.getFlashMap().get("apiKey");
+        String command = (String) generated.getFlashMap().get("serviceCurl");
+        assertThat(command).contains("curl --get 'https://data.example.test:8443/litedata/api/data/curl-customers'",
+            "--header 'X-API-Key: " + key + "'", "--data-urlencode 'pageNum=1'", "--data-urlencode 'pageSize=20'")
+            .containsOnlyOnce("--data-urlencode 'customerId=<customerId>'").doesNotContain("ignored", oldKey);
+        var session = (org.springframework.mock.web.MockHttpSession) generated.getRequest().getSession(false);
+        mvc.perform(get("/litedata/services").contextPath("/litedata").session(session).with(user("admin").roles("ADMIN")))
+            .andExpect(status().isOk())
+            .andExpect(content().string(org.hamcrest.Matchers.containsString(org.springframework.web.util.HtmlUtils.htmlEscape(command))));
+        mvc.perform(get("/litedata/services").contextPath("/litedata").session(session).with(user("admin").roles("ADMIN")))
+            .andExpect(status().isOk())
+            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(key))))
+            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("curl --get"))));
+        mvc.perform(get("/api/data/curl-customers").header("X-API-Key", key)
+                .param("customerId", "1").param("pageNum", "1").param("pageSize", "20"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].name").value("Ada"));
+        mvc.perform(get("/api/data/curl-customers").header("X-API-Key", oldKey).param("customerId", "1"))
+            .andExpect(status().isUnauthorized());
     }
 
     @Test

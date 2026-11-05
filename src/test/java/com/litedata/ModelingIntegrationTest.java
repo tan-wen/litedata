@@ -799,7 +799,7 @@ class ModelingIntegrationTest {
             var row = java.util.regex.Pattern.compile("(?s)<tr\\b[^>]*>\\s*<td><a\\b[^>]*\\bhref=\"/models/" + id + "\".*?</tr>")
                 .matcher(result.getResponse().getContentAsString());
             assertThat(row.find()).as("model row %s", id).isTrue();
-            assertThat(row.group()).contains(expected);
+            assertThat(row.group().replaceAll("\\s+", " ")).contains(expected);
         };
     }
 
