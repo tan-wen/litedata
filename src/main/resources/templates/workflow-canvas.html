@@ -12,7 +12,8 @@
       <p class="page-subtitle mb-0" th:text="${workflow.description ?: '未填写说明'}"></p></div>
     <div class="workflow-actions"><a th:if="${canEdit}" class="btn-outline theme-secondary"
                                      th:href="@{/workflows/{id}/edit(id=${workflow.id})}">编辑信息</a><a
-      class="btn-outline theme-secondary" th:href="@{/scheduling/workflow/{id}(id=${workflow.id})}">运行记录</a></div>
+      class="btn-outline theme-secondary" th:href="@{/scheduling/workflow/{id}(id=${workflow.id})}">运行记录</a><a
+      class="btn-outline theme-secondary" th:href="@{/workflows}">返回数据加工</a></div>
   </div>
   <p class="small fg-2"><span th:text="${workflow.triggerMode == 'EVENT' ? '数据就绪事件：' : 'Cron：'}"></span>
     <code th:if="${workflow.triggerMode == 'CRON'}" th:text="${workflow.cronExpression}" data-workflow-current-cron></code>
@@ -81,7 +82,6 @@
       </button>
       <button th:if="${canEdit}" class="btn-outline theme-primary btn-sm" type="button" data-workflow-new-sql>新增SQL加工节点</button>
       <button th:if="${canEdit}" class="btn-outline theme-primary btn-sm" type="button" data-workflow-save>保存画布</button>
-      <a class="btn-outline theme-primary btn-sm" th:href="@{/workflows}">返回加工流程</a>
     </div>
     <span class="small fg-2" data-workflow-status role="status">正在加载画布…</span></div>
   <div class="workflow-layout" th:classappend="${!canEdit} ? 'workflow-readonly'">
