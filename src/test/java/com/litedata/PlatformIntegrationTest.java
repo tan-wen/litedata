@@ -265,7 +265,7 @@ class PlatformIntegrationTest {
         when(monitor.log(201, 0, 200)).thenReturn("INFO start\npassword=must-stay-private\n<script>alert(1)</script>\n");
         String path = "/scheduling/pipeline/" + id;
         mvc.perform(get(path).with(user("viewer").roles("VIEWER"))).andExpect(status().isOk())
-            .andExpect(content().string(org.hamcrest.Matchers.matchesPattern("(?s).*节点\\s*/\\s*日志.*")));
+            .andExpect(content().string(org.hamcrest.Matchers.containsString("#101")));
         mvc.perform(get(path + "/instances/101").with(user("admin").roles("ADMIN"))).andExpect(status().isOk())
             .andExpect(content().string(org.hamcrest.Matchers.containsString("data-log-console")));
         mvc.perform(get(path + "/instances/101").with(user("viewer").roles("VIEWER"))).andExpect(status().isOk())

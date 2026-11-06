@@ -59,9 +59,7 @@
                       th:text="${creationStatus.created and item.physicalVersion == null ? '待核对' : item.physicalStatus}"></span>
             </td>
             <td>
-              <div class="d-flex align-items-center gap-2 text-nowrap"><a class="btn-outline theme-primary btn-sm"
-                                                                          th:href="@{/models/{id}(id=${item.id})}">DDL /
-                比对</a><a th:if="${canEdit}" class="btn-link theme-primary btn-sm"
+              <div class="d-flex align-items-center gap-2 text-nowrap"><a th:if="${canEdit}" class="btn-link theme-primary btn-sm"
                            th:href="@{/models/{id}/edit(id=${item.id})}">编辑</a>
                 <form th:if="${canEdit and creationStatus.notCreated}"
                       th:action="@{/models/{id}/archive(id=${item.id})}" method="post" class="d-inline"><input

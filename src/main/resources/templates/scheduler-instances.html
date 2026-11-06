@@ -54,7 +54,6 @@
             <th>开始时间</th>
             <th>结束时间</th>
             <th>运行次数</th>
-            <th>操作</th>
           </tr>
           </thead>
           <tbody>
@@ -68,11 +67,9 @@
             <td th:text="${instance.startedAt ?: '—'}"></td>
             <td th:text="${#strings.isEmpty(instance.finishedAt) ? '—' : instance.finishedAt}"></td>
             <td th:text="${instance.runTimes}"></td>
-            <td><a class="btn-outline theme-primary btn-sm" th:href="${resource.path() + '/instances/' + instance.id}">节点
-              / 日志</a></td>
           </tr>
           <tr th:if="${#lists.isEmpty(instances)}">
-            <td colspan="6" class="text-center fg-2 py-10"
+            <td colspan="5" class="text-center fg-2 py-10"
                 th:text="${engineError != null ? '暂时无法读取运行记录，请刷新重试。' : #lists.isEmpty(resource.codes) ? '当前任务暂无已登记的工作流。若曾作为上游运行，请从对应数据加工链的运行记录查看。' : '当前条件下尚无运行记录。新提交的任务可能仍在排队，请稍后刷新。'}"></td>
           </tr>
           </tbody>
