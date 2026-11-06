@@ -79,27 +79,20 @@
       <button th:if="${canEdit}" class="btn-outline theme-danger btn-sm" type="button" data-workflow-delete disabled>
         删除选中
       </button>
+      <button th:if="${canEdit}" class="btn-outline theme-primary btn-sm" type="button" data-workflow-new-sql>新增SQL加工节点</button>
+      <button th:if="${canEdit}" class="btn-outline theme-primary btn-sm" type="button" data-workflow-save>保存画布</button>
+      <a class="btn-outline theme-primary btn-sm" th:href="@{/workflows}">返回加工流程</a>
     </div>
     <span class="small fg-2" data-workflow-status role="status">正在加载画布…</span></div>
   <div class="workflow-layout" th:classappend="${!canEdit} ? 'workflow-readonly'">
-    <aside th:if="${canEdit}" class="platform-card card workflow-palette">
-      <div class="card-header">添加任务</div>
-      <div class="card-body">
-        <button class="btn-link theme-primary btn-sm" type="button" data-workflow-new-sql>新增 SQL 加工</button>
-        <p class="small fg-2 mt-4 mb-0">SQL 加工仅属于当前流程。通过节点端口连接 SQL 上游和下游；画布保存后依赖才会生效。</p>
-      </div>
-    </aside>
     <div class="workflow-stage-wrap">
       <div class="workflow-stage" data-workflow-stage tabindex="0"
            aria-label="加工流程依赖画布，可拖动节点并通过端口连线">
         <svg data-workflow-edges aria-hidden="true"></svg>
         <div data-workflow-nodes></div>
-        <p class="workflow-empty fg-2" data-workflow-empty hidden>画布为空。可在左侧新增 SQL 加工。</p></div>
+        <p class="workflow-empty fg-2" data-workflow-empty hidden>画布为空。可在上方新增 SQL 加工节点。</p></div>
     </div>
   </div>
-  <div th:if="${canEdit}" class="workflow-actions mt-4">
-    <button class="btn-solid theme-primary" type="button" data-workflow-save>保存画布</button>
-    <a class="btn-outline theme-secondary" th:href="@{/workflows}">返回加工流程</a></div>
   <dialog th:if="${canEdit}" class="workflow-sql-dialog workflow-leave-dialog" data-workflow-leave-dialog
           aria-labelledby="workflow-leave-title" aria-describedby="workflow-leave-description">
     <article class="platform-card card">

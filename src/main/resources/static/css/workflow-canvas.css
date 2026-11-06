@@ -1,36 +1,7 @@
 .workflow-layout {
     display: grid;
-    grid-template-columns:minmax(15rem, 20rem) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     gap: 1rem;
-}
-
-.workflow-palette {
-    align-self: start;
-    min-width: 0;
-}
-
-.workflow-catalog-list {
-    max-height: 18rem;
-    overflow: auto;
-    margin-top: .75rem;
-    border-top: 1px solid var(--platform-line);
-}
-
-.workflow-catalog-item {
-    display: flex;
-    width: 100%;
-    padding: .7rem 0;
-    border: 0;
-    border-bottom: 1px solid var(--platform-line);
-    background: transparent;
-    color: inherit;
-    text-align: left;
-    gap: .5rem;
-    flex-direction: column;
-}
-
-.workflow-catalog-item:hover {
-    color: var(--platform-primary);
 }
 
 .workflow-stage-wrap {
@@ -192,10 +163,6 @@
 @media (max-width: 767.98px) {
     .workflow-layout {
         grid-template-columns:minmax(0, 1fr);
-    }
-
-    .workflow-palette {
-        order: 2;
     }
 
     .workflow-stage-wrap {
