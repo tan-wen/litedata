@@ -4,7 +4,7 @@
 
 ## 表的职责
 
-平台维护用户与授权、源配置、模型与字段、同步与加工、元数据与资产、质量、指标、服务调用及审计。当前 41 张业务表均有现行业务、历史兼容或迁移审计用途；`flyway_schema_history` 另由 Flyway 管理。不能因为表名含旧业务概念、当前没有新增记录或 Java 不再写入，就判断整表废弃。
+平台维护用户与授权、源配置、模型与字段、同步与加工、元数据与资产、质量、指标、服务调用及审计。平台业务表包含现行业务、历史兼容和迁移审计用途；`flyway_schema_history` 另由 Flyway 管理。不能因为表名含旧业务概念、当前没有新增记录或 Java 不再写入，就判断整表废弃。
 
 容易误判为废表的兼容和审计表：
 
@@ -14,8 +14,8 @@
 | `workflow_definition_snapshot` | 加工流程当前及历史发布定义的拓扑和归属 |
 | `scheduler_workflow_binding` | 同步管道、SQL 节点参与过的历史调度定义；查询历史运行记录及校验回调归属 |
 | `workflow_legacy_binding` | 未重新发布的旧 worker 请求兼容、旧摘要核验及退役拦截 |
-| `sql_task_dependency`、`sql_pipeline_dependency` | 旧发布任务的依赖校验及管道内嵌 SQL 迁移，不能只保留画布边表 |
-| `pipeline_transform_archive` | 管道内嵌 SQL 的原文、迁移状态与目标任务，迁移入口仍读写 |
+| `sql_task_dependency`、`sql_pipeline_dependency` | 旧发布任务的历史依赖；新定义禁止 SQL 直接依赖同步管道 |
+| `pipeline_transform_archive` | 管道内嵌 SQL 的原文、迁移状态与目标任务，保留旧 SQL 归档；新模式不再提供迁移入口 |
 | `workflow_sql_ownership_migration` | V22 SQL 私有化时原节点、连线、依赖和位置的审计证据；没有运行时读取也须保留 |
 | `sql_graph_guard`、`metric_graph_guard` | 数据库事务图锁，单行表仍承担并发互斥 |
 
@@ -28,3 +28,7 @@
 加工流程按所属 SQL 和同步节点最近的开始执行时间统计，因此长流程执行到后续节点时该时间会更新。同步节点通过领取执行时已核验的调度定义编号关联已发布流程快照，不以当前画布成员或相近时间推测归属。V24 前的同步记录没有保存定义编号，不能安全回填流程归属；这些记录仍计入同步管道列表，旧流程可使用已有关联的 SQL 记录。缺少可关联的执行记录时显示“暂无执行记录”。
 
 V24 只为同步运行记录增加可空的定义编号和查询索引，不删除表、运行记录或业务数据；平台启动自动执行迁移，无需更改 worker 参数。
+
+## 数据就绪记录
+
+V25 增加 `data_ready_event`（每同步批次唯一）、`data_ready_delivery`（事件与订阅流程唯一）和 `quality_alert`（每质量运行唯一）；同步批次与质量运行双向关联。订阅配置保存在加工流程，质量任务关联保存在同步管道。行为与处理限制统一见[数据就绪事件](data-ready-triggers.md)。

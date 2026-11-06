@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real DataX -> ODS -> DWD -> DWS -> ADS DAG, timer, and failure-gating smoke test."""
+"""Real DataX -> ODS -> DWD -> DWS -> ADS event and Cron smoke test."""
 import json
 import os
 import re
@@ -28,7 +28,7 @@ def resource_id(page, prefix, suffix):
 
 def model(client, table, layer, definitions):
     _, page = client.request("GET", "/models/new")
-    fields = {"tableName": table, "name": table, "subjectArea": "加工验证域", "layer": layer, "buckets": "1",
+    fields = {"tableName": table, "tableNameSuffix": table.removeprefix(layer.lower() + "_"), "name": table, "subjectArea": "加工验证域", "layer": layer, "buckets": "1",
         "modelType": "UNIQUE", "replicationNum": "1", "distributionType": "HASH", "autoBuckets": "false",
         "distributionColumns": ",".join(name for name, _, key in definitions if key), "partitionType": "NONE"}
     for i, (name, data_type, key) in enumerate(definitions):
@@ -44,6 +44,33 @@ def model(client, table, layer, definitions):
 
 def task(client, workflow_id, page, name, model_id, sql):
     return create_workflow_sql(client, workflow_id, page, name, model_id, sql)
+
+
+def workflow_metadata(client, workflow_id, name, version, trigger_mode, pipeline_id=None):
+    _, page = client.request("GET", f"/workflows/{workflow_id}/edit")
+    fields = {"name": name, "description": "Isolated smoke fixture", "version": str(version),
+              "triggerMode": trigger_mode}
+    if pipeline_id is not None:
+        fields["triggerPipelineId"] = str(pipeline_id)
+    status, page = post_form(client, page, f"/workflows/{workflow_id}/metadata", fields)
+    expected = "加工流程已保存"
+    checked(status, page, expected)
+    return page
+
+
+def save_sql_graph(client, workflow_id, page, view, sql_ids, cron):
+    sql_nodes = [node for node in view.get("nodes", []) if node.get("kind") == "SQL"]
+    if len(sql_nodes) != 3:
+        raise SmokeFailure("workflow did not retain exactly three SQL nodes")
+    by_key = {node["key"]: node for node in sql_nodes}
+    ordered = [by_key.get(f"sql-{task_id}") for task_id in sql_ids]
+    if any(node is None for node in ordered):
+        raise SmokeFailure("workflow SQL nodes do not match saved task IDs")
+    return request_json(client, "POST", f"/workflows/{workflow_id}/graph", {
+        "version": view["version"], "graphHash": view["graphHash"], "cronExpression": cron,
+        "nodes": sql_nodes,
+        "edges": [{"from": ordered[0]["key"], "to": ordered[1]["key"]},
+                  {"from": ordered[1]["key"], "to": ordered[2]["key"]}], "positions": {}}, page)
 
 
 def runs(client, root):
@@ -127,19 +154,19 @@ def main():
     dws_id, graph = task(client, workflow_id, workflow_page, dws, dws_model, f"INSERT INTO {dws} SELECT customer_name,SUM(amount),COUNT(*) FROM {dwd} GROUP BY customer_name")
     root, graph = task(client, workflow_id, workflow_page, ads, ads_model, f"INSERT INTO {ads} SELECT customer_name,total_amount,order_count FROM {dws}")
     task_ids = [dwd_id, dws_id, root]
-    pipeline_item = request_json(client, "GET", f"/workflows/{workflow_id}/expand?" + urlencode({"key": f"pipeline-{pipeline_id}"}))
-    pipeline = pipeline_item.get("node") or (pipeline_item.get("nodes") or [None])[0]
-    if not pipeline:
-        raise SmokeFailure("workflow pipeline was not available for expansion")
-    request_json(client, "POST", f"/workflows/{workflow_id}/graph", {"version": graph["version"], "graphHash": graph["graphHash"],
-        "cronExpression": "0 */5 * * * ?", "nodes": [*graph.get("nodes", []), {**pipeline, "upstreamKeys": []}],
-        "edges": [{"from": f"pipeline-{pipeline_id}", "to": f"sql-{dwd_id}"}, {"from": f"sql-{dwd_id}", "to": f"sql-{dws_id}"},
-                  {"from": f"sql-{dws_id}", "to": f"sql-{root}"}], "positions": {}}, workflow_page)
-    status, page = workflow_action(client, workflow_id, "run")
-    checked(status, page, "已提交整条加工流程")
+    workflow_name = "flow-" + suffix
+    workflow_metadata(client, workflow_id, workflow_name, graph["version"], "EVENT", pipeline_id)
+    graph = request_json(client, "GET", f"/workflows/{workflow_id}/graph")
+    graph = save_sql_graph(client, workflow_id, workflow_page, graph, task_ids, "0 */5 * * * ?")
+    status, page = workflow_action(client, workflow_id, "schedule")
+    checked(status, page, "加工流程事件订阅已启用")
+    status, page = client.request("GET", "/pipelines")
+    status, page = post_form(client, page, f"/pipelines/{pipeline_id}/run", {})
+    checked(status, page, "已接受执行请求")
     names = [dwd, dws, ads]
     wait_runs(client, task_ids, names, 1, 300)
-    print(json.dumps({"stage": "manual-dag-success", "workflowId": int(workflow_id), "taskId": int(root)}), flush=True)
+    print(json.dumps({"stage": "event-ready-dag-success", "workflowId": int(workflow_id), "taskId": int(root),
+                      "pipelineId": int(pipeline_id)}), flush=True)
     status, page = client.request("GET", "/services")
     if status != 200 or 'href="/services/new"' not in page:
         raise SmokeFailure("service list does not provide the create page")
@@ -160,6 +187,12 @@ def main():
     expected = {"Ada": (120.5, 1), "Linus": (88.0, 1)}
     if status != 200 or {row["customer_name"]: (float(row["total_amount"]), int(row["order_count"])) for row in rows} != expected or {key: response.get(key) for key in ("count", "pageNum", "pageSize", "hasMore")} != {"count": 2, "pageNum": 1, "pageSize": 100, "hasMore": False}:
         raise SmokeFailure("ADS aggregation did not match demo source")
+    status, page = workflow_action(client, workflow_id, "pause")
+    checked(status, page, "加工流程事件订阅已停用")
+    graph = request_json(client, "GET", f"/workflows/{workflow_id}/graph")
+    workflow_metadata(client, workflow_id, workflow_name, graph["version"], "CRON")
+    graph = request_json(client, "GET", f"/workflows/{workflow_id}/graph")
+    save_sql_graph(client, workflow_id, workflow_page, graph, task_ids, "0 */5 * * * ?")
     status, page = workflow_action(client, workflow_id, "schedule")
     checked(status, page, "加工流程定时调度已启用")
     print(json.dumps({"stage": "timer-enabled-awaiting-trigger", "workflowId": int(workflow_id), "taskId": int(root)}), flush=True)
@@ -192,7 +225,7 @@ def main():
     # Restore the task for further manual trials, keeping failure evidence and the timer paused.
     update_workflow_sql(client, workflow_id, workflow_page, dwd_id, dwd, dwd_model, dwd_sql)
     return {"status": "success", "workflowId": int(workflow_id), "taskId": int(root), "tables": names,
-            "checks": ["pure-ods-sync", "manual-real-dag", "dwd-dws-ads-results", "actual-timer-trigger", "pause", "upstream-failure-gates-downstream"]}
+            "checks": ["pure-ods-sync", "data-ready-event-dag", "dwd-dws-ads-results", "actual-timer-trigger", "pause", "upstream-failure-gates-downstream"]}
 
 
 if __name__ == "__main__":

@@ -32,6 +32,49 @@ def dimension_panel(report: dict) -> str:
 {change_html}<p>{links}</p><p class="label">SCD1 仅保留当前属性；历史事实宽表需要重新加工。本示例不包含 SCD2 历史拉链。</p></section>'''
 
 
+def readiness_panel(report: dict) -> str:
+    """Render only recorded utility DATA_READY evidence; never infer a pass."""
+    base = str(report.get("platform_url", "http://localhost:8080")).rstrip("/")
+    resources = report.get("resources", {})
+    workflow = resources.get("workflow")
+    pipeline = resources.get("pipelines", {}).get("utility")
+    quality = resources.get("qualities", {}).get("ods_utility_gate")
+    seen: set[str] = set()
+    evidence = []
+    for stage in report.get("stages", []):
+        utility = stage.get("details", {}).get("utility") if isinstance(stage, dict) else None
+        if not isinstance(utility, dict):
+            continue
+        quality_run = utility.get("qualityRunId")
+        status = utility.get("qualityStatus")
+        if quality_run is None or not status or str(quality_run) in seen:
+            continue
+        seen.add(str(quality_run))
+        evidence.append((utility.get("pipelineRunId"), quality_run, str(status)))
+    links = []
+    if workflow:
+        links += [f'<a href="{html.escape(base + "/workflows/" + str(workflow), quote=True)}" target="_blank" rel="noopener">加工流程</a>',
+                  f'<a href="{html.escape(base + "/workflows/" + str(workflow) + "/events", quote=True)}" target="_blank" rel="noopener">事件记录</a>']
+    if pipeline:
+        links.append(f'<a href="{html.escape(base + "/scheduling/pipeline/" + str(pipeline), quote=True)}" target="_blank" rel="noopener">utility 同步记录</a>')
+    if quality:
+        links.append(f'<a href="{html.escape(base + "/quality/" + str(quality), quote=True)}" target="_blank" rel="noopener">门禁任务</a>')
+    if not evidence:
+        body = '<p>尚无本次实测的数据就绪与质量门禁记录；此快照不据计划或预期结果推断已通过。</p>'
+    else:
+        rows = []
+        for pipeline_run, quality_run, status in evidence:
+            label = html.escape(status, quote=True)
+            css = "failed" if status in {"FAILED", "ERROR"} else "warning" if status == "WARNING" else ""
+            detail = f'<a href="{html.escape(base + "/quality/runs/" + str(quality_run), quote=True)}" target="_blank" rel="noopener">#{html.escape(str(quality_run), quote=True)}</a>'
+            rows.append(f'<tr><td>{html.escape(str(pipeline_run) if pipeline_run is not None else "—", quote=True)}</td><td>{detail}</td><td><span class="status {css}">{label}</span></td></tr>')
+        body = '<div class="scroll"><table><thead><tr><th>utility 同步批次</th><th>质量运行</th><th>实际状态</th></tr></thead><tbody>' + ''.join(rows) + '</tbody></table></div>'
+    suffix = (' · '.join(links)) if links else '平台资源链接在报告中不可用。'
+    return f'''<section class="panel" id="data-ready-gate"><h2>数据就绪与质量门禁</h2>
+<p>企业档案和产量由脚本预先独立准备；只有 utility 的单来源 DATA_READY 会触发 4 个 SQL 节点。平台不进行多来源汇合或跨批次一致性判断。</p>
+{body}<p class="label">{suffix}</p></section>'''
+
+
 def render_dashboard(report: dict, scenario: dict) -> str:
     """Return a UTF-8 HTML snapshot viewer for an observed runner report.
 
@@ -42,14 +85,16 @@ def render_dashboard(report: dict, scenario: dict) -> str:
     data = json.dumps(payload, ensure_ascii=False, default=str).replace("<", "\\u003c")
     title = html.escape(str(report.get("prefix", scenario.get("prefix", "chemical-park-dim"))))
     dim_panel = dimension_panel(report)
+    gate_panel = readiness_panel(report)
     return f'''<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>化工园区 DIM 能效看板 · {title}</title><style>
-:root{{--navy:#12324a;--ink:#16384d;--muted:#6b8491;--teal:#087d7a;--aqua:#dff5f1;--line:#d9e6eb;--bg:#f4f8f9;--warn:#b45e28}}*{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 system-ui,-apple-system,"Microsoft YaHei",sans-serif}}header{{background:linear-gradient(120deg,#102e47,#087d7a);color:white;padding:30px max(20px,calc((100% - 1180px)/2)) 34px}}h1{{margin:0;font-size:28px}}h2{{font-size:18px;margin:0 0 14px}}h3{{font-size:14px;margin:0}}p{{margin:6px 0}}.sub{{opacity:.82}}main{{max-width:1180px;margin:auto;padding:20px}}.notice{{border-left:4px solid var(--teal);background:white;padding:12px 15px;margin-bottom:16px;border-radius:4px}}.grid{{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}}.card,.panel{{background:white;border:1px solid var(--line);border-radius:10px;padding:16px;box-shadow:0 2px 8px #15354a0a}}.label{{color:var(--muted);font-size:12px}}.value{{font-size:25px;font-weight:700;margin-top:3px}}.unit{{font-size:12px;font-weight:400;color:var(--muted)}}.two{{display:grid;grid-template-columns:1.25fr .75fr;gap:16px;margin-top:16px}}.panel{{margin-top:16px}}select{{width:100%;padding:9px;border:1px solid var(--line);border-radius:6px;color:var(--ink);background:white}}.legend{{display:flex;gap:14px;flex-wrap:wrap;font-size:12px}}.dot{{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px}}svg{{width:100%;height:260px;background:#fbfdfd;border-radius:6px;margin-top:8px}}table{{border-collapse:collapse;width:100%;font-size:13px}}th,td{{padding:9px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}}th{{color:var(--muted);font-weight:600}}.scroll{{overflow:auto}}.flag{{background:#fff0e6;color:#994312;font-weight:700}}.flow{{display:flex;align-items:center;gap:7px;flex-wrap:wrap}}.node{{padding:7px 9px;border-radius:5px;background:#e9f5f4;color:#075b58;font-size:12px}}.arrow{{color:#7a969f}}details{{margin-top:10px}}summary{{cursor:pointer;color:var(--teal)}}a{{color:#087d7a}}pre{{white-space:pre-wrap;overflow-wrap:anywhere}}.status{{padding:2px 7px;border-radius:99px;background:#e5f5ed;color:#176b46;font-size:12px}}.failed{{background:#fff0e8;color:#a54d1a}}@media(max-width:700px){{header{{padding:22px 16px}}main{{padding:14px}}.grid{{grid-template-columns:repeat(2,1fr)}}.two{{grid-template-columns:1fr}}.value{{font-size:21px}}}}
+:root{{--navy:#12324a;--ink:#16384d;--muted:#6b8491;--teal:#087d7a;--aqua:#dff5f1;--line:#d9e6eb;--bg:#f4f8f9;--warn:#b45e28}}*{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 system-ui,-apple-system,"Microsoft YaHei",sans-serif}}header{{background:linear-gradient(120deg,#102e47,#087d7a);color:white;padding:30px max(20px,calc((100% - 1180px)/2)) 34px}}h1{{margin:0;font-size:28px}}h2{{font-size:18px;margin:0 0 14px}}h3{{font-size:14px;margin:0}}p{{margin:6px 0}}.sub{{opacity:.82}}main{{max-width:1180px;margin:auto;padding:20px}}.notice{{border-left:4px solid var(--teal);background:white;padding:12px 15px;margin-bottom:16px;border-radius:4px}}.grid{{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}}.card,.panel{{background:white;border:1px solid var(--line);border-radius:10px;padding:16px;box-shadow:0 2px 8px #15354a0a}}.label{{color:var(--muted);font-size:12px}}.value{{font-size:25px;font-weight:700;margin-top:3px}}.unit{{font-size:12px;font-weight:400;color:var(--muted)}}.two{{display:grid;grid-template-columns:1.25fr .75fr;gap:16px;margin-top:16px}}.panel{{margin-top:16px}}select{{width:100%;padding:9px;border:1px solid var(--line);border-radius:6px;color:var(--ink);background:white}}.legend{{display:flex;gap:14px;flex-wrap:wrap;font-size:12px}}.dot{{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px}}svg{{width:100%;height:260px;background:#fbfdfd;border-radius:6px;margin-top:8px}}table{{border-collapse:collapse;width:100%;font-size:13px}}th,td{{padding:9px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}}th{{color:var(--muted);font-weight:600}}.scroll{{overflow:auto}}.flag{{background:#fff0e6;color:#994312;font-weight:700}}.flow{{display:flex;align-items:center;gap:7px;flex-wrap:wrap}}.node{{padding:7px 9px;border-radius:5px;background:#e9f5f4;color:#075b58;font-size:12px}}.arrow{{color:#7a969f}}details{{margin-top:10px}}summary{{cursor:pointer;color:var(--teal)}}a{{color:#087d7a}}pre{{white-space:pre-wrap;overflow-wrap:anywhere}}.status{{padding:2px 7px;border-radius:99px;background:#e5f5ed;color:#176b46;font-size:12px}}.failed{{background:#fff0e8;color:#a54d1a}}.warning{{background:#fff4d9;color:#8c5a00}}@media(max-width:700px){{header{{padding:22px 16px}}main{{padding:14px}}.grid{{grid-template-columns:repeat(2,1fr)}}.two{{grid-template-columns:1fr}}.value{{font-size:21px}}}}
 </style></head><body><header><h1>化工园区 DIM 能效数据应用</h1><div class="sub">公共企业维度 · SCD1 当前值 · 近七日能效 · 静态只读快照</div></header><main>
 <div class="notice"><strong id="snapshot">已验证快照</strong>：展示本次受控 API 观测结果；样例计划仅用于解释演示范围，不替代实际平台数据。<span id="asof"></span></div>
 <section class="grid" id="kpis"></section>
 {dim_panel}
+{gate_panel}
 <section class="two"><div class="panel"><h2>企业日趋势</h2><label for="enterprise">选择企业</label><select id="enterprise" aria-label="选择企业"></select><div class="legend"><span><i class="dot" style="background:#087d7a"></i>蒸汽（吨）</span><span><i class="dot" style="background:#347fb7"></i>产量（吨）</span></div><svg id="trend" viewBox="0 0 700 250" preserveAspectRatio="none" role="img" aria-label="蒸汽和产量日趋势图"><title>蒸汽与产量日趋势</title></svg></div><div class="panel"><h2>口径说明</h2><p>业务问题：将企业每日蒸汽、电力、用水与产量汇成可追溯的园区能效视图。</p><p><b>吨产品蒸汽</b>为七日蒸汽总量 ÷ 七日产量总量，是加权比率，<b>不是</b>每日比率的平均值。</p><p>产量为 0 时，强度显示“—（产量为0）”，避免无意义除法。</p><p>橙色标记表示蒸汽强度 &gt; 1.8，仅为演示参数，非行业基准。</p></div></section>
 <section class="panel"><h2>企业七日对比</h2><div class="scroll"><table><thead><tr><th>企业</th><th>有效天数</th><th>蒸汽（吨）</th><th>电力（kWh）</th><th>产量（吨）</th><th>吨产品蒸汽</th><th>吨产品电耗</th></tr></thead><tbody id="companies"></tbody></table></div></section>
 <section class="panel"><h2>日明细与可追溯强度</h2><div class="scroll"><table><thead><tr><th>日期</th><th>企业</th><th>蒸汽（吨）</th><th>电力（kWh）</th><th>用水（m³）</th><th>产量（吨）</th><th>吨产品蒸汽</th><th>吨产品电耗</th></tr></thead><tbody id="daily"></tbody></table></div></section>

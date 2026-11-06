@@ -4,7 +4,7 @@
 <head><title>加工流程画布 · LiteData</title></head>
 <body>
 <section data-workflow-canvas
-         th:attr="data-workflow-id=${workflow.id},data-graph-url=@{/workflows/{id}/graph(id=${workflow.id})},data-catalog-url=@{/workflows/{id}/catalog(id=${workflow.id})},data-expand-url=@{/workflows/{id}/expand(id=${workflow.id})},data-sql-url=@{/workflows/{id}/sql-tasks(id=${workflow.id})},data-editable=${canEdit}">
+         th:attr="data-workflow-id=${workflow.id},data-graph-url=@{/workflows/{id}/graph(id=${workflow.id})},data-sql-url=@{/workflows/{id}/sql-tasks(id=${workflow.id})},data-editable=${canEdit}">
   <link rel="stylesheet" th:href="@{/css/workflow-canvas.css}">
   <link rel="stylesheet" th:href="@{/css/scheduling.css}">
   <div class="workflow-page-heading mb-5">
@@ -14,28 +14,30 @@
                                      th:href="@{/workflows/{id}/edit(id=${workflow.id})}">编辑信息</a><a
       class="btn-outline theme-secondary" th:href="@{/scheduling/workflow/{id}(id=${workflow.id})}">运行记录</a></div>
   </div>
-  <p class="small fg-2">Cron：<code th:text="${workflow.cronExpression}" data-workflow-current-cron></code> · 北京时间 ·
-    <span th:text="${workflow.status}"></span></p>
+  <p class="small fg-2"><span th:text="${workflow.triggerMode == 'EVENT' ? '数据就绪事件：' : 'Cron：'}"></span>
+    <code th:if="${workflow.triggerMode == 'CRON'}" th:text="${workflow.cronExpression}" data-workflow-current-cron></code>
+    <span th:if="${workflow.triggerMode == 'EVENT'}" th:text="${workflow.triggerSourceName ?: '尚未选择来源'}"></span>
+    <span th:if="${workflow.triggerMode == 'CRON'}"> · 北京时间</span> · <span th:text="${workflow.status}"></span></p>
   <div th:if="${canEdit}" class="workflow-runbar platform-card card mb-5">
     <div class="card-body">
       <div class="workflow-runbar-actions"><span class="small fg-2">集中运行与调度</span>
         <div class="workflow-actions">
-          <form th:action="@{/workflows/{id}/run(id=${workflow.id})}" method="post" data-workflow-action><input
+          <form th:if="${workflow.triggerMode == 'CRON'}" th:action="@{/workflows/{id}/run(id=${workflow.id})}" method="post" data-workflow-action><input
             type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"><input type="hidden" name="version"
                                                                                             th:value="${workflow.version}"
                                                                                             data-workflow-version><input
             type="hidden" name="graphHash" data-workflow-hash>
             <button class="btn-solid theme-primary" type="submit">运行</button>
           </form>
-          <form th:if="${workflow.status != 'SCHEDULED'}" th:action="@{/workflows/{id}/schedule(id=${workflow.id})}"
+          <form th:if="${workflow.status != 'SCHEDULED' and workflow.status != 'EVENT_ENABLED'}" th:action="@{/workflows/{id}/schedule(id=${workflow.id})}"
                 method="post" data-workflow-action><input type="hidden" th:name="${_csrf.parameterName}"
                                                           th:value="${_csrf.token}"><input type="hidden" name="version"
                                                                                            th:value="${workflow.version}"
                                                                                            data-workflow-version><input
             type="hidden" name="graphHash" data-workflow-hash>
-            <button class="btn-outline theme-primary" type="submit">启用定时</button>
+            <button class="btn-outline theme-primary" type="submit" th:text="${workflow.triggerMode == 'EVENT' ? '启用事件订阅' : '启用定时'}"></button>
           </form>
-          <form th:if="${workflow.scheduleId != null and workflow.status != 'PAUSED'}"
+          <form th:if="${(workflow.scheduleId != null or workflow.status == 'EVENT_ENABLED') and workflow.status != 'PAUSED'}"
                 th:action="@{/workflows/{id}/pause(id=${workflow.id})}" method="post" data-workflow-action><input
             type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"><input type="hidden" name="version"
                                                                                             th:value="${workflow.version}"
@@ -43,9 +45,10 @@
             type="hidden" name="graphHash" data-workflow-hash>
             <button class="btn-outline theme-secondary" type="submit">暂停</button>
           </form>
+          <a th:if="${workflow.triggerMode == 'EVENT'}" class="btn-link theme-secondary" th:href="@{/workflows/{id}/events(id=${workflow.id})}">事件记录</a>
         </div>
       </div>
-      <div class="workflow-cron-settings"><label class="form-label" for="workflow-cron">Cron
+      <div th:if="${workflow.triggerMode == 'CRON'}" class="workflow-cron-settings"><label class="form-label" for="workflow-cron">Cron
         周期（北京时间）</label><input id="workflow-cron" class="form-control form-control-sm workflow-cron" type="text"
                                      maxlength="100" required th:value="${workflow.cronExpression}" data-workflow-cron
                                      data-schedule-cron aria-describedby="workflow-cron-hint workflow-cron-preview"
@@ -54,7 +57,7 @@
           0，日和周字段恰有一个为 ?。
         </div>
       </div>
-      <div id="workflow-cron-preview" class="schedule-preview small" data-schedule-preview aria-live="polite"><span>正在计算北京时间计划…</span>
+      <div th:if="${workflow.triggerMode == 'CRON'}" id="workflow-cron-preview" class="schedule-preview small" data-schedule-preview aria-live="polite"><span>正在计算北京时间计划…</span>
       </div>
     </div>
   </div>
@@ -66,9 +69,7 @@
   </div>
   <p class="small fg-2">在画布中添加任务并建立上游到下游的依赖。SQL
     加工仅属于当前加工流程；画布连线只作用于当前加工流程。</p>
-  <div class="alert theme-info">同步管道加入加工流程后，仍可能保留自己的独立 Cron。加工流程会按自身 Cron
-    再执行一次该同步；如由本加工流程统一运行，请到同步管道暂停独立调度。
-  </div>
+  <div th:if="${workflow.triggerMode == 'EVENT'}" class="alert theme-info">事件模式只在订阅同步管道发出数据就绪事件后启动。同步配置了质量检查时，弱规则告警仍放行；强规则失败或扫描错误会阻断加工。</div>
   <div class="workflow-toolbar mb-3">
     <div class="workflow-actions">
       <button class="btn-outline theme-primary btn-sm" type="button" data-workflow-layout>自动布局</button>
@@ -84,32 +85,8 @@
     <aside th:if="${canEdit}" class="platform-card card workflow-palette">
       <div class="card-header">添加任务</div>
       <div class="card-body">
-        <div class="workflow-actions mb-3">
-          <button class="btn-link theme-primary btn-sm" type="button" data-workflow-new-sql>新增 SQL 加工</button>
-          <a class="btn-link theme-primary btn-sm"
-             th:href="@{/pipelines/new(workflowId=${workflow.id})}">新增同步管道</a></div>
-        <label class="form-label" for="workflow-catalog">搜索同步管道</label><input id="workflow-catalog"
-                                                                                    class="form-control" type="search"
-                                                                                    data-workflow-catalog
-                                                                                    placeholder="管道或目标表">
-        <div class="workflow-catalog-list" data-workflow-catalog-list></div>
-        <div class="small fg-2 text-end mt-3 mb-2" data-catalog-summary aria-live="polite">正在加载…</div>
-        <nav class="d-flex justify-content-end overflow-auto" aria-label="同步管道目录分页">
-          <ul class="pagination theme-primary pagination-sm mb-0">
-            <li class="page-item disabled">
-              <button class="page-link" type="button" data-catalog-prev disabled aria-label="上一页"><span
-                aria-hidden="true">&laquo;</span></button>
-            </li>
-            <li class="page-item active"><span class="page-link" data-catalog-page aria-current="page"
-                                               aria-label="第 1 页，当前页">1</span></li>
-            <li class="page-item disabled">
-              <button class="page-link" type="button" data-catalog-next disabled aria-label="下一页"><span
-                aria-hidden="true">&raquo;</span></button>
-            </li>
-          </ul>
-        </nav>
-        <p class="small fg-2 mt-4 mb-0">目录仅用于添加已存在的同步管道。SQL 加工请在当前画布中新增；通过节点端口连线：先选择上游节点右侧端口，再选择下游
-          SQL 节点左侧端口。也可按 Tab 聚焦端口后按 Enter 或空格。添加连线并保存画布后才会生效；同步管道只能作为上游。</p>
+        <button class="btn-link theme-primary btn-sm" type="button" data-workflow-new-sql>新增 SQL 加工</button>
+        <p class="small fg-2 mt-4 mb-0">SQL 加工仅属于当前流程。通过节点端口连接 SQL 上游和下游；画布保存后依赖才会生效。</p>
       </div>
     </aside>
     <div class="workflow-stage-wrap">
@@ -117,8 +94,7 @@
            aria-label="加工流程依赖画布，可拖动节点并通过端口连线">
         <svg data-workflow-edges aria-hidden="true"></svg>
         <div data-workflow-nodes></div>
-        <p class="workflow-empty fg-2" data-workflow-empty hidden>画布为空。可在左侧新增 SQL
-          加工，或从目录添加已存在的同步管道。</p></div>
+        <p class="workflow-empty fg-2" data-workflow-empty hidden>画布为空。可在左侧新增 SQL 加工。</p></div>
     </div>
   </div>
   <div th:if="${canEdit}" class="workflow-actions mt-4">
@@ -177,7 +153,7 @@
   <script th:inline="javascript">window.workflowCanvas = /*[[${workflow}]]*/ {};</script>
   <script th:src="@{/js/sql-editor.js}" defer></script>
   <script th:src="@{/js/workflow-canvas.js}" defer></script>
-  <script th:src="@{/js/schedule-settings.js}" defer></script>
+  <script th:if="${workflow.triggerMode == 'CRON'}" th:src="@{/js/schedule-settings.js}" defer></script>
 </section>
 </body>
 </html>

@@ -1,6 +1,18 @@
 package com.litedata.workflow;
 
 public class ProcessingWorkflow {
+    private String triggerMode = "CRON";
+    private Long triggerPipelineId;
+    private String triggerSourceName;
+    private int triggerGeneration;
+    public String getTriggerMode() { return triggerMode; }
+    public void setTriggerMode(String value) { triggerMode = value; }
+    public Long getTriggerPipelineId() { return triggerPipelineId; }
+    public void setTriggerPipelineId(Long value) { triggerPipelineId = value; }
+    public String getTriggerSourceName() { return triggerSourceName; }
+    public void setTriggerSourceName(String value) { triggerSourceName = value; }
+    public int getTriggerGeneration() { return triggerGeneration; }
+    public void setTriggerGeneration(int value) { triggerGeneration = value; }
     private Long id;
     private String name;
     private String description = "";

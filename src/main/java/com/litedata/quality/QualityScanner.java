@@ -32,6 +32,11 @@ public class QualityScanner {
     }
 
     public QualityResult scan(Connection c, QualityTask t, QualityRule r, LocalDateTime now, BigDecimal baseline) throws SQLException {
+        return scan(c, t, r, now, baseline, null, null);
+    }
+
+    public QualityResult scan(Connection c, QualityTask t, QualityRule r, LocalDateTime now, BigDecimal baseline,
+                              LocalDateTime fixedLower, LocalDateTime fixedUpper) throws SQLException {
         verifyColumns(c, t, r);
         var result = new QualityResult();
         result.setName(r.getName());
@@ -43,10 +48,10 @@ public class QualityScanner {
         if (!t.getTimeColumn().isEmpty()) {
             String time = "q." + quote(t.getTimeColumn());
             scope = time + ">=?";
-            scopeParams.add(now.minusHours(t.getWindowHours()));
+            scopeParams.add(fixedLower == null ? now.minusHours(t.getWindowHours()) : fixedLower);
             if (r.getType() != RuleType.FUTURE_TIME) {
                 scope += " AND " + time + "<?";
-                scopeParams.add(now);
+                scopeParams.add(fixedUpper == null ? now : fixedUpper);
             }
         }
         long total = scalar(c, "SELECT COUNT(*) FROM " + from + " WHERE " + scope, scopeParams, t).longValueExact();

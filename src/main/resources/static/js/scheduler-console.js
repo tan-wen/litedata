@@ -248,6 +248,25 @@
         element.textContent = state === 'SUCCESS' ? '成功' : state === 'FAILED' ? '失败' : '运行中';
     }
 
+    function callbackQuality(row, run) {
+        const state = run.qualityStatus, badge = row.querySelector('[data-callback-quality]'),
+            link = row.querySelector('[data-callback-quality-link]'), empty = row.querySelector('[data-callback-quality-empty]');
+        if (badge) {
+            badge.classList.remove('theme-success', 'theme-danger', 'theme-warning', 'theme-info', 'theme-secondary');
+            badge.classList.add(state === 'PASSED' ? 'theme-success' : state === 'WARNING' ? 'theme-warning' : state === 'FAILED' || state === 'ERROR' ? 'theme-danger' : 'theme-info');
+            badge.textContent = state || '未配置';
+        }
+        if (link) {
+            const ready = Number.isInteger(run.qualityRunId) || /^\d+$/.test(String(run.qualityRunId || ''));
+            link.hidden = !ready;
+            if (ready) link.href = `/quality/runs/${encodeURIComponent(run.qualityRunId)}`;
+        }
+        if (empty) {
+            empty.hidden = Boolean(run.qualityRunId);
+            empty.textContent = run.qualityRunId ? '' : (state || '未配置');
+        }
+    }
+
     function renderCallbacks(page) {
         const panel = find('callback-records');
         if (!panel || !page || !Array.isArray(page.items)) return;
@@ -262,6 +281,7 @@
             write(part('id'), run.id ?? '—');
             write(part('task-id'), run.taskInstanceId ?? '—');
             callbackBadge(part('state'), run.status || 'RUNNING');
+            callbackQuality(row, run);
             write(part('start'), run.startedAt || '—');
             write(part('end'), run.finishedAt || '—');
             write(part('range'), `[${run.lowerBound || '—'}, ${run.upperBound || '—'})`);
@@ -272,7 +292,7 @@
             const empty = document.createElement('tr');
             empty.dataset.callbackEmpty = '';
             const cell = document.createElement('td');
-            cell.colSpan = 7;
+            cell.colSpan = 8;
             cell.className = 'text-center fg-2 py-7';
             cell.append('尚未收到可关联回调。运行记录可能仍在排队、节点尚未领取，或回调尚未抵达平台。旧执行器未携带运行编号的记录请查看');
             if (panel.dataset.callbackHistoryUrl) {

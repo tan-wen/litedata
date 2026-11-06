@@ -79,13 +79,16 @@ public interface PlatformMapper {
     @Select("SELECT p.*,(SELECT MAX(r.started_at) FROM pipeline_run r WHERE r.pipeline_id=p.id) last_run_at FROM pipeline p WHERE p.archived=FALSE ORDER BY p.id DESC LIMIT #{limit} OFFSET #{offset}")
     List<Pipeline> pipelinePage(@Param("limit") int limit, @Param("offset") long offset);
 
+    @Select("SELECT * FROM pipeline WHERE archived=FALSE ORDER BY name,id")
+    List<Pipeline> pipelineChoices();
+
     @Select("SELECT * FROM pipeline WHERE id=#{id} AND archived=FALSE")
     Pipeline pipeline(long id);
 
     @Select("SELECT * FROM pipeline WHERE id=#{id} AND archived=FALSE FOR UPDATE")
     Pipeline lockPipeline(long id);
 
-    @Select("SELECT COUNT(*) FROM processing_workflow_node n JOIN processing_workflow w ON w.id=n.workflow_id WHERE n.pipeline_id=#{id} AND w.archived=FALSE")
+    @Select("SELECT COUNT(*) FROM processing_workflow w WHERE w.archived=FALSE AND w.trigger_pipeline_id=#{id}")
     long activePipelineTaskReferences(long id);
 
     @Select("SELECT COUNT(*) FROM pipeline_run WHERE pipeline_id=#{id} AND status='RUNNING'")
@@ -94,17 +97,17 @@ public interface PlatformMapper {
     @Update("UPDATE pipeline SET archived=TRUE WHERE id=#{id} AND archived=FALSE")
     int archivePipeline(long id);
 
-    @Insert("INSERT INTO pipeline(name,source_id,source_table,watermark_column,target_table,transform_sql,cron_expression) VALUES(#{name},#{sourceId},#{sourceTable},#{watermarkColumn},#{targetTable},#{transformSql},#{cronExpression})")
+    @Insert("INSERT INTO pipeline(name,source_id,source_table,watermark_column,target_table,transform_sql,cron_expression,quality_task_id) VALUES(#{name},#{sourceId},#{sourceTable},#{watermarkColumn},#{targetTable},#{transformSql},#{cronExpression},#{qualityTaskId})")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     void insertPipeline(Pipeline pipeline);
 
     @Update("UPDATE pipeline SET source_schema_hash=#{sourceHash},target_schema_hash=#{targetHash},source_key_columns=#{keys} WHERE id=#{id}")
     void pipelineSchema(@Param("id") long id, @Param("sourceHash") String sourceHash, @Param("targetHash") String targetHash, @Param("keys") String keys);
 
-    @Update("UPDATE pipeline SET name=#{name} WHERE id=#{id}")
+    @Update("UPDATE pipeline SET name=#{name},quality_task_id=#{qualityTaskId} WHERE id=#{id}")
     void updatePipeline(Pipeline pipeline);
 
-    @Update("UPDATE pipeline SET name=#{name},cron_expression=#{cronExpression},definition_code=NULL,schedule_id=NULL WHERE id=#{id}")
+    @Update("UPDATE pipeline SET name=#{name},quality_task_id=#{qualityTaskId},cron_expression=#{cronExpression},definition_code=NULL,schedule_id=NULL WHERE id=#{id}")
     void updatePipelineFrequency(Pipeline pipeline);
 
     @Update("UPDATE pipeline SET definition_code=#{code} WHERE id=#{id}")
@@ -122,7 +125,7 @@ public interface PlatformMapper {
     @Update("UPDATE pipeline SET active_run_id=NULL,last_error=#{error} WHERE id=#{id}")
     void failPipeline(@Param("id") long id, @Param("error") String error);
 
-    @Insert("INSERT INTO pipeline_run(pipeline_id,status,lower_bound,upper_bound,workflow_instance_id,task_instance_id,definition_code) VALUES(#{pipelineId},'RUNNING',#{lowerBound},#{upperBound},#{workflowInstanceId},#{taskInstanceId},#{definitionCode})")
+    @Insert("INSERT INTO pipeline_run(pipeline_id,status,lower_bound,upper_bound,workflow_instance_id,task_instance_id,definition_code,quality_task_id,quality_task_version,quality_status) VALUES(#{pipelineId},'RUNNING',#{lowerBound},#{upperBound},#{workflowInstanceId},#{taskInstanceId},#{definitionCode},#{qualityTaskId},#{qualityTaskVersion},#{qualityStatus})")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     void insertRun(PipelineRun run);
 

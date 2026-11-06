@@ -253,6 +253,20 @@ def execute_datax(command, output, environment):
         raise
 
 
+def wait_for_readiness(run_id, timeout_seconds=12 * 60):
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        _, result = platform_request(f"/internal/runs/{run_id}/readiness", {})
+        if result.get("ready") is True:
+            return 0
+        if result.get("qualityStatus") in ("FAILED", "ERROR", "SKIPPED"):
+            print("ODS transfer succeeded; quality gate blocked processing. See the quality run.", file=sys.stderr)
+            return 2
+        time.sleep(3)
+    print("ODS transfer succeeded; quality gate is still pending. Check platform readiness status.", file=sys.stderr)
+    return 2
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--pipeline-id", required=True, type=int)
@@ -292,6 +306,8 @@ def main():
             raise RuntimeError(f"DataX exited with code {return_code}")
         if not finish(run_id, True, "DataX ODS transfer completed"):
             return 1
+        if claim.get("qualityRequired"):
+            return wait_for_readiness(run_id)
         return 0
     except subprocess.TimeoutExpired as error:
         if datax_log_path is not None:

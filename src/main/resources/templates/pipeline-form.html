@@ -14,33 +14,6 @@
   </div>
   <div th:replace="~{fragments/messages :: messages}">
   </div>
-  <article th:if="${migratedTaskId != null}" class="platform-card card mb-5">
-    <div class="card-header">旧 SQL 已迁移</div>
-    <div class="card-body">
-      <p class="alert theme-success mb-0">已迁移为独立数据加工任务；原 SQL 仍作为归档记录保留。<a
-        th:href="@{/transforms/{id}(id=${migratedTaskId})}">查看加工任务 <span th:text="${migratedTaskId}">
-</span>
-      </a>
-      </p>
-    </div>
-  </article>
-  <article th:if="${legacyTransformSql != null and !#strings.isEmpty(legacyTransformSql)}"
-           class="platform-card card mb-5">
-    <div class="card-header">旧版同步后 SQL</div>
-    <div class="card-body">
-      <p class="alert theme-warning">此入口不再执行或允许编辑这段
-        SQL。请先暂停相关定时并等待当前运行完成，再迁移为独立数据加工任务。</p>
-      <pre class="code-preview mb-4">
-<code th:text="${legacyTransformSql}">
-</code>
-</pre>
-      <form th:if="${canEdit and migratedTaskId == null}"
-            th:action="@{/pipelines/{id}/migrate-transform(id=${resourceId})}" method="post">
-        <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
-        <button class="btn-solid theme-primary" type="submit">迁移为独立数据加工任务</button>
-      </form>
-    </div>
-  </article>
   <form th:if="${canEdit}" th:object="${draft}" th:action="${formAction}" method="post" data-pipeline-form novalidate
         th:attr="data-initial-step=${draft.wizardStep}">
     <input th:if="${workflowId != null}" type="hidden" name="workflowId" th:value="${workflowId}">
@@ -130,6 +103,15 @@
                      placeholder="updated_at" data-watermark>
               <input th:if="${resourceId != null}" type="hidden" th:field="*{watermarkColumn}">
               <div class="form-text">必须为有前导索引的非空 DATETIME/TIMESTAMP；不提供 CDC 语义。</div>
+            </div>
+            <div class="md:col-6">
+              <label class="form-label" for="qualityTaskId">数据质量检查</label>
+              <select id="qualityTaskId" class="form-control" th:field="*{qualityTaskId}">
+                <option value="">不检查，成功同步后直接发布数据就绪事件</option>
+                <option th:each="quality : ${qualityChoices}" th:value="${quality.id}"
+                        th:text="${quality.name + ' · ' + quality.tableName}">订单质量 · ods_orders</option>
+              </select>
+              <div class="form-text">可选一个质量任务。任务须检查此管道的 ODS 目标，且时间字段只能使用本管道 Watermark 列；强规则失败或扫描错误会阻断数据就绪。</div>
             </div>
             <div class="md:col-6" data-auto-target th:hidden="${resourceId != null or draft.targetMode != 'AUTO'}">
               <label class="form-label" for="autoTargetTable">自动生成的 ODS 表</label>

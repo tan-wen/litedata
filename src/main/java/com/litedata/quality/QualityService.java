@@ -30,13 +30,16 @@ public class QualityService {
     private final TransactionTemplate transactions;
     private final ObjectMapper json;
     private final boolean scheduling;
+    private final ReadyMapper readyEvents;
+    private final com.litedata.workflow.ReadyEvents events;
     private volatile boolean ready;
     private final ThreadPoolExecutor executor = new ThreadPoolExecutor(2, 2, 0, TimeUnit.SECONDS, new ArrayBlockingQueue<>(20),
         Thread.ofPlatform().name("quality-scan-", 0).factory(), new ThreadPoolExecutor.AbortPolicy());
 
     public QualityService(QualityMapper mapper, PlatformMapper platform, QualityValidation validation, QualityScanner scanner,
                           org.springframework.transaction.PlatformTransactionManager manager, ObjectMapper json,
-                          @Value("${platform.quality.scheduling-enabled:true}") boolean scheduling) {
+                          @Value("${platform.quality.scheduling-enabled:true}") boolean scheduling,
+                          ReadyMapper readyEvents, com.litedata.workflow.ReadyEvents events) {
         this.mapper = mapper;
         this.platform = platform;
         this.validation = validation;
@@ -44,6 +47,8 @@ public class QualityService {
         this.transactions = new TransactionTemplate(manager);
         this.json = json;
         this.scheduling = scheduling;
+        this.readyEvents = readyEvents;
+        this.events = events;
     }
 
     public String keyword(String keyword) {
@@ -85,6 +90,10 @@ public class QualityService {
         return mapper.results(id);
     }
 
+    public long alertCount() { return readyEvents.alertCount(); }
+
+    public List<ReadyMapper.Alert> alerts(QueryPage page) { return readyEvents.alerts(page.pageSize(), page.offset()); }
+
     public long save(Long id, QualityTask input, String actor) {
         validation.validate(input);
         if (input.getSourceId() != null && platform.source(input.getSourceId()) == null)
@@ -97,6 +106,10 @@ public class QualityService {
                 mapper.insert(input);
             } else {
                 var t = editable(id, input.getVersion());
+                for (var binding : readyEvents.bindings(id))
+                    if (input.getSourceId() != null || !binding.targetTable().equalsIgnoreCase(input.getTableName()) ||
+                        !input.getTimeColumn().isBlank() && !binding.watermarkColumn().equalsIgnoreCase(input.getTimeColumn()))
+                        throw new IllegalArgumentException("任务已被同步管道绑定，不能变更目标表或改用其他时间字段");
                 input.setId(t.getId());
                 mapper.update(input);
                 mapper.deleteRules(id);
@@ -123,6 +136,7 @@ public class QualityService {
     public void archive(long id, int version, String actor) {
         transactions.executeWithoutResult(tx -> {
             editable(id, version);
+            if (readyEvents.qualityBindings(id) > 0) throw new IllegalArgumentException("请先解除同步管道的质量任务关联");
             mapper.archive(id);
             platform.audit(actor, "QUALITY_ARCHIVE", Long.toString(id), "SUCCESS");
         });
@@ -132,11 +146,24 @@ public class QualityService {
         return submit(claim(id, version, actor, false));
     }
 
-    private record Claimed(QualityTask task, QualityRun run) {
+    public Long startPipeline(long pipelineRunId) {
+        var source = platform.run(pipelineRunId);
+        if (source == null || source.getQualityTaskId() == null) throw new IllegalArgumentException("批次未关联质量任务");
+        var claimed = claim(source.getQualityTaskId(), source.getQualityTaskVersion(), "pipeline:" + pipelineRunId, false, pipelineRunId);
+        return claimed == null ? null : submit(claimed);
+    }
+
+    private record Claimed(QualityTask task, QualityRun run, com.litedata.model.PipelineRun source) {
     }
 
     private Claimed claim(long id, Integer version, String actor, boolean dueOnly) {
+        return claim(id, version, actor, dueOnly, null);
+    }
+
+    private Claimed claim(long id, Integer version, String actor, boolean dueOnly, Long pipelineRunId) {
         return transactions.execute(tx -> {
+            var source = pipelineRunId == null ? null : platform.lockRun(pipelineRunId);
+            if (source != null && (!"SUCCESS".equals(source.getStatus()) || !"WAITING".equals(source.getQualityStatus()))) return null;
             var t = required(mapper.lock(id));
             var now = now();
             if (t.isArchived()) throw new IllegalArgumentException("任务已归档");
@@ -144,7 +171,7 @@ public class QualityService {
                 throw new IllegalArgumentException("任务已变化，请刷新后重试");
             if (dueOnly && (!t.isEnabled() || t.getNextRunAt() == null || t.getNextRunAt().isAfter(now))) return null;
             if (t.getActiveRunId() != null) {
-                if (dueOnly) return null;
+                if (dueOnly || source != null) return null;
                 throw new IllegalArgumentException("该任务正在扫描，请等待完成");
             }
             t.setRules(mapper.rules(id));
@@ -155,11 +182,14 @@ public class QualityService {
             run.setActor(actor);
             run.setStartedAt(now);
             run.setStatus("RUNNING");
-            run.setConfigSnapshot(json.writerWithDefaultPrettyPrinter().writeValueAsString(t));
+            run.setPipelineRunId(pipelineRunId);
+            run.setConfigSnapshot(json.writerWithDefaultPrettyPrinter().writeValueAsString(source == null ? t :
+                Map.of("task", t, "pipelineRunId", source.getId(), "lowerBound", source.getLowerBound(), "upperBound", source.getUpperBound())));
             mapper.insertRun(run);
+            if (source != null) readyEvents.scanStarted(source.getId(), run.getId());
             mapper.claim(id, run.getId(), t.isEnabled() ? next(t, now) : null);
             platform.audit(actor, "QUALITY_RUN", run.getId().toString(), "ACCEPTED");
-            return new Claimed(t, run);
+            return new Claimed(t, run, source);
         });
     }
 
@@ -185,7 +215,13 @@ public class QualityService {
                     if (Thread.currentThread().isInterrupted() || System.nanoTime() > deadline)
                         throw new IllegalStateException("scan deadline");
                     BigDecimal baseline = rule.getType() == RuleType.ROW_COUNT_CHANGE ? mapper.baseline(task.getId(), run.getTaskVersion(), run.getId(), rule.getName()) : null;
-                    result = scanner.scan(connection, task, rule, run.getStartedAt(), baseline);
+                    var source = claimed.source();
+                    result = source == null ? scanner.scan(connection, task, rule, run.getStartedAt(), baseline)
+                        : scanner.scan(connection, task, rule, run.getStartedAt(), baseline, source.getLowerBound(), source.getUpperBound());
+                    if (source != null && rule.getType() == RuleType.ROW_COUNT_CHANGE && baseline == null && "CRITICAL".equals(rule.getSeverity())) {
+                        result.setStatus("FAILED");
+                        result.setMessage("强规则尚未建立波动基线，本批暂不放行；已保存基线供后续检查使用");
+                    }
                 } catch (java.sql.SQLException | RuntimeException e) {
                     result = new QualityResult();
                     result.setName(rule.getName());
@@ -210,8 +246,14 @@ public class QualityService {
             run.setStatus(status);
             run.setMessage(message);
             run.setFinishedAt(now());
-            mapper.finish(run);
+            if (mapper.finish(run) == 0) return;
             mapper.release(run.getTaskId(), run.getId());
+            if (Set.of("WARNING", "FAILED", "ERROR").contains(status))
+                readyEvents.alert(run.getId(), status, "数据质量" + QualityRun.statusLabel(status) + "；请查看规则结果");
+            if (run.getPipelineRunId() != null) {
+                readyEvents.scanFinished(run.getPipelineRunId(), status);
+                if (Set.of("PASSED", "WARNING").contains(status)) events.publish(run.getPipelineRunId(), run.getId());
+            }
             platform.audit(run.getActor(), "QUALITY_FINISH", run.getId().toString(), status);
         });
     }
@@ -245,6 +287,7 @@ public class QualityService {
         if (t.isArchived()) throw new IllegalArgumentException("任务已归档");
         if (t.getVersion() != version) throw new IllegalArgumentException("任务已变化，请刷新后重试");
         if (t.getActiveRunId() != null) throw new IllegalArgumentException("任务正在扫描，请等待完成后修改");
+        if (readyEvents.pendingQuality(id) > 0) throw new IllegalArgumentException("同步批次正在等待本任务检查，请等待完成后修改");
         return t;
     }
 

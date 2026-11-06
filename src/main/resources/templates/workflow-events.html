@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title>数据就绪事件 · LiteData</title></head>
+<body><section>
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-5">
+    <div><h1 class="page-title">数据就绪事件</h1><p class="page-subtitle" th:text="${workflow.name}"></p></div>
+    <a class="btn-outline theme-secondary" th:href="@{/workflows/{id}(id=${workflow.id})}">返回加工流程</a>
+  </div>
+  <div th:replace="~{fragments/messages :: messages}"></div>
+  <p class="alert theme-info">每个来源同步批次最多触发一次。已提交表示引擎接受请求，实际结果请查看运行记录。提交结果未知时，请先核对引擎实例，避免重复运行。</p>
+  <article class="platform-card card"><div class="card-body p-0 table-responsive">
+    <table class="table mb-0"><thead><tr><th>事件 / 投递</th><th>来源</th><th>同步批次</th><th>质量检查</th><th>状态</th><th>说明</th></tr></thead>
+      <tbody><tr th:each="item : ${deliveries}">
+        <td th:text="${'#' + item.eventId + ' / #' + item.id}"></td>
+        <td th:text="${item.pipelineName}"></td><td th:text="${'#' + item.pipelineRunId}"></td>
+        <td><a th:if="${item.qualityRunId != null}" th:href="@{/quality/runs/{id}(id=${item.qualityRunId})}" th:text="${'#' + item.qualityRunId}"></a><span th:unless="${item.qualityRunId != null}">未配置</span></td>
+        <td th:text="${item.state}"></td><td><span th:text="${item.message}"></span>
+          <form th:if="${canEdit and item.state == 'FAILED'}" th:action="@{/workflows/{id}/events/{delivery}/retry(id=${workflow.id},delivery=${item.id})}" method="post" class="mt-2">
+            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"><button type="submit" class="btn-outline theme-primary btn-sm">重试未提交事件</button>
+          </form></td>
+      </tr><tr th:if="${#lists.isEmpty(deliveries)}"><td colspan="6" class="text-center fg-2">暂无事件投递记录。启用订阅后接收新的数据就绪事件。</td></tr></tbody>
+    </table>
+  </div><div class="card-footer" th:replace="~{fragments/pagination :: pagination}"></div></article>
+</section></body></html>

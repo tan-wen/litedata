@@ -34,6 +34,8 @@ public class WorkflowScheduler {
     public void run(long id, String actor) {
         sql.lockGraph();
         requireReviewed(id);
+        if ("EVENT".equals(mapper.workflow(id).getTriggerMode()))
+            throw new IllegalArgumentException("事件模式由数据就绪事件放行，请运行来源同步管道");
         var graph = graphs.graph(id);
         preflight(graph);
         long code = definition(id, graph);
@@ -51,6 +53,13 @@ public class WorkflowScheduler {
         long code = definition(id, graph);
         engine.publish(code);
         var workflow = mapper.workflow(id);
+        if ("EVENT".equals(workflow.getTriggerMode())) {
+            if (workflow.getTriggerPipelineId() == null || platform.pipeline(workflow.getTriggerPipelineId()) == null)
+                throw new IllegalArgumentException("请选择有效的数据就绪来源");
+            if (!"EVENT_ENABLED".equals(workflow.getStatus())) mapper.enableEvents(id);
+            platform.audit(actor, "WORKFLOW_EVENT_ENABLE", Long.toString(id), "SUCCESS");
+            return;
+        }
         Integer scheduleId = workflow.getScheduleId();
         if (scheduleId == null) {
             scheduleId = engine.createSchedule(code, workflow.getCronExpression());
@@ -69,6 +78,22 @@ public class WorkflowScheduler {
             engine.offline(workflow.getScheduleId());
         mapper.schedule(id, workflow.getScheduleId(), "PAUSED");
         platform.audit(actor, "WORKFLOW_PAUSE", Long.toString(id), "SUCCESS");
+    }
+
+    @Transactional
+    public Long prepareEvent(long id) {
+        sql.lockGraph();
+        requireReviewed(id);
+        var workflow = mapper.workflow(id);
+        if (!"EVENT".equals(workflow.getTriggerMode()) || !"EVENT_ENABLED".equals(workflow.getStatus()))
+            throw new IllegalArgumentException("订阅已暂停或变更");
+        var graph = graphs.graph(id);
+        for (var node : graph.nodes())
+            if (sql.task(node.refId()).getActiveRunId() != null) return null;
+        preflight(graph);
+        if (workflow.getDefinitionCode() == null || !graph.hash().equals(workflow.getDefinitionHash()))
+            throw new IllegalArgumentException("加工定义已变化，请暂停后重新启用订阅");
+        return workflow.getDefinitionCode();
     }
 
     private void preflight(TransformService.Graph graph) {

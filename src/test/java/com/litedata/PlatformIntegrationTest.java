@@ -105,6 +105,8 @@ class PlatformIntegrationTest {
         jdbc.update("DELETE FROM api_credential");
         jdbc.update("DELETE FROM service_call");
         jdbc.update("DELETE FROM audit_event");
+        jdbc.update("DELETE FROM data_ready_delivery");
+        jdbc.update("DELETE FROM data_ready_event");
         jdbc.update("DELETE FROM pipeline_run");
         jdbc.update("DELETE FROM processing_workflow_node");
         jdbc.update("DELETE FROM pipeline");
@@ -123,6 +125,8 @@ class PlatformIntegrationTest {
         jdbc.update("DELETE FROM api_credential");
         jdbc.update("DELETE FROM service_call");
         jdbc.update("DELETE FROM audit_event");
+        jdbc.update("DELETE FROM data_ready_delivery");
+        jdbc.update("DELETE FROM data_ready_event");
         jdbc.update("DELETE FROM pipeline_run");
         jdbc.update("DELETE FROM processing_workflow_node");
         jdbc.update("DELETE FROM pipeline");
@@ -179,7 +183,7 @@ class PlatformIntegrationTest {
         mvc.perform(post("/pipelines/" + legacyPipeline + "/archive").with(csrf()).with(user("developer").roles("DEVELOPER")))
             .andExpect(status().is3xxRedirection()).andExpect(header().string("Location", "/pipelines"));
         assertThat(mapper.pipeline(legacyPipeline)).isNull();
-        jdbc.update("INSERT INTO processing_workflow_node(workflow_id,node_key,pipeline_id) VALUES(?,?,?)", workflow, "pipeline-" + activePipeline, activePipeline);
+        jdbc.update("UPDATE processing_workflow SET trigger_mode='EVENT',trigger_pipeline_id=? WHERE id=?", activePipeline, workflow);
         mvc.perform(post("/pipelines/" + activePipeline + "/archive").with(csrf()).with(user("developer").roles("DEVELOPER")))
             .andExpect(status().is3xxRedirection()).andExpect(header().string("Location", "/pipelines"));
         assertThat(mapper.pipeline(activePipeline)).isNotNull();

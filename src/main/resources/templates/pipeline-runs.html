@@ -52,6 +52,7 @@
             <th>开始时间（北京时间）</th>
             <th>结束时间（北京时间）</th>
             <th>水位区间</th>
+            <th>质量门禁</th>
             <th>结果摘要</th>
           </tr>
           </thead>
@@ -70,11 +71,21 @@
               th:text="${'[' + (run.lowerBound != null ? #temporals.format(run.lowerBound, 'yyyy-MM-dd HH:mm:ss.SSSSSS') : '—') + ', ' + (run.upperBound != null ? #temporals.format(run.upperBound, 'yyyy-MM-dd HH:mm:ss.SSSSSS') : '—') + ')'}"></code>
               <div class="small fg-2 mt-1">源库时间 · 左闭右开</div>
             </td>
+            <td>
+              <span th:if="${run.qualityStatus == null}" class="small fg-2">未配置</span>
+              <a th:if="${run.qualityRunId != null}" th:href="@{/quality/runs/{id}(id=${run.qualityRunId})}">
+                <span class="badge"
+                      th:classappend="${run.qualityStatus == 'PASSED' ? 'theme-success' : run.qualityStatus == 'WARNING' ? 'theme-warning' : run.qualityStatus == 'RUNNING' ? 'theme-info' : 'theme-danger'}"
+                      th:text="${run.qualityStatus}"></span>
+              </a>
+              <span th:if="${run.qualityRunId == null and run.qualityStatus != null}" class="badge theme-info"
+                    th:text="${run.qualityStatus}"></span>
+            </td>
             <td class="small" style="max-width:24rem;overflow-wrap:anywhere"
                 th:text="${run.message != null ? run.message : '等待执行节点回传结果'}"></td>
           </tr>
           <tr th:if="${#lists.isEmpty(runs)}">
-            <td colspan="6" class="text-center fg-2 py-7">没有历史未关联回调。请在“运行记录”中查看当前执行的回调结果。
+            <td colspan="7" class="text-center fg-2 py-7">没有历史未关联回调。请在“运行记录”中查看当前执行的回调结果。
             </td>
           </tr>
           </tbody>

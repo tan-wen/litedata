@@ -17,6 +17,9 @@ public interface QualityMapper {
     @Select("SELECT quality_task.*,(SELECT COUNT(*) FROM quality_rule r WHERE r.task_id=quality_task.id) rule_count FROM quality_task" + FILTER + " ORDER BY id DESC LIMIT #{limit} OFFSET #{offset}")
     List<QualityTask> page(@Param("keyword") String keyword, @Param("limit") int limit, @Param("offset") long offset);
 
+    @Select("SELECT * FROM quality_task WHERE archived=FALSE AND source_id IS NULL ORDER BY name,id")
+    List<QualityTask> warehouseChoices();
+
     @Select("SELECT * FROM quality_task WHERE id=#{id}")
     QualityTask task(long id);
 
@@ -54,7 +57,7 @@ public interface QualityMapper {
     @Select("SELECT id FROM quality_task WHERE archived=FALSE AND enabled=TRUE AND active_run_id IS NULL AND next_run_at<=#{now} ORDER BY next_run_at,id LIMIT 20")
     List<Long> due(LocalDateTime now);
 
-    @Insert("INSERT INTO quality_run(task_id,task_version,status,actor,config_snapshot,started_at) VALUES(#{taskId},#{taskVersion},'RUNNING',#{actor},#{configSnapshot},#{startedAt})")
+    @Insert("INSERT INTO quality_run(task_id,task_version,status,actor,config_snapshot,started_at,pipeline_run_id) VALUES(#{taskId},#{taskVersion},'RUNNING',#{actor},#{configSnapshot},#{startedAt},#{pipelineRunId})")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     void insertRun(QualityRun run);
 
@@ -68,7 +71,7 @@ public interface QualityMapper {
     List<QualityRun> runs(@Param("id") long id, @Param("limit") int limit, @Param("offset") long offset);
 
     @Update("UPDATE quality_run SET status=#{status},message=#{message},finished_at=#{finishedAt} WHERE id=#{id} AND status='RUNNING'")
-    void finish(QualityRun run);
+    int finish(QualityRun run);
 
     @Insert("INSERT INTO quality_result(run_id,name,type,severity,total_count,anomaly_count,anomaly_percent,status,message,metric_value) VALUES(#{runId},#{name},#{type},#{severity},#{totalCount},#{anomalyCount},#{anomalyPercent},#{status},#{message},#{metricValue})")
     void result(QualityResult result);

@@ -136,6 +136,11 @@ def workflow_node(response, key):
     return nodes[0]
 
 
+def pipeline_instances(page, pipeline_id):
+    return {action for row in parse(page).rows for action in row["actions"]
+            if re.fullmatch(rf"/scheduling/pipeline/{pipeline_id}/instances/\d+", action)}
+
+
 def create_workflow_sql(client, workflow_id, page, name, model_id, sql):
     status, graph = client.request_json("GET", f"/workflows/{workflow_id}/graph")
     if status != 200:
@@ -224,7 +229,7 @@ class Demo:
     def quality(self, definition):
         _, page = self.client.request("GET", "/quality/new")
         fields = {k: definition[k] for k in ("name", "tableName", "owner", "description")}
-        fields.update(name=self.args.prefix + " " + fields["name"], cronExpression="", timeColumn="", windowHours=24, timeoutSeconds=30)
+        fields.update(name=self.args.prefix + " " + fields["name"], cronExpression="", timeColumn=definition.get("timeColumn", ""), windowHours=24, timeoutSeconds=30)
         if definition["sourceKind"] == "source":
             fields["sourceId"] = self.report["resources"]["source"]
         for index, rule in enumerate(definition["rules"]):
@@ -233,6 +238,25 @@ class Demo:
         page = checked(self.client.post(page, "/quality", fields), "质量任务已保存")
         task_id = identifier(page, fields["name"], "quality", "edit")
         self.report["resources"]["qualities"][definition["key"]] = task_id
+
+    def update_gate_row_count(self, minimum, maximum):
+        """Change only the synthetic ODS gate after its intentional first failure."""
+        task_id = self.report["resources"]["qualities"]["ods_utility_gate"]
+        definition = next(item for item in self.manifest["qualities"] if item["key"] == "ods_utility_gate")
+        _, page = self.client.request("GET", f"/quality/{task_id}/edit")
+        form = next((item for item in parse(page).forms if item["action"] == f"/quality/{task_id}"), None)
+        if form is None:
+            raise DemoFailure("ODS 门禁编辑表单缺失")
+        fields = {k: definition[k] for k in ("name", "tableName", "owner", "description")}
+        fields.update(name=self.args.prefix + " " + fields["name"], cronExpression="", timeColumn="updated_at", windowHours=24,
+                      timeoutSeconds=30, version=form["inputs"].get("version", ""))
+        for index, rule in enumerate(definition["rules"]):
+            changed = dict(rule)
+            if index == 0:
+                changed.update(parameter1=str(minimum), parameter2=str(maximum))
+            for key, value in changed.items():
+                fields[f"rules[{index}].{key}"] = value
+        checked(self.client.post(page, f"/quality/{task_id}", fields), "质量任务已保存")
 
     def run_quality(self, key, expected):
         task_id = self.report["resources"]["qualities"][key]
@@ -259,12 +283,8 @@ class Demo:
         raise DemoFailure("质量检测等待超时")
 
     def run_chain(self, number):
+        evidence = self.run_pipelines(number, "WARNING" if number == 1 else "PASSED")
         workflow = self.report["resources"]["workflow"]
-        status, graph = self.client.request_json("GET", f"/workflows/{workflow}/graph")
-        if status != 200:
-            raise DemoFailure("无法读取工作流画布")
-        _, page = self.client.request("GET", f"/workflows/{workflow}")
-        checked(self.client.post(page, f"/workflows/{workflow}/run", {"version": graph["version"], "graphHash": graph["graphHash"]}), "已提交整条加工流程")
         names = {self.args.prefix + " " + t["name"] for t in self.manifest["transforms"]}
         deadline = time.monotonic() + self.args.timeout
         last_progress = 0
@@ -278,13 +298,93 @@ class Demo:
                 raise DemoFailure("依赖链有节点失败，请按资源 ID 查看平台运行记录")
             completed = {name: sum(r[1].split(" / ")[0] == name and r[3] == "SUCCESS" for r in runs) for name in names}
             if all(value >= number for value in completed.values()):
-                self.record("依赖链运行 " + str(number), workflowId=workflow, completed=completed)
+                self.record("DATA_READY 加工运行 " + str(number), workflowId=workflow, completed=completed, utility=evidence)
                 return
             if time.monotonic() - last_progress > 25:
                 print(json.dumps({"stage": "waiting-for-worker", "run": number, "completedSqlNodes": sum(v >= number for v in completed.values())}), flush=True)
                 last_progress = time.monotonic()
             time.sleep(3)
         raise DemoFailure("等待 DataX / SQL 节点回调超时")
+
+    def verify_gate_blocked(self, evidence):
+        """Check that the intentionally rejected first batch created no consumer work."""
+        workflow = self.report["resources"]["workflow"]
+        status, page = self.client.request("GET", f"/workflows/{workflow}/events")
+        if status != 200 or any(len(row["cells"]) == 6 for row in parse(page).rows[1:]):
+            raise DemoFailure("强规则失败批次不应产生加工投递")
+        for task_id in self.report["resources"]["transforms"].values():
+            status, page = self.client.request("GET", f"/transforms/{task_id}")
+            if status != 200 or any(len(row["cells"]) == 6 and row["cells"][0].isdigit() for row in parse(page).rows):
+                raise DemoFailure("强规则失败批次不应启动 SQL 节点")
+        evidence["eventDeliveryCount"] = 0
+        evidence["sqlRunCount"] = 0
+
+    def run_pipelines(self, number, expected_utility="PASSED"):
+        """Run enterprise/production independently, then let utility DATA_READY release SQL."""
+        pipelines = self.report["resources"]["pipelines"]
+        # Every demonstration round needs a new source upper bound. These are no-op business updates;
+        # they deliberately prove that the workflow is not waiting for a multi-source event join.
+        sources = {item["key"]: item["tableName"] for item in self.manifest["source_tables"]}
+        for key in ("enterprise", "production", "utility"):
+            source_sql(f"UPDATE `{sources[key]}` SET updated_at=NOW(6)-INTERVAL 1 SECOND;")
+        known_instances = {}
+        for key in ("enterprise", "production"):
+            pipeline_id = pipelines[key]
+            status, page = self.client.request("GET", f"/scheduling/pipeline/{pipeline_id}")
+            if status != 200:
+                raise DemoFailure("无法读取同步管道运行记录")
+            known_instances[key] = pipeline_instances(page, pipeline_id)
+        for key in ("enterprise", "production"):
+            pipeline_id = pipelines[key]
+            _, page = self.client.request("GET", "/pipelines")
+            checked(self.client.post(page, f"/pipelines/{pipeline_id}/run"), "已接受执行请求")
+        pending = {key: pipelines[key] for key in ("enterprise", "production")}
+        deadline = time.monotonic() + self.args.timeout
+        while pending and time.monotonic() < deadline:
+            for key, pipeline_id in list(pending.items()):
+                status, page = self.client.request("GET", f"/scheduling/pipeline/{pipeline_id}")
+                if status != 200:
+                    raise DemoFailure("无法读取同步管道运行记录")
+                instances = pipeline_instances(page, pipeline_id) - known_instances[key]
+                if not instances:
+                    continue
+                status, detail = self.client.request_json("GET", sorted(instances)[0] + "/status")
+                if status != 200:
+                    continue
+                callbacks = detail.get("callbackPage", {}).get("items", [])
+                states = {item.get("status") for item in callbacks}
+                if "FAILED" in states:
+                    raise DemoFailure("ODS 同步管道失败：" + key)
+                if "SUCCESS" in states:
+                    del pending[key]
+            if pending:
+                time.sleep(3)
+        if pending:
+            raise DemoFailure("等待 ODS 同步管道成功超时：" + ", ".join(pending))
+        utility = pipelines["utility"]
+        status, page = self.client.request("GET", f"/scheduling/pipeline/{utility}")
+        if status != 200:
+            raise DemoFailure("无法读取 utility 同步记录")
+        before = pipeline_instances(page, utility)
+        _, page = self.client.request("GET", "/pipelines")
+        checked(self.client.post(page, f"/pipelines/{utility}/run"), "已接受执行请求")
+        deadline = time.monotonic() + self.args.timeout
+        while time.monotonic() < deadline:
+            _, page = self.client.request("GET", f"/scheduling/pipeline/{utility}")
+            instances = pipeline_instances(page, utility) - before
+            if instances:
+                status, detail = self.client.request_json("GET", sorted(instances)[0] + "/status")
+                callbacks = detail.get("callbackPage", {}).get("items", []) if status == 200 else []
+                if callbacks:
+                    item = callbacks[0]
+                    if item.get("status") == "FAILED":
+                        raise DemoFailure("utility ODS 同步失败")
+                    if item.get("status") == "SUCCESS" and item.get("qualityStatus") == expected_utility:
+                        evidence = {"pipelineRunId": item.get("id"), "qualityRunId": item.get("qualityRunId"), "qualityStatus": expected_utility}
+                        self.record("ODS 独立同步就绪 " + str(number), enterpriseProduction=["enterprise", "production"], utility=evidence)
+                        return evidence
+            time.sleep(3)
+        raise DemoFailure("等待 utility 同步质量门禁超时")
 
     def counts(self, expected_dwd):
         expected = {"ods_enterprise": 3, "ods_utility": 24, "ods_production": 24,
@@ -476,11 +576,17 @@ class Demo:
         checked(self.client.post(page, f"/sources/{source_id}/test"), "连接测试成功")
         for model in self.manifest["models"]:
             self.model(model)
+        # The ODS utility gate must exist before the utility pipeline is bound.
+        for quality in self.manifest["qualities"]:
+            if quality["key"] == "ods_utility_gate":
+                self.quality(quality)
         for pipeline in self.manifest["pipelines"]:
             _, page = self.client.request("GET", "/pipelines/new")
             target = next(m["tableName"] for m in self.manifest["models"] if m["key"] == pipeline["targetModel"])
             fields = {k: pipeline[k] for k in ("sourceTable", "watermarkColumn", "cronExpression")}
             fields.update(name=self.args.prefix + " " + pipeline["name"], sourceId=source_id, targetMode="EXISTING", targetTable=target)
+            if pipeline["key"] == "utility":
+                fields["qualityTaskId"] = self.report["resources"]["qualities"]["ods_utility_gate"]
             page = checked(self.client.post(page, "/pipelines", fields), "ODS 同步管道已保存")
             self.report["resources"]["pipelines"][pipeline["key"]] = identifier(page, fields["name"], "pipelines", "run")
         _, page = self.client.request("GET", "/workflows/new")
@@ -499,32 +605,43 @@ class Demo:
             task_id, graph = create_workflow_sql(self.client, workflow_id, page, name,
                 self.report["resources"]["models"][task["targetModel"]], task["sqlText"])
             self.report["resources"]["transforms"][task["key"]] = task_id
-        transform_keys = set(self.report["resources"]["transforms"])
-        pipeline_keys = set(self.report["resources"]["pipelines"])
-        if transform_keys & pipeline_keys:
-            raise DemoFailure("示例任务与同步管道键重复，无法建立工作流")
-        node_keys = {**{key: "sql-" + str(value) for key, value in self.report["resources"]["transforms"].items()},
-                     **{key: "pipeline-" + str(value) for key, value in self.report["resources"]["pipelines"].items()}}
+        node_keys = {key: "sql-" + str(value) for key, value in self.report["resources"]["transforms"].items()}
         nodes = list(graph.get("nodes", []))
-        for key in ("pipeline-" + str(value) for value in self.report["resources"]["pipelines"].values()):
-            status, item = self.client.request_json("GET", f"/workflows/{workflow_id}/expand?" + urlencode({"key": key}))
-            if status != 200:
-                raise DemoFailure("工作流无法加载节点：" + key)
-            nodes.append(workflow_node(item, key))
         edges = []
         for task in self.manifest["transforms"]:
             target = node_keys[task["key"]]
-            edges.extend({"from": node_keys[key], "to": target} for key in task["upstreamPipelines"])
             edges.extend({"from": node_keys[key], "to": target} for key in task["upstreamTasks"])
         terminal = next(task for task in self.manifest["transforms"] if task["key"] == "ads_park_7d")
         status, saved = self.client.request_json("POST", f"/workflows/{workflow_id}/graph", {"version": graph["version"], "graphHash": graph["graphHash"], "cronExpression": terminal["cronExpression"], "nodes": nodes, "edges": edges, "positions": {}}, {"X-CSRF-TOKEN": csrf})
         if status != 200:
             raise DemoFailure("工作流依赖保存失败：" + str(saved.get("message", "未知错误")))
+        _, edit = self.client.request("GET", f"/workflows/{workflow_id}/edit")
+        form = next((item for item in parse(edit).forms if item["action"] == f"/workflows/{workflow_id}/metadata"), None)
+        if form is None:
+            raise DemoFailure("工作流触发模式表单缺失")
+        page = checked(self.client.post(edit, f"/workflows/{workflow_id}/metadata", {"name": workflow_name,
+            "description": "化工园区 DIM 示例：utility DATA_READY 单来源放行", "version": form["inputs"].get("version", ""),
+            "triggerMode": "EVENT", "triggerPipelineId": self.report["resources"]["pipelines"]["utility"]}), "加工流程已保存")
+        # Metadata changes the version; save the SQL-only graph once more before enabling EVENT.
+        status, graph = self.client.request_json("GET", f"/workflows/{workflow_id}/graph")
+        if status != 200:
+            raise DemoFailure("无法刷新事件工作流画布")
+        status, saved = self.client.request_json("POST", f"/workflows/{workflow_id}/graph", {"version": graph["version"], "graphHash": graph["graphHash"], "cronExpression": terminal["cronExpression"], "nodes": graph["nodes"], "edges": edges, "positions": {}}, {"X-CSRF-TOKEN": csrf})
+        if status != 200:
+            raise DemoFailure("事件工作流图保存失败")
+        status, page = self.client.request("GET", f"/workflows/{workflow_id}")
+        graph_status, graph = self.client.request_json("GET", f"/workflows/{workflow_id}/graph")
+        if status != 200 or graph_status != 200:
+            raise DemoFailure("无法启用事件订阅")
+        checked(self.client.post(page, f"/workflows/{workflow_id}/schedule", {"version": graph["version"], "graphHash": graph["graphHash"]}), "加工流程事件订阅已启用")
         for quality in self.manifest["qualities"]:
-            self.quality(quality)
-        initial = self.run_quality("source_utility_quality", "FAILED")
-        self.record("检测到预置源端异常", "expected_anomaly", quality=initial)
+            if quality["key"] != "ods_utility_gate":
+                self.quality(quality)
         self.record("已创建 DIM 全流程资源", models=len(self.manifest["models"]), pipelines=len(self.manifest["pipelines"]), transforms=len(self.manifest["transforms"]))
+        blocked = self.run_pipelines(0, "FAILED")
+        self.verify_gate_blocked(blocked)
+        self.record("强规则阻断 DATA_READY", "expected_anomaly", utility=blocked)
+        self.update_gate_row_count(24, 24)
         self.run_chain(1)
         self.record("初次分层对账", counts=self.counts(23), quality=self.run_quality("dwd_utility_quality", "PASSED"))
         source_sql(self.manifest["correction_sql"] + ";\n")

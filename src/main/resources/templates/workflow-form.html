@@ -5,7 +5,7 @@
 <body>
 <section>
   <div class="mb-7"><h1 class="page-title" th:text="${workflowId == null ? '新建加工流程' : '编辑加工流程信息'}"></h1>
-    <p class="page-subtitle mb-0">先创建加工流程，再在画布中新增 SQL、添加同步管道并配置依赖、周期和运行。</p></div>
+    <p class="page-subtitle mb-0">先创建加工流程，再在画布中编排 SQL 依赖，并选择 Cron 或数据就绪事件触发。</p></div>
   <div th:replace="~{fragments/messages :: messages}"></div>
   <form th:if="${canEdit}" th:object="${draft}"
         th:action="${workflowId == null ? '/workflows' : '/workflows/' + workflowId + '/metadata'}" method="post"><input
@@ -22,6 +22,23 @@
                                                                                                 rows="4" maxlength="500"
                                                                                                 placeholder="说明此加工流程的数据范围或运行目的"></textarea>
           </div>
+          <div class="md:col-6">
+            <label class="form-label" for="triggerMode">触发模式</label>
+            <select id="triggerMode" class="form-control" th:field="*{triggerMode}" data-workflow-trigger-mode>
+              <option value="CRON">Cron 定时</option>
+              <option value="EVENT">数据就绪事件</option>
+            </select>
+            <div class="form-text">两种模式分别启用；事件模式仅在来源同步和质量门禁放行后启动加工。</div>
+          </div>
+          <div class="md:col-6" data-workflow-event-source hidden>
+            <label class="form-label" for="triggerPipelineId">放行来源</label>
+            <select id="triggerPipelineId" class="form-control" th:field="*{triggerPipelineId}" data-workflow-trigger-source>
+              <option value="">请选择同步管道</option>
+              <option th:each="pipeline : ${pipelineChoices}" th:value="${pipeline.id}"
+                      th:text="${pipeline.name + ' · ' + pipeline.targetTable}">订单同步 · ods_orders</option>
+            </select>
+            <div class="form-text">订阅一个同步管道的 DATA_READY 事件；配置了质量检查时，强规则通过后才会放行。</div>
+          </div>
         </div>
       </div>
     </article>
@@ -32,6 +49,7 @@
          th:href="${workflowId == null ? '/workflows' : '/workflows/' + workflowId}">取消</a></div>
   </form>
   <p th:unless="${canEdit}" class="alert theme-info">当前账号仅可查看加工流程。</p>
+  <script th:if="${canEdit}" th:src="@{/js/workflow-trigger.js}" defer></script>
 </section>
 </body>
 </html>

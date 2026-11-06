@@ -26,6 +26,27 @@ class DimensionDashboardTest(unittest.TestCase):
         self.assertIn("&lt;img src=x onerror=alert(1)&gt;", page)
         self.assertNotIn("<img src=x", page)
 
+    def test_dashboard_renders_deduplicated_observed_readiness_evidence_only(self):
+        report = {"platform_url": "http://localhost:8080", "resources": {"workflow": 41,
+                  "pipelines": {"utility": 42}, "qualities": {"ods_utility_gate": 43}},
+                  "stages": [
+                      {"stage": "blocked", "details": {"utility": {"pipelineRunId": 101, "qualityRunId": 201, "qualityStatus": "FAILED"}}},
+                      {"stage": "same quality copied", "details": {"utility": {"pipelineRunId": 999, "qualityRunId": 201, "qualityStatus": "FAILED"}}},
+                      {"stage": "released", "details": {"utility": {"pipelineRunId": 102, "qualityRunId": 202, "qualityStatus": "WARNING"}}},
+                      {"stage": "passed", "details": {"utility": {"pipelineRunId": 103, "qualityRunId": 203, "qualityStatus": "PASSED"}}},
+                  ]}
+        page = render_dashboard(report, {})
+        self.assertIn('id="data-ready-gate"', page)
+        self.assertEqual(1, page.count('/quality/runs/201'))
+        for value in ("FAILED", "WARNING", "PASSED", "/workflows/41/events", "/scheduling/pipeline/42", "/quality/43"):
+            self.assertIn(value, page)
+        self.assertIn("不进行多来源汇合", page)
+
+    def test_dashboard_does_not_invent_readiness_pass_without_stage_evidence(self):
+        page = render_dashboard({"resources": {"workflow": 9, "pipelines": {"utility": 8}}}, {})
+        self.assertIn("尚无本次实测的数据就绪与质量门禁记录", page)
+        self.assertNotIn("/quality/runs/", page)
+
 
 if __name__ == "__main__":
     unittest.main()

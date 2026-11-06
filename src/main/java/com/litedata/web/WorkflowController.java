@@ -23,10 +23,16 @@ import org.springframework.web.util.UriComponentsBuilder;
 public class WorkflowController {
     private final WorkflowService workflows;
     private final ModelingService models;
+    private final com.litedata.store.PlatformMapper platform;
+    private final com.litedata.store.ReadyMapper ready;
+    private final ReadinessDispatcher dispatcher;
 
-    public WorkflowController(WorkflowService workflows, ModelingService models) {
+    public WorkflowController(WorkflowService workflows, ModelingService models, com.litedata.store.PlatformMapper platform, com.litedata.store.ReadyMapper ready, ReadinessDispatcher dispatcher) {
         this.workflows = workflows;
         this.models = models;
+        this.platform = platform;
+        this.ready = ready;
+        this.dispatcher = dispatcher;
     }
 
     @ModelAttribute("activeNav")
@@ -46,7 +52,7 @@ public class WorkflowController {
 
     @InitBinder("draft")
     void bind(WebDataBinder binder) {
-        binder.setAllowedFields("name", "description", "version");
+        binder.setAllowedFields("name", "description", "version", "triggerMode", "triggerPipelineId");
     }
 
     @GetMapping
@@ -104,7 +110,23 @@ public class WorkflowController {
     private String form(Model model, ProcessingWorkflow draft, Long id) {
         model.addAttribute("draft", draft);
         model.addAttribute("workflowId", id);
+        model.addAttribute("pipelineChoices", platform.pipelineChoices());
         return "workflow-form";
+    }
+
+    @GetMapping("/{id}/events")
+    String events(@PathVariable long id, @RequestParam Map<String, String> params, Model model) {
+        model.addAttribute("workflow", workflows.require(id));
+        var page = ListPagination.prepare(model, "/workflows/" + id + "/events", params, ready.count(id));
+        model.addAttribute("deliveries", ready.page(id, page.pageSize(), page.offset()));
+        return "workflow-events";
+    }
+
+    @PostMapping("/{id}/events/{delivery}/retry")
+    String retry(@PathVariable long id, @PathVariable long delivery, Principal principal, RedirectAttributes redirect) {
+        dispatcher.retry(id, delivery, principal.getName());
+        redirect.addFlashAttribute("success", "未提交事件已重新排队，请查看投递记录");
+        return "redirect:/workflows/" + id + "/events";
     }
 
     @GetMapping("/{id}/graph")
@@ -158,8 +180,8 @@ public class WorkflowController {
         workflows.execute(id, version, graphHash, action, principal.getName());
         redirect.addFlashAttribute("success", switch (action) {
             case "run" -> "已提交整条加工流程，请进入运行记录查看结果";
-            case "schedule" -> "加工流程定时调度已启用";
-            default -> "加工流程定时调度已停用，已提交任务继续执行";
+            case "schedule" -> "EVENT".equals(workflows.require(id).getTriggerMode()) ? "加工流程事件订阅已启用" : "加工流程定时调度已启用";
+            default -> "EVENT".equals(workflows.require(id).getTriggerMode()) ? "加工流程事件订阅已停用，已提交任务继续执行" : "加工流程定时调度已停用，已提交任务继续执行";
         });
         return "redirect:/workflows/" + id;
     }

@@ -118,6 +118,8 @@ class McpIntegrationTest {
         jdbc.update("DELETE FROM api_credential");
         jdbc.update("DELETE FROM service_call");
         jdbc.update("DELETE FROM audit_event");
+        jdbc.update("DELETE FROM data_ready_delivery");
+        jdbc.update("DELETE FROM data_ready_event");
         jdbc.update("DELETE FROM pipeline_run");
         jdbc.update("DELETE FROM pipeline");
         jdbc.update("DELETE FROM data_service");

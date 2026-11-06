@@ -1,6 +1,18 @@
 package com.litedata.model;
 
 public class PipelineRun {
+    private Long qualityTaskId;
+    private Integer qualityTaskVersion;
+    private Long qualityRunId;
+    private String qualityStatus = "NOT_REQUIRED";
+    public Long getQualityTaskId() { return qualityTaskId; }
+    public void setQualityTaskId(Long value) { qualityTaskId = value; }
+    public Integer getQualityTaskVersion() { return qualityTaskVersion; }
+    public void setQualityTaskVersion(Integer value) { qualityTaskVersion = value; }
+    public Long getQualityRunId() { return qualityRunId; }
+    public void setQualityRunId(Long value) { qualityRunId = value; }
+    public String getQualityStatus() { return qualityStatus; }
+    public void setQualityStatus(String value) { qualityStatus = value; }
     private Long id;
     private Long pipelineId;
     private String pipelineName;

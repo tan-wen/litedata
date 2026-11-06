@@ -2,7 +2,7 @@ import copy
 import datetime as dt
 import unittest
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 from run_demo import Client, Demo, DemoFailure, identifier, workflow_node
 from scenario import build_scenario
@@ -30,6 +30,64 @@ class RunnerContractTest(unittest.TestCase):
     def test_identifier_reads_transform_id_from_list_edit_link(self):
         page = "<table><tr><td>cpdim_demo ADS</td><td><a href=\"/transforms/42/edit\">编辑</a></td></tr></table>"
         self.assertEqual(42, identifier(page, "cpdim_demo ADS", "transforms", "edit"))
+
+    def test_all_pipelines_must_report_success_before_sql_workflow(self):
+        demo = Demo.__new__(Demo)
+        demo.args = SimpleNamespace(timeout=1)
+        demo.manifest = {"source_tables": [{"key": "enterprise", "tableName": "src_enterprise"}, {"key": "production", "tableName": "src_production"}, {"key": "utility", "tableName": "src_utility"}]}
+        demo.report = {"resources": {"pipelines": {"enterprise": 1, "production": 2, "utility": 3}}}
+        demo.client = Mock()
+        demo.client.request.side_effect = [
+            (200, "<table><tr><td><a href='/scheduling/pipeline/1/instances/10'>old</a></td></tr></table>"),
+            (200, "<table><tr><td><a href='/scheduling/pipeline/2/instances/20'>old</a></td></tr></table>"),
+            (200, "<form action='/pipelines/1/run'></form>"),
+            (200, "<form action='/pipelines/2/run'></form>"),
+            (200, "<table><tr><td><a href='/scheduling/pipeline/1/instances/11'>run</a></td></tr></table>"),
+            (200, "<table><tr><td><a href='/scheduling/pipeline/2/instances/21'>run</a></td></tr></table>"),
+            (200, "<table><tr><td><a href='/scheduling/pipeline/3/instances/30'>old</a></td></tr></table>"),
+            (200, "<form action='/pipelines/3/run'></form>"),
+            (200, "<table><tr><td><a href='/scheduling/pipeline/3/instances/31'>run</a></td></tr></table>"),
+        ]
+        demo.client.post.return_value = (200, "已接受执行请求")
+        demo.client.request_json.side_effect = [(200, {"callbackPage": {"items": [{"status": "SUCCESS"}]}}),
+                                                 (200, {"callbackPage": {"items": [{"status": "SUCCESS"}]}}),
+                                                 (200, {"callbackPage": {"items": [{"id": 99, "qualityRunId": 199, "status": "SUCCESS", "qualityStatus": "PASSED"}]}})]
+        demo.record = Mock()
+
+        with patch("run_demo.time.sleep"), patch("run_demo.source_sql") as source:
+            evidence = demo.run_pipelines(1)
+
+        self.assertEqual([call("GET", "/scheduling/pipeline/1"), call("GET", "/scheduling/pipeline/2"),
+                          call("GET", "/pipelines"), call("GET", "/pipelines"),
+                          call("GET", "/scheduling/pipeline/1"), call("GET", "/scheduling/pipeline/2"),
+                          call("GET", "/scheduling/pipeline/3"), call("GET", "/pipelines"), call("GET", "/scheduling/pipeline/3")],
+                         demo.client.request.call_args_list)
+        self.assertEqual([call("GET", "/scheduling/pipeline/1/instances/11/status"), call("GET", "/scheduling/pipeline/2/instances/21/status"),
+                          call("GET", "/scheduling/pipeline/3/instances/31/status")],
+                         demo.client.request_json.call_args_list)
+        self.assertEqual({"pipelineRunId": 99, "qualityRunId": 199, "qualityStatus": "PASSED"}, evidence)
+        self.assertEqual(3, source.call_count)
+        demo.record.assert_called_once_with("ODS 独立同步就绪 1", enterpriseProduction=["enterprise", "production"], utility=evidence)
+
+    def test_new_pipeline_failure_blocks_sql_workflow(self):
+        demo = Demo.__new__(Demo)
+        demo.args = SimpleNamespace(timeout=1)
+        demo.manifest = {"source_tables": [{"key": "enterprise", "tableName": "src_enterprise"}, {"key": "production", "tableName": "src_production"}, {"key": "utility", "tableName": "src_utility"}]}
+        demo.report = {"resources": {"pipelines": {"enterprise": 1, "production": 2, "utility": 3}}}
+        demo.client = Mock()
+        demo.client.request.side_effect = [(200, "<table></table>"), (200, "<table></table>"),
+                                            (200, "<form action='/pipelines/1/run'></form>"), (200, "<form action='/pipelines/2/run'></form>"),
+                                            (200, "<table><tr><td><a href='/scheduling/pipeline/1/instances/11'>run</a></td></tr></table>"),
+                                            (200, "<table><tr><td><a href='/scheduling/pipeline/2/instances/21'>run</a></td></tr></table>"),
+                                            (200, "<table></table>"), (200, "<form action='/pipelines/3/run'></form>"),
+                                            (200, "<table><tr><td><a href='/scheduling/pipeline/3/instances/31'>run</a></td></tr></table>")]
+        demo.client.post.return_value = (200, "已接受执行请求")
+        demo.client.request_json.side_effect = [(200, {"callbackPage": {"items": [{"status": "SUCCESS"}]}}),
+                                                 (200, {"callbackPage": {"items": [{"status": "SUCCESS"}]}}),
+                                                 (200, {"callbackPage": {"items": [{"status": "FAILED"}]}})]
+
+        with patch("run_demo.source_sql"), self.assertRaisesRegex(DemoFailure, "utility ODS 同步失败"):
+            demo.run_pipelines(1)
 
     def test_model_posts_layer_relative_suffix_and_rejects_duplicate_prefix(self):
         demo = Demo.__new__(Demo)

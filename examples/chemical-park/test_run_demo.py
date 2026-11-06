@@ -1,7 +1,8 @@
 import copy
 import datetime as dt
 import unittest
-from unittest.mock import Mock, patch
+from types import SimpleNamespace
+from unittest.mock import Mock, call, patch
 
 from run_demo import Client, Demo, DemoFailure, identifier, workflow_node
 from scenario import build_scenario
@@ -29,6 +30,50 @@ class RunnerContractTest(unittest.TestCase):
     def test_identifier_reads_transform_id_from_list_edit_link(self):
         page = "<table><tr><td>cp_demo ADS</td><td><a href=\"/transforms/42/edit\">编辑</a></td></tr></table>"
         self.assertEqual(42, identifier(page, "cp_demo ADS", "transforms", "edit"))
+
+    def test_all_pipelines_must_report_success_before_sql_workflow(self):
+        demo = Demo.__new__(Demo)
+        demo.args = SimpleNamespace(timeout=1)
+        demo.report = {"resources": {"pipelines": {"enterprise": 1, "utility": 2}}}
+        demo.client = Mock()
+        demo.client.request.side_effect = [
+            (200, "<table><tr><td><a href='/scheduling/pipeline/1/instances/10'>old</a></td></tr></table>"),
+            (200, "<table><tr><td><a href='/scheduling/pipeline/2/instances/20'>old</a></td></tr></table>"),
+            (200, "<form action='/pipelines/1/run'></form>"),
+            (200, "<form action='/pipelines/2/run'></form>"),
+            (200, "<table><tr><td><a href='/scheduling/pipeline/1/instances/10'>old</a></td></tr></table>"),
+            (200, "<table><tr><td><a href='/scheduling/pipeline/2/instances/22'>run</a></td></tr></table>"),
+            (200, "<table><tr><td><a href='/scheduling/pipeline/1/instances/11'>run</a></td></tr></table>"),
+        ]
+        demo.client.post.return_value = (200, "已接受执行请求")
+        demo.client.request_json.side_effect = [(200, {"callbackPage": {"items": [{"status": "SUCCESS"}]}})] * 2
+        demo.record = Mock()
+
+        with patch("run_demo.time.sleep"):
+            demo.run_pipelines(1)
+
+        self.assertEqual([call("GET", "/scheduling/pipeline/1"), call("GET", "/scheduling/pipeline/2"),
+                          call("GET", "/pipelines"), call("GET", "/pipelines"),
+                          call("GET", "/scheduling/pipeline/1"), call("GET", "/scheduling/pipeline/2"),
+                          call("GET", "/scheduling/pipeline/1")],
+                         demo.client.request.call_args_list)
+        self.assertEqual([call("GET", "/scheduling/pipeline/2/instances/22/status"),
+                          call("GET", "/scheduling/pipeline/1/instances/11/status")],
+                         demo.client.request_json.call_args_list)
+        demo.record.assert_called_once_with("ODS 同步就绪 1", pipelines=["enterprise", "utility"])
+
+    def test_new_pipeline_failure_blocks_sql_workflow(self):
+        demo = Demo.__new__(Demo)
+        demo.args = SimpleNamespace(timeout=1)
+        demo.report = {"resources": {"pipelines": {"utility": 2}}}
+        demo.client = Mock()
+        demo.client.request.side_effect = [(200, "<table></table>"), (200, "<form action='/pipelines/2/run'></form>"),
+                                            (200, "<table><tr><td><a href='/scheduling/pipeline/2/instances/22'>run</a></td></tr></table>")]
+        demo.client.post.return_value = (200, "已接受执行请求")
+        demo.client.request_json.return_value = (200, {"callbackPage": {"items": [{"status": "FAILED"}]}})
+
+        with self.assertRaisesRegex(DemoFailure, "ODS 同步管道失败：utility"):
+            demo.run_pipelines(1)
 
     def test_datetime_check_detects_real_eight_hour_shift(self):
         demo = Demo.__new__(Demo)

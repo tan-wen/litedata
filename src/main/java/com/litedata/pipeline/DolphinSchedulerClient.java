@@ -106,11 +106,11 @@ public class DolphinSchedulerClient {
             task.put("taskPriority", "MEDIUM");
             task.put("workerGroup", "default");
             task.put("environmentCode", -1);
-            task.put("failRetryTimes", 2);
+            task.put("failRetryTimes", pipeline.getQualityTaskId() == null ? 2 : 0);
             task.put("failRetryInterval", 1);
             task.put("timeoutFlag", "OPEN");
             task.put("timeoutNotifyStrategy", "FAILED");
-            task.put("timeout", 50);
+            task.put("timeout", pipeline.getQualityTaskId() == null ? 50 : 65);
             task.put("delayTime", 0);
             task.put("taskExecuteType", "BATCH");
             task.put("cpuQuota", -1);
@@ -119,7 +119,7 @@ public class DolphinSchedulerClient {
             String relations = json.writeValueAsString(List.of(Map.of("preTaskCode", 0, "preTaskVersion", 0, "postTaskCode", taskCode,
                 "postTaskVersion", 1, "conditionType", "NONE", "conditionParams", Map.of())));
             Object created = post("创建工作流", "/workflow-definition", Map.of("name", "platform-pipeline-" + pipeline.getId() + "-" + taskCode, "description", pipeline.getName(),
-                "tenantCode", config.tenantCode(), "globalParams", "[]", "locations", "[]", "timeout", "55",
+                "tenantCode", config.tenantCode(), "globalParams", "[]", "locations", "[]", "timeout", pipeline.getQualityTaskId() == null ? "55" : "70",
                 "executionType", "SERIAL_WAIT", "taskDefinitionJson", tasks, "taskRelationJson", relations));
             code = workflowCode(created);
             mapper.definition(pipeline.getId(), code);

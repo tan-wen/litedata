@@ -133,6 +133,8 @@ public class TransformService {
         input.setSqlText(validated.sql());
         input.setUpstreamTaskIds(ids(input.getUpstreamTaskIds()));
         input.setUpstreamPipelineIds(ids(input.getUpstreamPipelineIds()));
+        if (!input.getUpstreamPipelineIds().isEmpty())
+            throw new IllegalArgumentException("同步与加工不允许直接依赖，请在加工流程配置数据就绪订阅");
         for (long pipeline : input.getUpstreamPipelineIds())
             if (platform.pipeline(pipeline) == null) throw new IllegalArgumentException("上游同步管道不存在");
         return input;
@@ -215,7 +217,7 @@ public class TransformService {
         if (owner == null) throw new IllegalArgumentException("所属加工流程不存在或已删除");
         if (owner.isReviewRequired())
             throw new IllegalArgumentException("请先在画布核对迁移后的输入表和依赖，确认并保存");
-        if (Set.of("SCHEDULED", "SCHEDULE_PENDING").contains(owner.getStatus()))
+        if (Set.of("SCHEDULED", "SCHEDULE_PENDING", "EVENT_ENABLED").contains(owner.getStatus()))
             throw new IllegalArgumentException("请先暂停所属加工流程的定时调度");
         for (String key : workflows.nodeKeys(id)) {
             boolean active = key.startsWith("sql-") ? required(mapper.task(WorkflowGraph.parse(key))).getActiveRunId() != null

@@ -1,6 +1,9 @@
 package com.litedata.model;
 
 public class Pipeline {
+    private Long qualityTaskId;
+    public Long getQualityTaskId() { return qualityTaskId; }
+    public void setQualityTaskId(Long value) { qualityTaskId = value; }
     private Long id;
     private String name;
     private Long sourceId;

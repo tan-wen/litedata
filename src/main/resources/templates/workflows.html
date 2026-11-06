@@ -7,7 +7,7 @@
   <link rel="stylesheet" th:href="@{/css/workflow-canvas.css}">
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-4 mb-7">
     <div><h1 class="page-title">数据加工</h1>
-      <p class="page-subtitle mb-0">在画布中组合任务依赖，并集中运行、启用或暂停调度。</p></div>
+      <p class="page-subtitle mb-0">在画布中组合 SQL 任务依赖，并按 Cron 或数据就绪事件触发加工。</p></div>
     <a th:if="${canEdit}" class="btn-solid theme-primary" th:href="@{/workflows/new}">新建加工流程</a></div>
   <div th:replace="~{fragments/messages :: messages}"></div>
   <form class="platform-card card mb-5" method="get" th:action="@{/workflows}">
@@ -33,7 +33,7 @@
           <thead>
           <tr>
             <th>名称</th>
-            <th>周期</th>
+            <th>触发方式</th>
             <th>状态</th>
             <th>版本</th>
             <th>最近运行时间 <small class="fw-normal fg-2">北京时间</small></th>
@@ -45,10 +45,13 @@
             <td><a th:href="@{/workflows/{id}(id=${workflow.id})}" th:text="${workflow.name}"></a>
               <div class="small fg-2" th:text="${workflow.description}"></div>
             </td>
-            <td><code th:text="${workflow.cronExpression}"></code></td>
+            <td>
+              <code th:if="${workflow.triggerMode == 'CRON'}" th:text="${workflow.cronExpression}"></code>
+              <span th:if="${workflow.triggerMode == 'EVENT'}" th:text="${'数据就绪 · ' + (workflow.triggerSourceName ?: '未选择来源')}"></span>
+            </td>
             <td><span class="badge"
-                      th:classappend="${workflow.status == 'SCHEDULED' ? 'theme-success' : (workflow.status == 'SCHEDULE_PENDING' ? 'theme-warning' : 'theme-info')}"
-                      th:text="${workflow.status == 'SCHEDULED' ? '已启用' : workflow.status == 'SCHEDULE_PENDING' ? '待上线' : workflow.status == 'PAUSED' ? '已暂停' : '未启用'}"></span>
+                      th:classappend="${workflow.status == 'SCHEDULED' or workflow.status == 'EVENT_ENABLED' ? 'theme-success' : (workflow.status == 'SCHEDULE_PENDING' ? 'theme-warning' : 'theme-info')}"
+                      th:text="${workflow.status == 'SCHEDULED' ? '定时已启用' : workflow.status == 'EVENT_ENABLED' ? '事件已启用' : workflow.status == 'SCHEDULE_PENDING' ? '待上线' : workflow.status == 'PAUSED' ? '已暂停' : '未启用'}"></span>
             </td>
             <td th:text="${'v' + workflow.version}"></td>
             <td class="text-nowrap"

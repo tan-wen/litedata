@@ -19,6 +19,19 @@ def load_runner():
 
 
 class PipelineRunnerTests(unittest.TestCase):
+    def test_quality_gate_passes_warnings_and_returns_nonzero_for_blocking_results(self):
+        runner = load_runner()
+        for state, ready, expected in [("PASSED", True, 0), ("WARNING", True, 0), ("FAILED", False, 2), ("ERROR", False, 2)]:
+            with self.subTest(state=state), patch.object(runner, "platform_request", return_value=(200, {"qualityStatus": state, "ready": ready})) as request:
+                self.assertEqual(expected, runner.wait_for_readiness(7))
+                request.assert_called_once_with("/internal/runs/7/readiness", {})
+
+    def test_quality_gate_waits_for_this_runs_terminal_state(self):
+        runner = load_runner()
+        with patch.object(runner, "platform_request", side_effect=[(200, {"qualityStatus": "RUNNING", "ready": False}), (200, {"qualityStatus": "PASSED", "ready": True})]), patch.object(runner.time, "sleep") as sleep:
+            self.assertEqual(0, runner.wait_for_readiness(7))
+            sleep.assert_called_once_with(3)
+
     def setUp(self):
         self.runner = load_runner()
         self.environment = patch.dict(os.environ, {"DORIS_WRITER_USER": "writer", "DORIS_WRITER_PASSWORD": "test-only", "DORIS_WRITER_JDBC_URL": "jdbc:mysql://warehouse:9030/warehouse"})

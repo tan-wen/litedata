@@ -23,6 +23,18 @@
           <div class="fg-2 small">发起人</div>
           <div th:text="${run.actor ?: '系统'}"></div>
         </div>
+        <div class="md:col-3" th:if="${run.pipelineRunId != null}">
+          <div class="fg-2 small">关联同步批次</div>
+          <div th:text="${'同步运行 #' + run.pipelineRunId}"></div>
+        </div>
+        <div class="col-12" th:if="${run.pipelineRunId != null and (run.status == 'WARNING' or run.status == 'FAILED' or run.status == 'ERROR')}">
+          <p class="alert mb-0" th:classappend="${run.status == 'WARNING' ? 'theme-warning' : 'theme-danger'}"
+             th:text="${run.status == 'WARNING' ? '弱规则出现异常：已记录结果并允许数据就绪事件继续投递。' : '质量门禁未放行：不会投递数据就绪事件，加工流程不会启动。'}"></p>
+        </div>
+        <div class="col-12" th:if="${run.pipelineRunId == null and (run.status == 'WARNING' or run.status == 'FAILED' or run.status == 'ERROR')}">
+          <p class="alert mb-0" th:classappend="${run.status == 'WARNING' ? 'theme-warning' : 'theme-danger'}"
+             th:text="${run.status == 'WARNING' ? '扫描发现弱规则异常，结果已记录并产生站内告警。' : '扫描未通过或执行出错，结果已记录并产生站内告警。'}"></p>
+        </div>
         <div class="md:col-3">
           <div class="fg-2 small">开始时间</div>
           <div th:text="${#temporals.format(run.startedAt, 'yyyy-MM-dd HH:mm:ss')}"></div>

@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title>质量告警 · LiteData</title></head><body><section>
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-5"><div><h1 class="page-title">质量告警</h1><p class="page-subtitle">弱规则告警允许继续；强规则异常和扫描错误阻断关联批次。</p></div><a class="btn-outline theme-secondary" th:href="@{/quality}">返回质量任务</a></div>
+  <article class="platform-card card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
+    <thead><tr><th>告警</th><th>质量任务</th><th>等级</th><th>说明</th><th>运行详情</th></tr></thead>
+    <tbody><tr th:each="item : ${alerts}"><td th:text="${'#' + item.id}"></td><td th:text="${item.taskName}"></td>
+      <td><span class="badge" th:classappend="${item.severity == 'WARNING' ? 'theme-warning' : 'theme-danger'}" th:text="${item.severity}"></span></td><td th:text="${item.message}"></td>
+      <td><a th:href="@{/quality/runs/{id}(id=${item.qualityRunId})}" th:text="${'#' + item.qualityRunId}"></a></td></tr>
+      <tr th:if="${#lists.isEmpty(alerts)}"><td colspan="5" class="text-center fg-2">暂无质量告警</td></tr></tbody>
+  </table></div><div th:replace="~{fragments/pagination :: pagination}"></div></article>
+</section></body></html>

@@ -136,6 +136,11 @@ def workflow_node(response, key):
     return nodes[0]
 
 
+def pipeline_instances(page, pipeline_id):
+    return {action for row in parse(page).rows for action in row["actions"]
+            if re.fullmatch(rf"/scheduling/pipeline/{pipeline_id}/instances/\d+", action)}
+
+
 def create_workflow_sql(client, workflow_id, page, name, model_id, sql):
     status, graph = client.request_json("GET", f"/workflows/{workflow_id}/graph")
     if status != 200:
@@ -250,6 +255,7 @@ class Demo:
         raise DemoFailure("质量检测等待超时")
 
     def run_chain(self, number):
+        self.run_pipelines(number)
         workflow = self.report["resources"]["workflow"]
         status, graph = self.client.request_json("GET", f"/workflows/{workflow}/graph")
         if status != 200:
@@ -276,6 +282,48 @@ class Demo:
                 last_progress = time.monotonic()
             time.sleep(3)
         raise DemoFailure("等待 DataX / SQL 节点回调超时")
+
+    def run_pipelines(self, number):
+        """Synchronize every ODS source before the SQL-only workflow is submitted.
+
+        A first-version EVENT workflow has one source only, while this fixture has
+        several ODS sources.  Keep their join outside the workflow graph instead
+        of representing it as a misleading single event subscription.
+        """
+        pipelines = self.report["resources"]["pipelines"]
+        known_instances = {}
+        for key, pipeline_id in pipelines.items():
+            status, page = self.client.request("GET", f"/scheduling/pipeline/{pipeline_id}")
+            if status != 200:
+                raise DemoFailure("无法读取同步管道运行记录")
+            known_instances[key] = pipeline_instances(page, pipeline_id)
+        for pipeline_id in pipelines.values():
+            _, page = self.client.request("GET", "/pipelines")
+            checked(self.client.post(page, f"/pipelines/{pipeline_id}/run"), "已接受执行请求")
+        pending = dict(pipelines)
+        deadline = time.monotonic() + self.args.timeout
+        while pending and time.monotonic() < deadline:
+            for key, pipeline_id in list(pending.items()):
+                status, page = self.client.request("GET", f"/scheduling/pipeline/{pipeline_id}")
+                if status != 200:
+                    raise DemoFailure("无法读取同步管道运行记录")
+                instances = pipeline_instances(page, pipeline_id) - known_instances[key]
+                if not instances:
+                    continue
+                status, detail = self.client.request_json("GET", sorted(instances)[0] + "/status")
+                if status != 200:
+                    continue
+                callbacks = detail.get("callbackPage", {}).get("items", [])
+                states = {item.get("status") for item in callbacks}
+                if "FAILED" in states:
+                    raise DemoFailure("ODS 同步管道失败：" + key)
+                if "SUCCESS" in states:
+                    del pending[key]
+            if pending:
+                time.sleep(3)
+        if pending:
+            raise DemoFailure("等待 ODS 同步管道成功超时：" + ", ".join(pending))
+        self.record("ODS 同步就绪 " + str(number), pipelines=list(pipelines))
 
     def counts(self, expected_dwd):
         expected = {"ods_enterprise": 3, "ods_utility": 24, "ods_production": 24,
@@ -461,22 +509,11 @@ class Demo:
             task_id, graph = create_workflow_sql(self.client, workflow_id, page, name,
                 self.report["resources"]["models"][task["targetModel"]], task["sqlText"])
             self.report["resources"]["transforms"][task["key"]] = task_id
-        transform_keys = set(self.report["resources"]["transforms"])
-        pipeline_keys = set(self.report["resources"]["pipelines"])
-        if transform_keys & pipeline_keys:
-            raise DemoFailure("示例任务与同步管道键重复，无法建立工作流")
-        node_keys = {**{key: "sql-" + str(value) for key, value in self.report["resources"]["transforms"].items()},
-                     **{key: "pipeline-" + str(value) for key, value in self.report["resources"]["pipelines"].items()}}
+        node_keys = {key: "sql-" + str(value) for key, value in self.report["resources"]["transforms"].items()}
         nodes = list(graph.get("nodes", []))
-        for key in ("pipeline-" + str(value) for value in self.report["resources"]["pipelines"].values()):
-            status, item = self.client.request_json("GET", f"/workflows/{workflow_id}/expand?" + urlencode({"key": key}))
-            if status != 200:
-                raise DemoFailure("工作流无法加载节点：" + key)
-            nodes.append(workflow_node(item, key))
         edges = []
         for task in self.manifest["transforms"]:
             target = node_keys[task["key"]]
-            edges.extend({"from": node_keys[key], "to": target} for key in task["upstreamPipelines"])
             edges.extend({"from": node_keys[key], "to": target} for key in task["upstreamTasks"])
         terminal = next(task for task in self.manifest["transforms"] if task["key"] == "ads_park_7d")
         status, saved = self.client.request_json("POST", f"/workflows/{workflow_id}/graph", {"version": graph["version"], "graphHash": graph["graphHash"], "cronExpression": terminal["cronExpression"], "nodes": nodes, "edges": edges, "positions": {}}, {"X-CSRF-TOKEN": csrf})

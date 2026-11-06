@@ -14,7 +14,8 @@ import org.junit.jupiter.api.Test;
 class PipelineModelSafetyTest {
     private final PlatformMapper platform = mock(PlatformMapper.class);
     private final ModelMapper models = mock(ModelMapper.class);
-    private final PipelineService service = new PipelineService(platform, mock(SourceService.class), mock(PlatformProperties.class), models, mock(OdsSchemaGuard.class));
+    private final PipelineService service = new PipelineService(platform, mock(SourceService.class), mock(PlatformProperties.class), models, mock(OdsSchemaGuard.class),
+        mock(com.litedata.store.QualityMapper.class), mock(com.litedata.store.ReadyMapper.class), mock(com.litedata.workflow.ReadyEvents.class));
 
     @Test
     void onlyRegisteredOdsUniqueTargetsCanReceiveSyncAndInlineSqlIsRejected() {

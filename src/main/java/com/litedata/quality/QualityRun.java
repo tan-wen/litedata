@@ -1,6 +1,9 @@
 package com.litedata.quality;
 
 public class QualityRun {
+    private Long pipelineRunId;
+    public Long getPipelineRunId() { return pipelineRunId; }
+    public void setPipelineRunId(Long value) { pipelineRunId = value; }
     public String getStatusLabel() {
         return statusLabel(status);
     }

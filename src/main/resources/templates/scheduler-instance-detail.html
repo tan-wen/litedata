@@ -72,6 +72,7 @@
             <th>平台记录 ID</th>
             <th>节点运行编号</th>
             <th>回调状态</th>
+            <th>质量门禁</th>
             <th>开始时间（北京时间）</th>
             <th>结束时间（北京时间）</th>
             <th>水位区间</th>
@@ -86,6 +87,15 @@
                       th:classappend="${run.status == 'SUCCESS' ? 'theme-success' : run.status == 'FAILED' ? 'theme-danger' : 'theme-warning'}"
                       th:text="${run.status == 'SUCCESS' ? '成功' : run.status == 'FAILED' ? '失败' : '运行中'}"></span>
             </td>
+            <td>
+              <span th:if="${run.qualityStatus == null}" class="small fg-2" data-callback-quality>未配置</span>
+              <a th:if="${run.qualityRunId != null}" data-callback-quality-link
+                 th:href="@{/quality/runs/{id}(id=${run.qualityRunId})}">
+                <span class="badge" data-callback-quality th:classappend="${run.qualityStatus == 'PASSED' ? 'theme-success' : run.qualityStatus == 'WARNING' ? 'theme-warning' : run.qualityStatus == 'RUNNING' or run.qualityStatus == 'WAITING' ? 'theme-info' : 'theme-danger'}"
+                      th:text="${run.qualityStatus}"></span>
+              </a>
+              <span th:if="${run.qualityRunId == null and run.qualityStatus != null}" class="badge theme-info" data-callback-quality th:text="${run.qualityStatus}"></span>
+            </td>
             <td data-callback-start th:text="${run.startedAt ?: '—'}"></td>
             <td data-callback-end th:text="${run.finishedAt ?: '—'}"></td>
             <td><code data-callback-range
@@ -96,7 +106,7 @@
                 th:text="${run.message ?: '等待执行节点回传结果'}"></td>
           </tr>
           <tr th:if="${#lists.isEmpty(callbackPage.items)}" data-callback-empty>
-            <td colspan="7" class="text-center fg-2 py-7">尚未收到可关联回调。运行记录可能仍在排队、节点尚未领取，或回调尚未抵达平台。旧执行器未携带运行编号的记录请查看<a
+            <td colspan="8" class="text-center fg-2 py-7">尚未收到可关联回调。运行记录可能仍在排队、节点尚未领取，或回调尚未抵达平台。旧执行器未携带运行编号的记录请查看<a
               th:href="@{/pipelines/{id}/runs(id=${resource.id})}">历史未关联回调</a>。
             </td>
           </tr>
@@ -109,6 +119,7 @@
         <td><code data-callback-id></code></td>
         <td><code data-callback-task-id></code></td>
         <td><span class="badge" data-callback-state></span></td>
+        <td><a data-callback-quality-link hidden><span class="badge" data-callback-quality></span></a><span class="small fg-2" data-callback-quality-empty></span></td>
         <td data-callback-start></td>
         <td data-callback-end></td>
         <td><code data-callback-range></code>

@@ -83,7 +83,7 @@ class WorkflowIntegrationTest {
 
     @BeforeEach
     void prepare() throws Exception {
-        for (String table : List.of("sql_task_run", "workflow_definition_snapshot", "processing_workflow_snapshot", "processing_workflow_edge", "processing_workflow_node", "pipeline_transform_archive", "sql_task_dependency", "sql_pipeline_dependency", "sql_task", "processing_workflow", "model_execution", "model_field", "data_model", "pipeline_run", "pipeline", "data_source", "audit_event"))
+        for (String table : List.of("data_ready_delivery", "data_ready_event", "quality_alert", "sql_task_run", "workflow_definition_snapshot", "processing_workflow_snapshot", "processing_workflow_edge", "processing_workflow_node", "pipeline_transform_archive", "sql_task_dependency", "sql_pipeline_dependency", "sql_task", "processing_workflow", "model_execution", "model_field", "data_model", "pipeline_run", "pipeline", "data_source", "audit_event"))
             jdbc.update("DELETE FROM " + table);
         reset(doris, engine, monitor);
         when(doris.inspect(anyString())).thenReturn(new DorisModelGateway.Schema(List.of(new DorisModelGateway.Column("id", "bigint", false, "")), List.of("id"), List.of("id"), 1));
@@ -129,13 +129,12 @@ class WorkflowIntegrationTest {
     }
 
     @Test
-    void pipelineStandaloneScheduleIsVisibleButWorkflowUsesItsOwnCron() {
+    void independentPipelineCannotBeAddedToACronWorkflow() {
         long pipe = pipeline("ods_orders");
         jdbc.update("UPDATE pipeline SET schedule_id=44,status='SCHEDULED' WHERE id=?", pipe);
-        long flow = workflow("含同步"), sql = task(flow, "dwd_orders");
-        var view = workflows.view(flow);
-        var saved = workflows.save(flow, save(view, List.of(workflows.expand(flow, "pipeline-" + pipe).getFirst(), node(flow, sql)), edges("pipeline-" + pipe, "sql-" + sql)), "dev");
-        assertThat(saved.nodes().stream().filter(n -> n.key().equals("pipeline-" + pipe)).findFirst().orElseThrow().standaloneScheduled()).isTrue();
+        long flow = workflow("独立同步"), sql = task(flow, "dwd_orders");
+        assertThatIllegalArgumentException().isThrownBy(() -> workflows.expand(flow, "pipeline-" + pipe)).withMessageContaining("数据就绪");
+        var saved = workflows.view(flow);
         workflows.execute(flow, saved.version(), saved.graphHash(), "schedule", "dev");
         verify(engine).createSchedule(801L, saved.cronExpression());
     }
@@ -153,9 +152,9 @@ class WorkflowIntegrationTest {
     void rejectsCyclesAndPipelineDownstreamWithoutChangingStoredCanvas() {
         long flow = workflow("图校验"), pipe = pipeline("ods_graph"), a = task(flow, "dwd_graph"), b = task(flow, "ads_graph");
         var base = workflows.view(flow);
-        var nodes = List.of(workflows.expand(flow, "pipeline-" + pipe).getFirst(), node(flow, a), node(flow, b));
-        var saved = workflows.save(flow, save(base, nodes, edges("pipeline-" + pipe, "sql-" + a, "sql-" + a, "sql-" + b)), "dev");
-        assertThatIllegalArgumentException().isThrownBy(() -> workflows.save(flow, save(saved, nodes, edges("sql-" + a, "pipeline-" + pipe)), "dev")).withMessageContaining("同步");
+        var nodes = List.of(node(flow, a), node(flow, b));
+        var saved = workflows.save(flow, save(base, nodes, edges("sql-" + a, "sql-" + b)), "dev");
+        assertThatIllegalArgumentException().isThrownBy(() -> workflows.save(flow, save(saved, nodes, edges("sql-" + a, "pipeline-" + pipe)), "dev")).withMessageContaining("画布");
         assertThatIllegalArgumentException().isThrownBy(() -> workflows.save(flow, save(saved, nodes, edges("sql-" + a, "sql-" + b, "sql-" + b, "sql-" + a)), "dev")).withMessageContaining("循环");
         assertThat(workflows.view(flow).graphHash()).isEqualTo(saved.graphHash());
     }
@@ -272,8 +271,7 @@ class WorkflowIntegrationTest {
         long owner = workflow("私有所有者"), foreign = workflow("另一所有者");
         long sql = task(owner, "dwd_private_membership"), pipe = pipeline("ods_catalog_only");
         var catalog = workflows.catalog(owner, "", new com.litedata.service.QueryPage(1, 20));
-        assertThat(catalog.items()).extracting(WorkflowMapper.CatalogItem::kind).containsOnly("同步");
-        assertThat(catalog.items()).extracting(WorkflowMapper.CatalogItem::refId).contains(pipe);
+        assertThat(catalog.items()).isEmpty();
         assertThatThrownBy(() -> jdbc.update("INSERT INTO processing_workflow_node(workflow_id,node_key,task_id) VALUES(?,?,?)", foreign, "sql-" + sql, sql))
             .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
     }
@@ -369,13 +367,13 @@ class WorkflowIntegrationTest {
     }
 
     @Test
-    void graphSaveCreatesTwoSqlDraftsWithPipelineEdgesPositionsAndCronAtomically() {
+    void graphSaveCreatesTwoSqlDraftsWithSqlEdgesPositionsAndCronAtomically() {
         long flow = workflow("统一草稿"), pipe = pipeline("ods_unified"), detail = model("dwd_unified", "DWD"), summary = model("ads_unified", "ADS");
         var blank = workflows.view(flow);
         var saved = workflows.save(flow, save(blank, "0 */5 * * * ?",
-            List.of(workflows.expand(flow, "pipeline-" + pipe).getFirst(), draftNode("draft-detail"), draftNode("draft-summary")),
-            edges("pipeline-" + pipe, "draft-detail", "draft-detail", "draft-summary"),
-            Map.of("pipeline-" + pipe, new WorkflowService.Position(10, 20), "draft-detail", new WorkflowService.Position(30, 40), "draft-summary", new WorkflowService.Position(50, 60)),
+            List.of(draftNode("draft-detail"), draftNode("draft-summary")),
+            edges("draft-detail", "draft-summary"),
+            Map.of("draft-detail", new WorkflowService.Position(30, 40), "draft-summary", new WorkflowService.Position(50, 60)),
             List.of(draft("draft-detail", null, 0, "明细草稿", detail, "INSERT INTO dwd_unified SELECT id FROM ods_unified"),
                 draft("draft-summary", null, 0, "汇总草稿", summary, "INSERT INTO ads_unified SELECT id FROM dwd_unified"))), "dev");
         assertThat(saved.version()).isEqualTo(blank.version() + 1);
@@ -594,7 +592,7 @@ class WorkflowIntegrationTest {
         jdbc.update("INSERT INTO workflow_definition_snapshot(workflow_id,definition_code,nodes_json) VALUES(?,808,'[]')", flow);
         jdbc.update("INSERT INTO pipeline_run(pipeline_id,definition_code,status,started_at,lower_bound,upper_bound) VALUES(?,808,'FAILED','2026-11-04 20:03:04','2026-11-01','2026-11-02')", pipe);
         // Sharing this pipeline in today's canvas is not evidence that a past run belongs to this flow.
-        jdbc.update("INSERT INTO processing_workflow_node(workflow_id,node_key,pipeline_id) VALUES(?,?,?)", empty, "pipeline-" + pipe, pipe);
+        jdbc.update("UPDATE processing_workflow SET trigger_mode='EVENT',trigger_pipeline_id=? WHERE id=?", pipe, empty);
         jdbc.update("INSERT INTO pipeline_run(pipeline_id,definition_code,status,started_at,lower_bound,upper_bound) VALUES(?,999,'SUCCESS','2026-11-05 00:00:00','2026-11-01','2026-11-02')", pipe);
         var listed = workflows.list("", new com.litedata.service.QueryPage(1, 20));
         assertThat(listed.stream().filter(w -> w.getId() == flow).findFirst().orElseThrow().getLastRunAt()).isEqualTo(java.time.LocalDateTime.of(2026, 11, 4, 20, 3, 4));

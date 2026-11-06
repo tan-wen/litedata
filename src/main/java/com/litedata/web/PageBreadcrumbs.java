@@ -49,6 +49,13 @@ public final class PageBreadcrumbs {
             case "workflow-form" ->
                 form(items, model, "workflows", "workflowId", "name", "新建加工流程", "编辑加工流程信息", false);
             case "workflow-canvas" -> detail(items, model, "workflows", "workflow");
+            case "workflow-events" -> {
+                parent(items, "workflows");
+                var workflow = model.get("workflow");
+                items.add(link(name(workflow, "name", "加工流程"), resource("workflows", property(workflow, "id"))));
+                items.add(current("数据就绪事件"));
+            }
+            case "quality-alerts" -> page(items, "quality", "质量告警");
             case "service-form" ->
                 form(items, model, "services", "resourceId", "name", "创建数据服务", "编辑数据服务", true);
             case "metric-form" -> form(items, model, "metrics", "metricId", "name", "新增指标", "编辑指标", false);

@@ -87,7 +87,7 @@ class OdsPipelineIntegrationTest {
         jdbc.execute("CREATE TABLE source_without_key (code BIGINT NOT NULL, updated_at DATETIME(6) NOT NULL, KEY ix_updated(updated_at))");
         jdbc.execute("CREATE TABLE source_composite (first_key BIGINT NOT NULL, second_key BIGINT NOT NULL, updated_at DATETIME(6) NOT NULL, PRIMARY KEY(second_key,first_key), KEY ix_updated(updated_at))");
         jdbc.execute("CREATE TABLE source_partitioned (event_id BIGINT NOT NULL, event_day DATE NOT NULL, payload VARCHAR(12), updated_at DATETIME(6) NOT NULL, PRIMARY KEY(event_id,event_day), KEY ix_updated(updated_at))");
-        for (String table : List.of("metadata_column", "metadata_table", "metadata_scope", "model_execution", "model_partition", "model_field", "data_model", "pipeline_run", "pipeline", "data_source", "audit_event"))
+        for (String table : List.of("data_ready_delivery", "data_ready_event", "quality_alert", "metadata_column", "metadata_table", "metadata_scope", "model_execution", "model_partition", "model_field", "data_model", "pipeline_run", "pipeline", "data_source", "audit_event"))
             jdbc.update("DELETE FROM " + table);
         reset(gateway);
         physical.set(null);

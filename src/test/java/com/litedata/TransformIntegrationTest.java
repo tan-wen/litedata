@@ -12,7 +12,6 @@ import com.litedata.model.*;
 import com.litedata.modeling.*;
 import com.litedata.store.*;
 import com.litedata.pipeline.PipelineService;
-import com.litedata.pipeline.PipelineTransformMigration;
 import com.litedata.transform.*;
 
 import java.util.*;
@@ -74,8 +73,6 @@ class TransformIntegrationTest {
     @Autowired
     PipelineService pipelines;
     @Autowired
-    PipelineTransformMigration migration;
-    @Autowired
     PlatformMapper platform;
     @MockitoBean
     DorisModelGateway gateway;
@@ -84,7 +81,7 @@ class TransformIntegrationTest {
 
     @BeforeEach
     void clean() throws Exception {
-        for (String table : List.of("pipeline_transform_archive", "sql_task_run", "workflow_definition_snapshot", "processing_workflow_snapshot", "processing_workflow_edge", "processing_workflow_node", "sql_task_dependency", "sql_pipeline_dependency", "sql_task", "processing_workflow", "model_execution", "model_field", "data_model", "pipeline_run", "pipeline", "data_source", "audit_event"))
+        for (String table : List.of("data_ready_delivery", "data_ready_event", "quality_alert", "pipeline_transform_archive", "sql_task_run", "workflow_definition_snapshot", "processing_workflow_snapshot", "processing_workflow_edge", "processing_workflow_node", "sql_task_dependency", "sql_pipeline_dependency", "sql_task", "processing_workflow", "model_execution", "model_field", "data_model", "pipeline_run", "pipeline", "data_source", "audit_event"))
             jdbc.update("DELETE FROM " + table);
         reset(gateway, engine);
         when(gateway.inspect(anyString())).thenReturn(new DorisModelGateway.Schema(List.of(new DorisModelGateway.Column("id", "bigint(20)", false, "")), List.of("id"), List.of("id"), 1));
@@ -109,20 +106,15 @@ class TransformIntegrationTest {
     }
 
     @Test
-    void pipelineDependencySupportsPureOdsSyncWithoutLegacyTransform() {
-        sources.create("sync-source", MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
-        model("ods_orders", "ODS");
-        pipelines.create("ods-only", platform.sources().getFirst().getId(), "orders", "updated_at", "ods_orders", "", "0 0 * * * ?");
-        var pipeline = platform.pipelines().getFirst();
-        assertThat(pipeline.getTransformSql()).isEmpty();
-        long id = task("dwd_orders", List.of());
-        var edit = tasks.require(id);
-        edit.setUpstreamPipelineIds(List.of(pipeline.getId()));
-        tasks.save(id, edit, "dev");
-        var graph = tasks.graph(id);
-        assertThat(graph.nodes()).hasSize(2);
-        assertThat(graph.nodes().getFirst().kind()).isEqualTo("同步");
-        assertThat(graph.nodes().getLast().upstreamKeys()).containsExactly("pipeline-" + pipeline.getId());
+    void rejectsPipelineDependenciesAndKeepsTheStoredSqlUnchanged() {
+        long pipeline = legacyPipeline("event-source", "");
+        long task = task("dwd_event_target", List.of());
+        var before = tasks.require(task);
+        var edit = tasks.require(task);
+        edit.setUpstreamPipelineIds(List.of(pipeline));
+        assertThatIllegalArgumentException().isThrownBy(() -> tasks.save(task, edit, "dev")).withMessageContaining("数据就绪");
+        assertThat(tasks.require(task).getVersion()).isEqualTo(before.getVersion());
+        assertThat(tasks.require(task).getUpstreamPipelineIds()).isEmpty();
     }
 
     @Test
@@ -295,130 +287,13 @@ class TransformIntegrationTest {
     }
 
     @Test
-    void migratesLegacySqlRewiresConsumersAndRetainsHistoryIdempotently() throws Exception {
-        model("dwd_legacy", "DWD");
-        long pipeline = legacyPipeline("legacy", "  INSERT INTO dwd_legacy SELECT id FROM ods_orders  ");
-        long consumer = task("ads_consumer", List.of());
-        var edit = tasks.require(consumer);
-        edit.setUpstreamPipelineIds(List.of(pipeline));
-        tasks.save(consumer, edit, "dev");
-        long archived = task("ads_archived", List.of());
-        var old = tasks.require(archived);
-        old.setUpstreamPipelineIds(List.of(pipeline));
-        tasks.save(archived, old, "dev");
-        long archivedFlow = tasks.require(archived).getWorkflowId();
-        var archivedView = workflows.view(archivedFlow);
-        workflows.save(archivedFlow, new com.litedata.workflow.WorkflowService.Save(archivedView.version(), archivedView.graphHash(), archivedView.cronExpression(), List.of(), List.of(), Map.of()), "dev");
-        var run = new PipelineRun();
-        run.setPipelineId(pipeline);
-        run.setLowerBound(java.time.LocalDateTime.of(2026, 1, 1, 0, 0));
-        run.setUpperBound(run.getLowerBound().plusHours(1));
-        platform.insertRun(run);
-        platform.activeRun(pipeline, run.getId());
-        pipelines.finish(run.getId(), true, "");
-        var watermark = platform.pipeline(pipeline).getWatermark();
-        jdbc.update("UPDATE pipeline SET status='PAUSED',schedule_id=7,definition_code=12345 WHERE id=?", pipeline);
-        long replacement = migration.migrate(pipeline, "dev");
-        assertThat(migration.migrate(pipeline, "dev")).isEqualTo(replacement);
-        assertThat(tasks.require(replacement).getUpstreamPipelineIds()).containsExactly(pipeline);
-        assertThat(tasks.require(consumer).getUpstreamPipelineIds()).isEmpty();
-        assertThat(tasks.require(consumer).getUpstreamTaskIds()).containsExactly(replacement);
-        assertThat(tasks.graph(consumer).nodes()).extracting(TransformService.PlannedNode::key)
-            .containsExactly("pipeline-" + pipeline, "sql-" + replacement, "sql-" + consumer);
-        assertThat(platform.pipeline(pipeline).getTransformSql()).isEmpty();
-        assertThat(platform.pipeline(pipeline).getWatermark()).isEqualTo(watermark);
-        assertThat(platform.pipeline(pipeline).getStatus()).isEqualTo("PAUSED");
-        assertThat(platform.pipeline(pipeline).getScheduleId()).isNull();
-        assertThat(platform.pipeline(pipeline).getDefinitionCode()).isNull();
-        assertThat(platform.workflowCodes("pipeline", pipeline)).contains(12345L);
-        assertThat(mapper.upstreamPipelines(archived)).isEmpty();
-        assertThat(platform.run(run.getId()).getStatus()).isEqualTo("SUCCESS");
-        assertThat(jdbc.queryForObject("SELECT sql_text FROM pipeline_transform_archive WHERE pipeline_id=?", String.class, pipeline))
-            .isEqualTo("  INSERT INTO dwd_legacy SELECT id FROM ods_orders  ");
-        mvc.perform(get("/pipelines/" + pipeline + "/edit").with(user("dev").roles("DEVELOPER")))
-            .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("/transforms/" + replacement)))
-            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("name=\"transformSql\""))));
-    }
-
-    @Test
-    void migrationRequiresPausedIdleChainsAndDoesNotOverwriteConflictingSql() {
-        long target = task("dwd_legacy", List.of());
-        long pipeline = legacyPipeline("legacy", "INSERT INTO dwd_legacy SELECT id + 1 FROM ods_orders");
-        jdbc.update("UPDATE pipeline SET schedule_id=7,status='SCHEDULED' WHERE id=?", pipeline);
-        assertThatIllegalArgumentException().isThrownBy(() -> migration.migrate(pipeline, "dev")).withMessageContaining("暂停");
-        jdbc.update("UPDATE pipeline SET status='PAUSED',active_run_id=9 WHERE id=?", pipeline);
-        assertThatIllegalArgumentException().isThrownBy(() -> migration.migrate(pipeline, "dev")).withMessageContaining("正在运行");
-        jdbc.update("UPDATE pipeline SET active_run_id=NULL WHERE id=?", pipeline);
-        assertThatIllegalArgumentException().isThrownBy(() -> migration.migrate(pipeline, "dev")).withMessageContaining("人工合并");
-        assertThat(tasks.require(target).getVersion()).isEqualTo(1);
-        assertThat(platform.pipeline(pipeline).getTransformSql()).isNotBlank();
-        assertThat(migration.migratedTaskId(pipeline)).isNull();
-    }
-
-    @Test
-    void reusesIdenticalSqlButRejectsScheduledConsumersAndCyclesTransactionally() {
-        long replacement = task("dwd_legacy", List.of());
-        long pipeline = legacyPipeline("legacy", "insert into dwd_legacy\n SELECT id  FROM ods_orders");
-        long replacementFlow = scheduledWorkflow(replacement, 6);
-        assertThatIllegalArgumentException().isThrownBy(() -> migration.migrate(pipeline, "dev")).withMessageContaining("暂停");
-        jdbc.update("UPDATE processing_workflow SET status='PAUSED' WHERE id=?", replacementFlow);
-        long consumer = task(tasks.require(replacement).getWorkflowId(), "ads_consumer", List.of());
-        var edit = tasks.require(consumer);
-        edit.setUpstreamPipelineIds(List.of(pipeline));
-        tasks.save(consumer, edit, "dev");
-        long consumerFlow = scheduledWorkflow(consumer, 8);
-        assertThatIllegalArgumentException().isThrownBy(() -> migration.migrate(pipeline, "dev")).withMessageContaining("暂停");
-        jdbc.update("UPDATE processing_workflow SET status='PAUSED' WHERE id=?", consumerFlow);
-        var target = tasks.require(replacement);
-        target.setUpstreamTaskIds(List.of(consumer));
-        tasks.save(replacement, target, "dev");
-        int version = tasks.require(replacement).getVersion();
-        assertThatIllegalArgumentException().isThrownBy(() -> migration.migrate(pipeline, "dev")).withMessageContaining("循环");
-        assertThat(tasks.require(replacement).getVersion()).isEqualTo(version);
-        assertThat(tasks.require(consumer).getUpstreamPipelineIds()).containsExactly(pipeline);
-        assertThat(migration.migratedTaskId(pipeline)).isNull();
-        target = tasks.require(replacement);
-        target.setUpstreamTaskIds(List.of());
-        tasks.save(replacement, target, "dev");
-        assertThat(migration.migrate(pipeline, "dev")).isEqualTo(replacement);
-        assertThat(tasks.list()).hasSize(2);
-    }
-
-    @Test
-    void rejectsUnregisteredOdsAndUnsafeLegacySqlWithoutDiscardingIt() {
-        long pipeline = legacyPipeline("legacy", "INSERT INTO missing_target SELECT id FROM ods_orders");
-        assertThatIllegalArgumentException().isThrownBy(() -> migration.migrate(pipeline, "dev")).withMessageContaining("登记");
-        jdbc.update("UPDATE pipeline SET transform_sql='INSERT INTO ods_orders SELECT id FROM other' WHERE id=?", pipeline);
-        assertThatIllegalArgumentException().isThrownBy(() -> migration.migrate(pipeline, "dev")).withMessageContaining("目标须");
-        model("dwd_legacy", "DWD");
-        jdbc.update("UPDATE pipeline SET transform_sql='INSERT INTO dwd_legacy VALUES(1)' WHERE id=?", pipeline);
-        assertThatIllegalArgumentException().isThrownBy(() -> migration.migrate(pipeline, "dev")).withMessageContaining("SELECT");
-        assertThat(platform.pipeline(pipeline).getTransformSql()).contains("VALUES");
-        assertThat(tasks.list()).isEmpty();
-    }
-
-    @Test
-    void migrationPagePreservesReadOnlySqlAndRequiresWriteRoleAndCsrf() throws Exception {
-        model("dwd_legacy", "DWD");
-        long pipeline = legacyPipeline("legacy", "INSERT INTO dwd_legacy SELECT id FROM ods_orders");
-        mvc.perform(get("/pipelines/" + pipeline + "/edit").with(user("dev").roles("DEVELOPER")))
-            .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("旧版同步后 SQL")))
-            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("name=\"transformSql\""))));
-        String action = "/pipelines/" + pipeline + "/migrate-transform";
-        mvc.perform(post(action).with(csrf()).with(user("viewer").roles("VIEWER"))).andExpect(status().isForbidden());
-        mvc.perform(post(action).with(user("dev").roles("DEVELOPER"))).andExpect(status().isForbidden());
-        mvc.perform(post(action).with(csrf()).with(user("dev").roles("DEVELOPER")))
-            .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/transforms/" + migration.migratedTaskId(pipeline)));
-        assertThat(platform.pipeline(pipeline).getTransformSql()).isEmpty();
-    }
-
-    @Test
     void independentProcessingFailureDoesNotRollBackCompletedOdsWatermark() {
         long pipeline = legacyPipeline("legacy", "INSERT INTO dwd_legacy SELECT id FROM ods_orders");
         model("dwd_legacy", "DWD");
-        long task = migration.migrate(pipeline, "dev");
+        long task = task("dwd_independent", List.of());
         var run = new PipelineRun();
         run.setPipelineId(pipeline);
+        run.setQualityStatus("NOT_REQUIRED");
         run.setLowerBound(java.time.LocalDateTime.of(2026, 1, 1, 0, 0));
         run.setUpperBound(run.getLowerBound().plusHours(1));
         platform.insertRun(run);

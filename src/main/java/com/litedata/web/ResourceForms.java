@@ -57,6 +57,9 @@ public final class ResourceForms {
     }
 
     public static class PipelineDraft {
+        private Long qualityTaskId;
+        public Long getQualityTaskId() { return qualityTaskId; }
+        public void setQualityTaskId(Long value) { qualityTaskId = value; }
         private String name = "";
         private Long sourceId;
         private String sourceTable = "";

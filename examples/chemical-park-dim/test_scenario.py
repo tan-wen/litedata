@@ -114,7 +114,7 @@ class ScenarioTest(unittest.TestCase):
             dimensions = json.loads((output / "dimensions.json").read_text(encoding="utf-8"))
             self.assertEqual(["DIM"], [model["layer"] for model in dimensions])
             qualities = json.loads((output / "quality.json").read_text(encoding="utf-8"))
-            self.assertEqual({"dim_enterprise_quality", "source_utility_quality", "dwd_utility_quality"}, {q["key"] for q in qualities})
+            self.assertEqual({"ods_utility_gate", "dim_enterprise_quality", "source_utility_quality", "dwd_utility_quality"}, {q["key"] for q in qualities})
             self.assertEqual(4, (output / "transforms.sql").read_text(encoding="utf-8").count("INSERT INTO"))
             with self.assertRaises(FileExistsError):
                 write_artifacts(self.scenario, output)
@@ -132,6 +132,14 @@ class ScenarioTest(unittest.TestCase):
         self.assertTrue({"NOT_NULL", "UNIQUE", "NOT_BLANK"} <= {rule["type"] for rule in quality["rules"]})
         references = [rule for q in self.scenario["qualities"] for rule in q["rules"] if rule["type"] == "REFERENCE"]
         self.assertEqual(dimension["tableName"], references[0]["referenceTable"])
+
+    def test_utility_gate_is_single_source_ods_quality_with_warning_steam(self):
+        gate = next(q for q in self.scenario["qualities"] if q["key"] == "ods_utility_gate")
+        self.assertEqual(next(m["tableName"] for m in self.scenario["models"] if m["key"] == "ods_utility"), gate["tableName"])
+        rules = {rule["name"]: rule for rule in gate["rules"]}
+        self.assertEqual(("25", "25", "CRITICAL"), (rules["本批行数门禁"]["parameter1"], rules["本批行数门禁"]["parameter2"], rules["本批行数门禁"]["severity"]))
+        self.assertEqual("WARNING", rules["蒸汽非负告警"]["severity"])
+        self.assertTrue({"NOT_NULL", "UNIQUE"} <= {rule["type"] for rule in gate["rules"]})
 
 
 if __name__ == "__main__":

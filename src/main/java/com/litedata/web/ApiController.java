@@ -64,6 +64,12 @@ public class ApiController {
         return Map.of("status", "accepted");
     }
 
+    @PostMapping("/internal/runs/{id}/readiness")
+    ResponseEntity<Map<String, Object>> readiness(@PathVariable long id, @RequestHeader(value = "X-Internal-Token", required = false) String token) {
+        authorize(token);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(pipelines.readiness(id));
+    }
+
     private void authorize(String token) {
         if (token == null || !MessageDigest.isEqual(internalToken, token.getBytes(StandardCharsets.UTF_8)))
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "执行节点凭证无效");

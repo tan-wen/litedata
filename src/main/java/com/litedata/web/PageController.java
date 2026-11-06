@@ -33,13 +33,13 @@ public class PageController {
     private final QueryPolicy queryPolicy;
     private final PlatformProperties properties;
     private final com.litedata.store.ModelMapper models;
-    private final PipelineTransformMigration migration;
     private final OdsPipelineService odsPipelines;
     private final com.litedata.data.SourceSchemaInspector sourceSchemas;
+    private final com.litedata.store.QualityMapper quality;
 
     public PageController(PlatformMapper mapper, SourceService sources, PipelineService pipelines, DolphinSchedulerClient scheduler, DataApiService services, PlatformProperties properties,
-                          com.litedata.store.ModelMapper models, PipelineTransformMigration migration, OdsPipelineService odsPipelines,
-                          com.litedata.data.SourceSchemaInspector sourceSchemas, QueryPolicy queryPolicy) {
+                          com.litedata.store.ModelMapper models, OdsPipelineService odsPipelines,
+                          com.litedata.data.SourceSchemaInspector sourceSchemas, QueryPolicy queryPolicy, com.litedata.store.QualityMapper quality) {
         this.mapper = mapper;
         this.sources = sources;
         this.pipelines = pipelines;
@@ -48,9 +48,9 @@ public class PageController {
         this.queryPolicy = queryPolicy;
         this.properties = properties;
         this.models = models;
-        this.migration = migration;
         this.odsPipelines = odsPipelines;
         this.sourceSchemas = sourceSchemas;
+        this.quality = quality;
     }
 
     @GetMapping("/login")
@@ -68,7 +68,7 @@ public class PageController {
     @InitBinder("draft")
     void bind(WebDataBinder binder) {
         binder.setAllowedFields("name", "databaseType", "jdbcUrl", "username", "password", "sourceId", "sourceTable", "watermarkColumn",
-            "targetTable", "transformSql", "cronExpression", "slug", "querySql", "targetMode", "keyColumns", "previewHash", "confirmed", "autoBuckets", "buckets", "replicationNum",
+            "targetTable", "transformSql", "cronExpression", "qualityTaskId", "slug", "querySql", "targetMode", "keyColumns", "previewHash", "confirmed", "autoBuckets", "buckets", "replicationNum",
             "wizardStep", "distributionType", "distributionColumns", "partitionType", "partitionColumn", "partitionUnit", "partitionRangeStyle", "dynamicPartitionProperties",
             "partitions[*].name", "partitions[*].lowerBound", "partitions[*].upperBound", "partitions[*].valuesText");
         binder.setAutoGrowCollectionLimit(100);
@@ -278,10 +278,10 @@ public class PageController {
                 odsPipelines.create(odsInput(draft), draft.getPreviewHash(), draft.isConfirmed(), principal.getName());
             } else if (id == null)
                 pipelines.create(draft.getName(), draft.getSourceId(), draft.getSourceTable(), draft.getWatermarkColumn(),
-                    draft.getTargetTable(), draft.getTransformSql(), draft.getCronExpression());
+                    draft.getTargetTable(), draft.getTransformSql(), draft.getCronExpression(), draft.getQualityTaskId());
             else
                 pipelines.update(id, draft.getName(), draft.getSourceId(), draft.getSourceTable(), draft.getWatermarkColumn(),
-                    draft.getTargetTable(), draft.getTransformSql(), draft.getCronExpression());
+                    draft.getTargetTable(), draft.getTransformSql(), draft.getCronExpression(), draft.getQualityTaskId());
             audit(principal, id == null ? "PIPELINE_CREATE" : "PIPELINE_UPDATE", draft.getName());
             redirect.addFlashAttribute("success", id == null && "AUTO".equals(draft.getTargetMode())
                 ? "ODS 表、模型与同步管道已创建，可以运行同步；加工请在数据加工中配置"
@@ -303,7 +303,7 @@ public class PageController {
         return new OdsPipelineService.Input(draft.getName(), draft.getSourceId(), draft.getSourceTable(), draft.getWatermarkColumn(),
             draft.getTargetTable(), draft.getCronExpression(), draft.getKeyColumns(), draft.isAutoBuckets(), draft.getBuckets(), draft.getReplicationNum(),
             new OdsPipelineService.PhysicalSettings(draft.getDistributionType(), draft.getDistributionColumns(), draft.getPartitionType(),
-                draft.getPartitionColumn(), draft.getPartitionUnit(), draft.getPartitionRangeStyle(), draft.getDynamicPartitionProperties(), draft.getPartitions()));
+                draft.getPartitionColumn(), draft.getPartitionUnit(), draft.getPartitionRangeStyle(), draft.getDynamicPartitionProperties(), draft.getPartitions()), draft.getQualityTaskId());
     }
 
     @PostMapping("/pipelines/{id}/run")
@@ -336,13 +336,6 @@ public class PageController {
         audit(principal, "PIPELINE_ARCHIVE", Long.toString(id));
         redirect.addFlashAttribute("success", "同步管道已删除，ODS 物理表与运行历史已保留");
         return "redirect:/pipelines";
-    }
-
-    @PostMapping("/pipelines/{id}/migrate-transform")
-    String migrateTransform(@PathVariable long id, RedirectAttributes redirect, Principal principal) {
-        long taskId = migration.migrate(id, principal.getName());
-        redirect.addFlashAttribute("success", "旧加工 SQL 已迁移并重接依赖；历史记录与 SQL 已保留，请核对 SQL、依赖和调度周期后运行或启用末端调度");
-        return "redirect:/transforms/" + taskId;
     }
 
     @GetMapping("/services")
@@ -441,10 +434,9 @@ public class PageController {
         if ("pipelines".equals(resource)) {
             if (!model.containsAttribute("odsPreview")) model.addAttribute("odsPreview", null);
             model.addAttribute("sources", sources.list());
+            model.addAttribute("qualityChoices", quality.warehouseChoices());
             model.addAttribute("backendStatus", odsPipelines.backendStatus());
             model.addAttribute("odsModels", models.models().stream().filter(m -> "ODS".equals(m.getLayer()) && "UNIQUE".equals(m.getModelType())).toList());
-            model.addAttribute("legacyTransformSql", id == null ? "" : pipeline(id).getTransformSql());
-            model.addAttribute("migratedTaskId", id == null ? null : migration.migratedTaskId(id));
         }
         return switch (resource) {
             case "sources" -> "source-form";

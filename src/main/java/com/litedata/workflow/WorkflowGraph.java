@@ -47,6 +47,8 @@ public class WorkflowGraph {
     }
 
     public WorkflowService.Node node(long workflowId, String key, List<String> upstream) {
+        if (key == null || !key.startsWith("sql-"))
+            throw new IllegalArgumentException("加工画布仅允许 SQL 节点；同步通过数据就绪事件触发加工");
         long id = parse(key);
         if (key.startsWith("sql-")) {
             var task = tasks.task(id);
@@ -73,6 +75,7 @@ public class WorkflowGraph {
         var upstream = new TreeMap<String, SortedSet<String>>();
         for (String key : keys) {
             parse(key);
+            if (!key.startsWith("sql-")) throw new IllegalArgumentException("加工画布不能包含同步管道，请配置数据就绪订阅");
             if (upstream.putIfAbsent(key, new TreeSet<>()) != null) throw new IllegalArgumentException("节点重复");
         }
         for (var edge : edges) {

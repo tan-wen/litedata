@@ -156,15 +156,10 @@ def update_workflow_sql(client: Client, workflow_id: str, page: str, task_id: st
         "version": task["version"], "name": name, "modelId": int(model_id), "sqlText": sql}, page)
 
 
-def save_workflow_graph(client: Client, workflow_id: str, page: str, view: dict, pipeline_id: str, sql_id: str, cron: str = "0 0 * * * ?") -> dict:
-    item = request_json(client, "GET", f"/workflows/{workflow_id}/expand?" + urlencode({"key": f"pipeline-{pipeline_id}"}))
-    pipeline = item.get("node") or (item.get("nodes") or [None])[0]
-    if not pipeline:
-        raise SmokeFailure("workflow pipeline was not added to the returned graph")
-    nodes = [*view.get("nodes", []), {**pipeline, "upstreamKeys": []}]
+def save_workflow_graph(client: Client, workflow_id: str, page: str, view: dict, cron: str = "0 0 * * * ?") -> dict:
     return request_json(client, "POST", f"/workflows/{workflow_id}/graph", {
-        "version": view["version"], "graphHash": view["graphHash"], "cronExpression": cron, "nodes": nodes,
-        "edges": [{"from": f"pipeline-{pipeline_id}", "to": f"sql-{sql_id}"}], "positions": {}}, page)
+        "version": view["version"], "graphHash": view["graphHash"], "cronExpression": cron, "nodes": view.get("nodes", []),
+        "edges": [], "positions": {}}, page)
 
 
 def workflow_action(client: Client, identifier: str, action: str) -> tuple[int, str]:
@@ -226,7 +221,7 @@ def create_model(client: Client, table: str, layer: str, fields: list[tuple[str,
     status, page = client.request("GET", "/models/new")
     if status != 200:
         raise SmokeFailure("model create page is unavailable")
-    values = {"tableName": table, "name": table, "subjectArea": "冒烟验证", "layer": layer, "buckets": "1",
+    values = {"tableName": table, "tableNameSuffix": table.removeprefix(layer.lower() + "_"), "name": table, "subjectArea": "冒烟验证", "layer": layer, "buckets": "1",
         "modelType": "UNIQUE", "replicationNum": "1", "distributionType": "HASH", "autoBuckets": "false",
         "distributionColumns": ",".join(name for name, _, key in fields if key), "partitionType": "NONE"}
     for index, (name, data_type, key) in enumerate(fields):
@@ -303,9 +298,17 @@ def main() -> dict[str, object]:
     workflow_id, workflow_page = create_workflow(client, transform_name)
     transform_id, graph = create_workflow_sql(client, workflow_id, workflow_page, transform_name, ads_model_id,
         f"INSERT INTO {ads_table} SELECT id,customer_name,amount,updated_at FROM {ods_table}")
-    save_workflow_graph(client, workflow_id, workflow_page, graph, pipeline_id, transform_id)
-    status, pipelines = workflow_action(client, workflow_id, "run")
-    require_success(status, pipelines, "已提交整条加工流程")
+    graph = save_workflow_graph(client, workflow_id, workflow_page, graph)
+    _, edit = client.request("GET", f"/workflows/{workflow_id}/edit")
+    status, page = post_form(client, edit, f"/workflows/{workflow_id}/metadata", {
+        "name": transform_name, "description": "Isolated event smoke fixture", "version": str(graph["version"]),
+        "triggerMode": "EVENT", "triggerPipelineId": pipeline_id})
+    require_success(status, page, "加工流程已保存")
+    status, page = workflow_action(client, workflow_id, "schedule")
+    require_success(status, page, "加工流程事件订阅已启用")
+    _, page = client.request("GET", "/pipelines")
+    status, pipelines = post_form(client, page, f"/pipelines/{pipeline_id}/run", {})
+    require_success(status, pipelines, "已接受执行请求")
 
     deadline = time.monotonic() + POLL_TIMEOUT_SECONDS
     run_succeeded = False

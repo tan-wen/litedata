@@ -79,8 +79,7 @@
     let view = window.workflowCanvas || null, nodes = new Map(), positions = new Map(), sqlDrafts = new Map(),
         sqlModels = new Map(), generatedInsert = null, selected = null, edge = null, joining = null,
         layoutDirty = false, graphDirty = false, cronDirty = false, saving = false, sqlSaving = false,
-        sqlOpening = false, adding = false, dialogInputDirty = false, loaded = false, catalogPage = 1, catalogPages = 1,
-        catalogTotal = 0, catalogTimer, catalogSerial = 0;
+        sqlOpening = false, dialogInputDirty = false, loaded = false;
     const message = (value, level) => {
         if (status) status.textContent = value;
         if (level) window.platformFeedback.show(value, {level, key: 'workflow-status'});
@@ -318,12 +317,6 @@
                 hint.textContent = 'SQL 草稿待保存';
                 el.append(hint);
             }
-            if (node.kind === '同步' && node.standaloneScheduled) {
-                const hint = document.createElement('span');
-                hint.className = 'workflow-node-warning badge theme-warning';
-                hint.textContent = '独立调度已启用';
-                el.append(hint);
-            }
             if (editable) {
                 for (const [kind, label, handler] of [['in', `连接到 ${display.name}`, () => joining && connect(joining, node.key)], ['out', `从 ${display.name} 连线`, () => {
                     joining = node.key;
@@ -346,12 +339,6 @@
                     edit.textContent = '编辑 SQL';
                     edit.addEventListener('click', () => openSql(node));
                     el.append(edit);
-                } else if (node.editUrl) {
-                    const edit = document.createElement('a');
-                    edit.href = node.editUrl;
-                    edit.className = 'btn-link theme-primary btn-sm mt-2';
-                    edit.textContent = '编辑同步管道';
-                    el.append(edit);
                 }
                 drag(el, node);
             }
@@ -370,101 +357,8 @@
         resize();
     }
 
-    let catalogLoadedPage = 1;
-
-    function catalogPagination(loading = false) {
-        const previous = root.querySelector('[data-catalog-prev]'), next = root.querySelector('[data-catalog-next]'),
-            label = root.querySelector('[data-catalog-page]'), summary = root.querySelector('[data-catalog-summary]');
-        if (label) {
-            label.textContent = catalogLoadedPage;
-            label.setAttribute('aria-label', `第 ${catalogLoadedPage} 页，当前页`);
-        }
-        if (summary) summary.textContent = loading ? '正在加载…' : `第 ${catalogLoadedPage} / ${catalogPages} 页 · ${catalogTotal} 项`;
-        for (const [button, disabled] of [[previous, loading || catalogLoadedPage <= 1], [next, loading || catalogLoadedPage >= catalogPages]]) {
-            if (!button) continue;
-            button.disabled = disabled;
-            button.closest('.page-item')?.classList.toggle('disabled', disabled);
-        }
-    }
-
-    async function catalog() {
-        const list = root.querySelector('[data-workflow-catalog-list]');
-        if (!list) return;
-        const request = ++catalogSerial, query = root.querySelector('[data-workflow-catalog]')?.value || '',
-            url = new URL(root.dataset.catalogUrl, location.origin);
-        url.searchParams.set('keyword', query);
-        url.searchParams.set('pageNum', catalogPage);
-        url.searchParams.set('pageSize', '10');
-        catalogPagination(true);
-        try {
-            const response = await fetch(url, {headers: {Accept: 'application/json'}, cache: 'no-store'}),
-                data = await window.platformFeedback.readJson(response);
-            if (request !== catalogSerial) return;
-            if (!response.ok) throw Error(data.message);
-            const items = data.items || [];
-            list.replaceChildren(...items.map(item => {
-                const button = document.createElement('button'), title = document.createElement('strong'),
-                    meta = document.createElement('span');
-                button.type = 'button';
-                button.className = 'workflow-catalog-item';
-                title.textContent = item.name;
-                meta.className = 'small fg-2';
-                meta.textContent = `${item.kind} · ${item.tableName || '—'}`;
-                button.append(title, meta);
-                button.addEventListener('click', () => add(item));
-                return button;
-            }));
-            if (!items.length) {
-                const empty = document.createElement('p');
-                empty.className = 'small fg-2 my-3';
-                empty.textContent = query ? '未找到匹配的同步管道。' : '暂无可添加的同步管道。';
-                list.append(empty);
-            }
-            catalogLoadedPage = catalogPage = Number(data.pageNum) || 1;
-            catalogTotal = Number(data.total) || 0;
-            catalogPages = Math.max(1, Math.ceil(catalogTotal / (data.pageSize || 10)));
-            catalogPagination();
-        } catch (e) {
-            if (request === catalogSerial) {
-                catalogPage = catalogLoadedPage;
-                catalogPagination();
-                problem(e);
-            }
-        }
-    }
-
-    async function add(item) {
-        if (adding || saving || sqlOpening) return;
-        adding = true;
-        updateActions();
-        problem('');
-        try {
-            if (nodes.has(item.key)) {
-                select(item.key);
-                message('该任务已在画布中。', 'info');
-                return;
-            }
-            const response = await fetch(`${root.dataset.expandUrl}?key=${encodeURIComponent(item.key)}`, {headers: {Accept: 'application/json'}}),
-                data = await window.platformFeedback.readJson(response);
-            if (!response.ok) throw Error(data.message);
-            const node = data.node || data.nodes?.[0];
-            if (!node) throw Error('未找到任务。');
-            nodes.set(node.key, {...node, upstreamKeys: []});
-            positions.set(node.key, position(node.key));
-            graphDirty = true;
-            render();
-            select(node.key);
-            message('已添加到画布，请连接依赖后保存。', 'success');
-        } catch (e) {
-            problem(e);
-        } finally {
-            adding = false;
-            updateActions();
-        }
-    }
-
     async function save(options = {}) {
-        if (saving || adding || sqlOpening || sqlSaving) return false;
+        if (saving || sqlOpening || sqlSaving) return false;
         saving = true;
         updateActions();
         problem('');
@@ -537,10 +431,10 @@
     }
 
     function updateActions() {
-        root.inert = adding || saving || sqlOpening || sqlSaving;
-        if (saveButton) saveButton.disabled = adding || saving || sqlOpening || sqlSaving;
+        root.inert = saving || sqlOpening || sqlSaving;
+        if (saveButton) saveButton.disabled = saving || sqlOpening || sqlSaving;
         const newSql = root.querySelector('[data-workflow-new-sql]');
-        if (newSql) newSql.disabled = !loaded || adding || saving || sqlOpening || sqlSaving;
+        if (newSql) newSql.disabled = !loaded || saving || sqlOpening || sqlSaving;
         const hasNodes = nodes.size > 0, reviewRequired = Boolean(view?.reviewRequired);
         root.querySelectorAll('[data-workflow-action]').forEach(form => {
             const pause = form.action.endsWith('/pause');
@@ -621,7 +515,7 @@
     }
 
     async function openSql(node) {
-        if (!loaded || sqlOpening || saving || adding) return;
+        if (!loaded || sqlOpening || saving) return;
         if (view?.reviewRequired) {
             problem('请先核对迁移后的输入表和依赖，勾选确认后保存画布，再编辑 SQL。');
             return;
@@ -763,21 +657,6 @@
         render();
     });
     saveButton?.addEventListener('click', save);
-    root.querySelector('[data-workflow-catalog]')?.addEventListener('input', () => {
-        catalogPage = 1;
-        clearTimeout(catalogTimer);
-        catalogTimer = setTimeout(catalog, 220);
-    });
-    root.querySelector('[data-catalog-prev]')?.addEventListener('click', () => {
-        if (catalogPage > 1) {
-            catalogPage--;
-            catalog();
-        }
-    });
-    root.querySelector('[data-catalog-next]')?.addEventListener('click', () => {
-        catalogPage++;
-        catalog();
-    });
     cron?.addEventListener('input', () => cronDirty = true);
     root.querySelector('[data-workflow-new-sql]')?.addEventListener('click', () => openSql());
     dialog?.querySelectorAll('input,select,textarea').forEach(control => {
@@ -841,15 +720,6 @@
         stage.dataset.scale = String(next);
     }));
     stage.addEventListener('click', () => select());
-    stage.addEventListener('click', event => {
-        const link = event.target.closest('.workflow-node a');
-        if (!link) return;
-        if (hasDraft() || dialogInputDirty) {
-            event.preventDefault();
-            event.stopPropagation();
-            problem('画布有未保存草稿，请先保存画布再编辑同步管道。');
-        }
-    }, true);
     updateActions();
     (async () => {
         try {
@@ -862,7 +732,6 @@
             hydrate(data);
             if (window.innerWidth >= 1024) root.querySelector('[data-workflow-zoom="fit"]')?.click();
             message('画布已加载。');
-            catalog();
         } catch (e) {
             problem(e);
             message('画布加载失败。');

@@ -64,6 +64,13 @@ public class QualityController {
         return "quality";
     }
 
+    @GetMapping("/alerts")
+    String alerts(@RequestParam Map<String, String> params, Model model) {
+        var page = ListPagination.prepare(model, "/quality/alerts", params, quality.alertCount());
+        model.addAttribute("alerts", quality.alerts(page));
+        return "quality-alerts";
+    }
+
     @GetMapping("/new")
     String create(Model m) {
         var t = new QualityTask();

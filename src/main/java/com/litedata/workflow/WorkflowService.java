@@ -30,7 +30,8 @@ public class WorkflowService {
     public record View(long id, String name, String description, int version, String cronExpression, String status,
                        Integer scheduleId, Long definitionCode, String graphHash, List<Node> nodes,
                        Map<String, Position> positions,
-                       boolean reviewRequired, String ownershipNotice) {
+                       boolean reviewRequired, String ownershipNotice,
+                       String triggerMode, Long triggerPipelineId, String triggerSourceName) {
     }
 
     public record SqlDraft(String key, Long taskId, int version, String name, Long modelId, String sqlText) {
@@ -78,15 +79,17 @@ public class WorkflowService {
     private final TransformService tasks;
     private final WorkflowScheduler scheduler;
     private final WorkflowGraph graphs;
+    private final ReadyMapper ready;
     private final JsonMapper json = JsonMapper.builder().build();
 
-    public WorkflowService(WorkflowMapper mapper, SqlTaskMapper sql, PlatformMapper platform, TransformService tasks, WorkflowScheduler scheduler, WorkflowGraph graphs) {
+    public WorkflowService(WorkflowMapper mapper, SqlTaskMapper sql, PlatformMapper platform, TransformService tasks, WorkflowScheduler scheduler, WorkflowGraph graphs, ReadyMapper ready) {
         this.mapper = mapper;
         this.sql = sql;
         this.platform = platform;
         this.tasks = tasks;
         this.scheduler = scheduler;
         this.graphs = graphs;
+        this.ready = ready;
     }
 
     public ProcessingWorkflow require(long id) {
@@ -109,7 +112,7 @@ public class WorkflowService {
 
     public Catalog catalog(long id, String keyword, QueryPage page) {
         require(id);
-        return new Catalog(mapper.catalog(query(keyword), page.pageSize(), page.offset()), mapper.catalogCount(query(keyword)), page.pageNum(), page.pageSize());
+        return new Catalog(List.of(), 0, page.pageNum(), page.pageSize());
     }
 
     @Transactional
@@ -120,12 +123,24 @@ public class WorkflowService {
         draft.setName(draft.getName().trim());
         draft.setDescription(Objects.toString(draft.getDescription(), "").trim());
         if (draft.getDescription().length() > 500) throw new IllegalArgumentException("描述最长500字符");
+        if (!Set.of("CRON", "EVENT").contains(Objects.toString(draft.getTriggerMode(), "")))
+            throw new IllegalArgumentException("请选择 Cron 或事件触发模式");
+        if ("EVENT".equals(draft.getTriggerMode())) {
+            if (draft.getTriggerPipelineId() == null || platform.pipeline(draft.getTriggerPipelineId()) == null)
+                throw new IllegalArgumentException("事件触发须选择一个有效同步管道作为数据就绪来源");
+        } else {
+            if (draft.getTriggerPipelineId() != null) throw new IllegalArgumentException("Cron 模式不能同时订阅数据就绪事件");
+        }
         if (id == null) {
             draft.setId(null);
             mapper.insert(draft);
             id = draft.getId();
         } else {
-            version(require(id), draft.getVersion());
+            var existing = require(id);
+            version(existing, draft.getVersion());
+            ensureEditable(existing);
+            if (!Objects.equals(existing.getTriggerMode(), draft.getTriggerMode()) || !Objects.equals(existing.getTriggerPipelineId(), draft.getTriggerPipelineId()))
+                mapper.schedule(id, null, "DRAFT");
             draft.setId(id);
             mapper.metadata(draft);
         }
@@ -166,7 +181,9 @@ public class WorkflowService {
 
     private View view(ProcessingWorkflow w, String hash, List<Node> nodes, Map<String, Position> positions) {
         return new View(w.getId(), w.getName(), w.getDescription(), w.getVersion(), w.getCronExpression(), w.getStatus(),
-            w.getScheduleId(), w.getDefinitionCode(), hash, nodes, positions, w.isReviewRequired(), w.getOwnershipNotice());
+            w.getScheduleId(), w.getDefinitionCode(), hash, nodes, positions, w.isReviewRequired(), w.getOwnershipNotice(),
+            w.getTriggerMode(), w.getTriggerPipelineId(), w.getTriggerPipelineId() == null ? null :
+                Optional.ofNullable(platform.pipeline(w.getTriggerPipelineId())).map(com.litedata.model.Pipeline::getName).orElse("来源已归档"));
     }
 
     public List<Node> expand(long id, String key) {
@@ -209,7 +226,7 @@ public class WorkflowService {
         var workflow = require(id);
         version(workflow, input.version());
         checkHash(id, input.graphHash());
-        String cron = SchedulePreview.validate(input.cronExpression());
+        String cron = "EVENT".equals(workflow.getTriggerMode()) ? workflow.getCronExpression() : SchedulePreview.validate(input.cronExpression());
         if (input.nodes() == null || input.nodes().size() > 100)
             throw new IllegalArgumentException("工作流最多100个节点");
         var existingKeys = mapper.nodeKeys(id);
@@ -336,8 +353,9 @@ public class WorkflowService {
     }
 
     private void ensureEditable(ProcessingWorkflow workflow) {
-        if (Set.of("SCHEDULED", "SCHEDULE_PENDING").contains(workflow.getStatus()))
+        if (Set.of("SCHEDULED", "SCHEDULE_PENDING", "EVENT_ENABLED").contains(workflow.getStatus()))
             throw new IllegalArgumentException("请先暂停此工作流的定时调度，再修改节点、依赖或 Cron");
+        if (ready.submitting(workflow.getId()) > 0) throw new IllegalArgumentException("事件正在提交加工，请等待提交结束后修改");
         for (String key : mapper.nodeKeys(workflow.getId())) {
             boolean active = key.startsWith("sql-") ? tasks.require(WorkflowGraph.parse(key)).getActiveRunId() != null : platform.pipeline(WorkflowGraph.parse(key)).getActiveRunId() != null;
             if (active) throw new IllegalArgumentException("工作流存在运行中的节点，请等待完成");

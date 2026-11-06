@@ -11,8 +11,8 @@ LiteData 是面向单机试点的数据中台：多数据库时间水位同步 �
 | 范围 | 当前实现 |
 | --- | --- |
 | 接入与建模 | MySQL / PostgreSQL / SQL Server / Oracle，自动 ODS、DIM/DWD/DWS/ADS、Doris DDL 和结构核对 |
-| 加工与调度 | 独立 INSERT SELECT、依赖画布、定时和整链运行、运行互斥、运行记录及节点日志 |
-| 数据治理 | 元数据与血缘、资产目录、18 类质量规则、三类指标及版本化字段血缘 |
+| 加工与调度 | 独立 INSERT SELECT、SQL 依赖画布、Cron 或单来源就绪事件触发、运行互斥、运行记录及节点日志 |
+| 数据治理 | 元数据与血缘、资产目录、18 类质量规则、同步质量门禁与站内告警、三类指标及版本化字段血缘 |
 | 数据服务 | 受控 SELECT、命名参数、发布/下线、凭证轮换、限流与调用审计 |
 | 权限与界面 | ADMIN / DEVELOPER / VIEWER、Session/CSRF、用户 API Key/MCP、本地 Bootstrap 6、浅深主题与四套配色 |
 | 交付与示例 | 开发一键启动、生产联网/离线包；[化工园区](examples/chemical-park/README.md)和独立 [DIM 示例](examples/chemical-park-dim/README.md) |

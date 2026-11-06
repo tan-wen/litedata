@@ -11,7 +11,6 @@ import com.litedata.data.SourceService;
 import com.litedata.model.*;
 import com.litedata.modeling.*;
 import com.litedata.pipeline.PipelineService;
-import com.litedata.pipeline.PipelineTransformMigration;
 import com.litedata.scheduling.DolphinMonitorClient;
 import com.litedata.store.*;
 import com.litedata.transform.*;
@@ -73,8 +72,6 @@ class WorkflowCronIntegrationTest {
     PipelineService pipelines;
     @Autowired
     PlatformMapper platform;
-    @Autowired
-    PipelineTransformMigration migration;
     @MockitoBean
     DorisModelGateway doris;
     @MockitoBean
@@ -85,7 +82,7 @@ class WorkflowCronIntegrationTest {
 
     @BeforeEach
     void prepare() throws Exception {
-        for (String table : List.of("sql_task_run", "pipeline_transform_archive", "workflow_definition_snapshot", "processing_workflow_snapshot", "processing_workflow_edge", "processing_workflow_node", "sql_task_dependency", "sql_pipeline_dependency", "sql_task", "processing_workflow", "model_execution", "model_field", "data_model", "pipeline_run", "pipeline", "data_source", "audit_event"))
+        for (String table : List.of("data_ready_delivery", "data_ready_event", "quality_alert", "sql_task_run", "pipeline_transform_archive", "workflow_definition_snapshot", "processing_workflow_snapshot", "processing_workflow_edge", "processing_workflow_node", "sql_task_dependency", "sql_pipeline_dependency", "sql_task", "processing_workflow", "model_execution", "model_field", "data_model", "pipeline_run", "pipeline", "data_source", "audit_event"))
             jdbc.update("DELETE FROM " + table);
         reset(doris, engine, monitor);
         when(doris.inspect(anyString())).thenReturn(new DorisModelGateway.Schema(List.of(new DorisModelGateway.Column("id", "bigint", false, "")), List.of("id"), List.of("id"), 1));
@@ -136,18 +133,6 @@ class WorkflowCronIntegrationTest {
                 .param("sqlText", before.getSqlText() + " ").param("version", Integer.toString(tasks.require(root).getVersion())))
             .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/workflows/" + id));
         assertThat(workflows.require(id).getCronExpression()).isEqualTo(custom);
-    }
-
-    @Test
-    void legacyPipelineMigrationPreservesItsCustomCron() {
-        sources.create("migration-source", MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
-        models.save(null, model("ods_migration", "ODS"), "dev");
-        models.save(null, model("ads_migration", "ADS"), "dev");
-        String cron = "0 15 8 ? * MON-FRI";
-        long pipeline = pipelines.create("migration", platform.sources().getFirst().getId(), "orders", "updated_at", "ods_migration", "", cron);
-        jdbc.update("UPDATE pipeline SET transform_sql=? WHERE id=?", "INSERT INTO ads_migration SELECT id FROM ods_migration", pipeline);
-        long task = migration.migrate(pipeline, "dev");
-        assertThat(workflows.forTask(task)).singleElement().satisfies(w -> assertThat(w.getCronExpression()).isEqualTo(cron));
     }
 
     @Test

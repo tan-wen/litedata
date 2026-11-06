@@ -6,6 +6,9 @@ import com.litedata.model.*;
 import com.litedata.scheduling.SchedulePreview;
 import com.litedata.store.PlatformMapper;
 import com.litedata.store.ModelMapper;
+import com.litedata.store.QualityMapper;
+import com.litedata.store.ReadyMapper;
+import com.litedata.workflow.ReadyEvents;
 
 import java.sql.*;
 import java.time.LocalDateTime;
@@ -25,13 +28,20 @@ public class PipelineService {
     private final PlatformProperties properties;
     private final ModelMapper models;
     private final OdsSchemaGuard schemaGuard;
+    private final QualityMapper quality;
+    private final ReadyMapper ready;
+    private final ReadyEvents events;
 
-    public PipelineService(PlatformMapper mapper, SourceService sources, PlatformProperties properties, ModelMapper models, OdsSchemaGuard schemaGuard) {
+    public PipelineService(PlatformMapper mapper, SourceService sources, PlatformProperties properties, ModelMapper models, OdsSchemaGuard schemaGuard,
+                           QualityMapper quality, ReadyMapper ready, ReadyEvents events) {
         this.mapper = mapper;
         this.sources = sources;
         this.properties = properties;
         this.models = models;
         this.schemaGuard = schemaGuard;
+        this.quality = quality;
+        this.ready = ready;
+        this.events = events;
     }
 
     public Pipeline require(long id) {
@@ -42,7 +52,14 @@ public class PipelineService {
 
     @Transactional
     public long create(String name, long sourceId, String table, String column, String target, String transform, String cron) {
+        return create(name, sourceId, table, column, target, transform, cron, null);
+    }
+
+    @Transactional
+    public long create(String name, long sourceId, String table, String column, String target, String transform, String cron, Long qualityTaskId) {
         var pipeline = definition(name, sourceId, table, column, target, transform, cron);
+        validateQuality(qualityTaskId, pipeline.getTargetTable(), pipeline.getWatermarkColumn());
+        pipeline.setQualityTaskId(qualityTaskId);
         mapper.insertPipeline(pipeline);
         return pipeline.getId();
     }
@@ -51,7 +68,7 @@ public class PipelineService {
     public void archive(long id) {
         var pipeline = mapper.lockPipeline(id);
         if (pipeline == null) throw new IllegalArgumentException("同步任务不存在");
-        if (pipeline.getActiveRunId() != null || mapper.runningPipelineRuns(id) > 0)
+        if (pipeline.getActiveRunId() != null || mapper.runningPipelineRuns(id) > 0 || ready.pendingPipeline(id) > 0)
             throw new IllegalArgumentException("同步任务仍在运行，请等待完成后删除");
         if ("SCHEDULED".equals(pipeline.getStatus()) || "SCHEDULE_PENDING".equals(pipeline.getStatus()))
             throw new IllegalArgumentException("请先停用定时调度，再删除同步任务");
@@ -62,19 +79,26 @@ public class PipelineService {
 
     @Transactional
     public void update(long id, String name, long sourceId, String table, String column, String target, String transform, String cron) {
+        update(id, name, sourceId, table, column, target, transform, cron, require(id).getQualityTaskId());
+    }
+
+    @Transactional
+    public void update(long id, String name, long sourceId, String table, String column, String target, String transform, String cron, Long qualityTaskId) {
         var existing = mapper.lockPipeline(id);
         if (existing == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "同步任务不存在");
-        if (existing.getActiveRunId() != null) throw new IllegalArgumentException("任务正在执行，请等待完成后编辑");
+        if (existing.getActiveRunId() != null || ready.pendingPipeline(id) > 0) throw new IllegalArgumentException("同步或关联质量检查正在执行，请等待完成后编辑");
         if (existing.getTransformSql() != null && !existing.getTransformSql().isBlank())
             throw new IllegalArgumentException("请先将旧加工 SQL 迁移到数据加工，再编辑同步管道");
         if (existing.getSourceId() != sourceId || !Objects.equals(existing.getSourceTable(), table) ||
             !Objects.equals(existing.getWatermarkColumn(), column) || !Objects.equals(existing.getTargetTable(), target))
             throw new IllegalArgumentException("同步边界创建后固定，调整时请新建管道以避免复用旧水位");
         var pipeline = definition(name, sourceId, table, column, target, transform, cron);
+        validateQuality(qualityTaskId, pipeline.getTargetTable(), pipeline.getWatermarkColumn());
+        pipeline.setQualityTaskId(qualityTaskId);
         pipeline.setId(id);
-        if (!Objects.equals(existing.getCronExpression(), pipeline.getCronExpression())) {
+        if (!Objects.equals(existing.getCronExpression(), pipeline.getCronExpression()) || !Objects.equals(existing.getQualityTaskId(), qualityTaskId)) {
             if (existing.getScheduleId() != null && !"PAUSED".equals(existing.getStatus()))
-                throw new IllegalArgumentException("定时调度已启用，请先暂停后再修改执行周期");
+                throw new IllegalArgumentException("定时调度已启用，请先暂停后再修改执行周期或质量任务");
             mapper.updatePipelineFrequency(pipeline);
         } else mapper.updatePipeline(pipeline);
     }
@@ -99,6 +123,15 @@ public class PipelineService {
         return pipeline;
     }
 
+    public void validateQuality(Long id, String target, String watermarkColumn) {
+        if (id == null) return;
+        var task = quality.lock(id);
+        if (task == null || task.isArchived() || task.getSourceId() != null || !target.equalsIgnoreCase(task.getTableName()))
+            throw new IllegalArgumentException("质量任务须检查本管道的 Doris ODS 目标表");
+        if (!task.getTimeColumn().isBlank() && !task.getTimeColumn().equalsIgnoreCase(watermarkColumn))
+            throw new IllegalArgumentException("关联质量任务的时间字段须为空或使用同步水位列");
+    }
+
     @Transactional
     public Map<String, Object> claim(long id) {
         return claim(id, null, null);
@@ -115,7 +148,7 @@ public class PipelineService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "运行编号和节点编号必须同时提供且为正整数");
         Pipeline pipeline = mapper.lockPipeline(id);
         if (pipeline == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "任务不存在");
-        if (pipeline.getActiveRunId() != null)
+        if (pipeline.getActiveRunId() != null || ready.pendingPipeline(id) > 0)
             throw new ResponseStatusException(HttpStatus.CONFLICT, "任务正在运行；确认执行节点停止后再恢复");
         // Recheck registered models at execution time, including edits made after pipeline creation.
         validateExecutable(pipeline);
@@ -133,6 +166,10 @@ public class PipelineService {
         LocalDateTime epoch = LocalDateTime.of(1970, 1, 1, 0, 0);
         if (lower.isBefore(epoch)) lower = epoch;
         PipelineRun run = new PipelineRun();
+        validateQuality(pipeline.getQualityTaskId(), pipeline.getTargetTable(), pipeline.getWatermarkColumn());
+        run.setQualityTaskId(pipeline.getQualityTaskId());
+        run.setQualityTaskVersion(pipeline.getQualityTaskId() == null ? null : quality.task(pipeline.getQualityTaskId()).getVersion());
+        run.setQualityStatus(pipeline.getQualityTaskId() == null ? "NOT_REQUIRED" : "WAITING");
         run.setPipelineId(id);
         run.setLowerBound(lower);
         run.setUpperBound(upper);
@@ -148,6 +185,7 @@ public class PipelineService {
             "doris", Map.of("jdbcUrl", properties.doris().jdbcUrl(), "username", properties.doris().username(), "password", properties.doris().password())));
         if (pipeline.getSourceSchemaHash() != null)
             claim.put("targetColumns", sourceTable.columns().stream().map(c -> c.toLowerCase(Locale.ROOT)).toList());
+        claim.put("qualityRequired", pipeline.getQualityTaskId() != null);
         return claim;
     }
 
@@ -162,8 +200,20 @@ public class PipelineService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "本次运行已失去执行权");
         String safeMessage = success ? "ODS 同步完成" : "ODS 同步失败，请查看执行节点受限日志";
         mapper.finishRun(runId, success ? "SUCCESS" : "FAILED", safeMessage);
-        if (success) mapper.advanceWatermark(pipeline.getId(), run.getUpperBound());
-        else mapper.failPipeline(pipeline.getId(), safeMessage);
+        if (success) {
+            mapper.advanceWatermark(pipeline.getId(), run.getUpperBound());
+            if (run.getQualityTaskId() == null) events.publish(runId, null);
+        } else {
+            mapper.failPipeline(pipeline.getId(), safeMessage);
+            ready.scanFinished(runId, "SKIPPED");
+        }
+    }
+
+    public Map<String, Object> readiness(long id) {
+        var run = mapper.run(id);
+        if (run == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "运行记录不存在");
+        return Map.of("syncStatus", run.getStatus(), "qualityStatus", run.getQualityStatus(),
+            "ready", "SUCCESS".equals(run.getStatus()) && Set.of("NOT_REQUIRED", "PASSED", "WARNING").contains(run.getQualityStatus()));
     }
 
     public void validateExecutable(Pipeline pipeline) {

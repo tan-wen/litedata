@@ -27,7 +27,11 @@ public class OdsPipelineService {
 
     public record Input(String name, long sourceId, String sourceTable, String watermarkColumn, String targetTable,
                         String cronExpression, List<String> keyColumns, boolean autoBuckets, int buckets,
-                        int replicationNum, PhysicalSettings physical) {
+                        int replicationNum, PhysicalSettings physical, Long qualityTaskId) {
+        public Input(String name, long sourceId, String sourceTable, String watermarkColumn, String targetTable,
+                     String cronExpression, List<String> keyColumns, boolean autoBuckets, int buckets, int replicationNum, PhysicalSettings physical) {
+            this(name, sourceId, sourceTable, watermarkColumn, targetTable, cronExpression, keyColumns, autoBuckets, buckets, replicationNum, physical, null);
+        }
         public Input(String name, long sourceId, String sourceTable, String watermarkColumn, String targetTable,
                      String cronExpression, List<String> keyColumns, boolean autoBuckets, int buckets, int replicationNum) {
             this(name, sourceId, sourceTable, watermarkColumn, targetTable, cronExpression, keyColumns, autoBuckets, buckets, replicationNum, PhysicalSettings.defaults());
@@ -200,7 +204,7 @@ public class OdsPipelineService {
         if (!plan.ready() || !plan.previewHash().equals(expectedHash))
             throw new IllegalArgumentException("源结构或建表设置已变化，请重新读取结构并预览后确认");
         long modelId = modeling.save(null, plan.model(), actor);
-        long pipelineId = pipelines.create(input.name(), input.sourceId(), input.sourceTable(), plan.watermarkColumn(), plan.model().getTableName(), "", input.cronExpression());
+        long pipelineId = pipelines.create(input.name(), input.sourceId(), input.sourceTable(), plan.watermarkColumn(), plan.model().getTableName(), "", input.cronExpression(), input.qualityTaskId());
         platform.pipelineSchema(pipelineId, plan.sourceHash(), OdsSchemaPolicy.targetHash(plan.model()), String.join(",", plan.fields().stream()
             .filter(Mapping::keyColumn).map(Mapping::sourceName).toList()));
         // Complete metadata writes before the external DDL; database constraints fail before a table is created.
