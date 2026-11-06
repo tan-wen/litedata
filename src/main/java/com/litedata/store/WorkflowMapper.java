@@ -14,7 +14,8 @@ public interface WorkflowMapper {
     @Select("SELECT COUNT(*)" + FROM + FILTER)
     long count(String keyword);
 
-    @Select("SELECT w.*,(SELECT MAX(recent.started_at) FROM ("
+    @Select("SELECT w.*,(SELECT p.name FROM pipeline p WHERE p.id=w.trigger_pipeline_id) trigger_source_name,"
+        + "(SELECT MAX(recent.started_at) FROM ("
         + "SELECT MAX(r.started_at) started_at FROM sql_task_run r WHERE r.workflow_id=w.id UNION ALL "
         + "SELECT MAX(r.started_at) FROM workflow_definition_snapshot s JOIN pipeline_run r ON r.definition_code=s.definition_code WHERE s.workflow_id=w.id"
         + ") recent) last_run_at"

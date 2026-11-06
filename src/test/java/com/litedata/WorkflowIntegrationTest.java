@@ -206,7 +206,10 @@ class WorkflowIntegrationTest {
             .andExpect(status().is3xxRedirection()).andExpect(flash().attribute("success", "加工任务事件订阅已启用"));
         assertThat(workflows.require(flow).getStatus()).isEqualTo("EVENT_ENABLED");
         mvc.perform(get("/workflows").with(user("dev").roles("DEVELOPER")))
-            .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("暂停事件订阅")));
+            .andExpect(status().isOk())
+            .andExpect(content().string(org.hamcrest.Matchers.containsString("暂停事件订阅")))
+            .andExpect(content().string(org.hamcrest.Matchers.containsString("数据就绪 · ods_list_event")))
+            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("未选择来源"))));
         mvc.perform(post("/workflows/" + flow + "/scheduling/pause").with(user("dev").roles("DEVELOPER")).with(csrf())
                 .param("version", version))
             .andExpect(status().is3xxRedirection());
