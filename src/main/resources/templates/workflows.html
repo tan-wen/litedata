@@ -57,8 +57,8 @@
             <td class="text-nowrap"
                 th:text="${workflow.lastRunAt != null ? #temporals.format(workflow.lastRunAt, 'yyyy-MM-dd HH:mm:ss') : '暂无执行记录'}"></td>
             <td>
-              <div class="workflow-actions"><a class="btn-outline theme-primary btn-sm"
-                                               th:href="@{/workflows/{id}(id=${workflow.id})}">画布</a><a
+              <div class="workflow-actions"><a th:if="${canEdit}" class="btn-link theme-primary btn-sm"
+                                               th:href="@{/workflows/{id}/edit(id=${workflow.id})}">编辑</a><a
                 class="btn-link theme-secondary btn-sm"
                 th:href="@{/scheduling/workflow/{id}(id=${workflow.id})}">运行记录</a>
                 <form th:if="${canEdit}" th:action="@{/workflows/{id}/delete(id=${workflow.id})}" method="post"

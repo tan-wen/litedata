@@ -44,7 +44,6 @@
             <td class="fg-danger" style="max-width:16rem;overflow-wrap:anywhere" th:text="${pipeline.lastError}"></td>
             <td>
               <div class="d-flex flex-wrap gap-2">
-                <a class="btn-outline theme-primary btn-sm" th:href="@{/scheduling/pipeline/{id}(id=${pipeline.id})}">运行记录</a>
                 <a th:if="${canEdit}" class="btn-link theme-primary btn-sm"
                    th:href="@{/pipelines/{id}/edit(id=${pipeline.id})}">编辑</a>
                 <form th:if="${canEdit}" th:action="@{/pipelines/{id}/run(id=${pipeline.id})}" method="post"><input
