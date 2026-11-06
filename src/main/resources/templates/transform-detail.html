@@ -12,9 +12,9 @@
     <a th:if="${canEdit}" class="btn-outline theme-primary"
        th:href="@{/transforms/{id}/edit(id=${task.id},returnTo='detail')}">编辑 SQL 任务</a></div>
   <div th:replace="~{fragments/messages :: messages}"></div>
-  <div class="alert theme-info">SQL 任务只维护名称、目标模型和 SQL。依赖、Cron、调度状态和运行由所属加工流程管理。</div>
+  <div class="alert theme-info">SQL 任务只维护名称、目标模型和 SQL。依赖、Cron、调度状态和运行由所属加工任务管理。</div>
   <div class="d-flex flex-wrap gap-3 mb-5"><a th:if="${canEdit}" class="btn-solid theme-primary"
-                                              th:href="@{/workflows/new}">新建加工流程</a><a
+                                              th:href="@{/workflows/new}">新建加工任务</a><a
     class="btn-outline theme-secondary" href="#platform-runs">平台 SQL 记录</a></div>
   <article class="platform-card card mb-5">
     <div class="card-header">本节点 SQL</div>
@@ -23,14 +23,14 @@
     </div>
   </article>
   <article class="platform-card card mb-5">
-    <div class="card-header">所属加工流程（唯一）</div>
+    <div class="card-header">所属加工任务（唯一）</div>
     <div class="card-body"><p th:if="${#lists.isEmpty(taskWorkflows)}" class="fg-2 mb-0">此 SQL
-      任务已删除，或尚未迁移到加工流程。</p>
+      任务已删除，或尚未迁移到加工任务。</p>
       <div th:unless="${#lists.isEmpty(taskWorkflows)}" th:with="workflow=${taskWorkflows[0]}">
         <div class="workflow-actions"><a class="btn-outline theme-primary btn-sm"
                                          th:href="@{/workflows/{id}(id=${workflow.id})}" th:text="${workflow.name}"></a>
         </div>
-        <p class="small fg-2 mt-3 mb-0">如需删除，请在所属加工流程画布移除该 SQL 节点并保存；物理数据和运行记录会保留。</p>
+        <p class="small fg-2 mt-3 mb-0">如需删除，请在所属加工任务画布移除该 SQL 节点并保存；物理数据和运行记录会保留。</p>
       </div>
     </div>
   </article>
@@ -43,7 +43,7 @@
           <tr>
             <th>运行记录</th>
             <th>任务 / 版本</th>
-            <th>发起加工流程</th>
+            <th>发起加工任务</th>
             <th>状态</th>
             <th>开始 / 结束</th>
             <th>详情</th>
@@ -76,7 +76,7 @@
         </table>
       </div>
     </div>
-    <div class="card-footer bg-body small fg-2">同步节点的运行记录及水位请在<a th:href="@{/pipelines}">同步管道</a>查看，完整加工流程状态与节点日志请进入对应加工流程。
+    <div class="card-footer bg-body small fg-2">同步节点的运行记录及水位请在<a th:href="@{/pipelines}">数据同步</a>查看，完整加工任务状态与节点日志请进入对应加工任务。
     </div>
   </article>
 </section>

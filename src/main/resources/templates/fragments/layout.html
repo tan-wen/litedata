@@ -44,13 +44,13 @@
         </svg>
         <span class="nav-text">数据建模</span></a>
       <a class="side-link" th:classappend="${activeNav == 'pipelines'} ? ' active'"
-         th:attr="aria-current=${activeNav == 'pipelines' ? 'page' : null}" th:href="@{/pipelines}" title="同步管道"
-         aria-label="同步管道">
+         th:attr="aria-current=${activeNav == 'pipelines' ? 'page' : null}" th:href="@{/pipelines}" title="数据同步"
+         aria-label="数据同步">
         <svg class="nav-icon" viewBox="0 0 18 18" aria-hidden="true">
           <path
             d="M4 6.5A2.5 2.5 0 0 1 6.5 4h5A2.5 2.5 0 0 1 14 6.5v5A2.5 2.5 0 0 1 11.5 14h-5A2.5 2.5 0 0 1 4 11.5zm2 0h6M9 9v3"/>
         </svg>
-        <span class="nav-text">同步管道</span></a>
+        <span class="nav-text">数据同步</span></a>
       <a class="side-link" th:classappend="${activeNav == 'workflows'} ? ' active'"
          th:attr="aria-current=${activeNav == 'workflows' ? 'page' : null}" th:href="@{/workflows}" title="数据加工"
          aria-label="数据加工">

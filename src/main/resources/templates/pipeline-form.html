@@ -2,14 +2,14 @@
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org"
       th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
 <head>
-  <title>同步管道 · 数据中台</title>
+  <title>数据同步 · 数据中台</title>
 </head>
 <body>
 <section class="scheduling-form pipeline-wizard" data-pipeline-ods-form>
   <link rel="stylesheet" th:href="@{/css/scheduling.css}">
   <link rel="stylesheet" th:href="@{/css/pipeline-wizard.css}">
   <div class="mb-7">
-    <h1 class="page-title" th:text="${resourceId == null ? '创建同步管道' : '编辑同步管道'}">创建同步管道</h1>
+    <h1 class="page-title" th:text="${resourceId == null ? '新建同步任务' : '编辑同步任务'}">新建同步任务</h1>
     <p class="page-subtitle mb-0">ODS 负责贴源同步；清洗、关联和汇总请在数据加工中配置独立任务。</p>
   </div>
   <div th:replace="~{fragments/messages :: messages}">
@@ -20,7 +20,7 @@
     <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
     <input type="hidden" th:field="*{previewHash}" data-preview-hash>
     <input type="hidden" th:field="*{wizardStep}" data-wizard-step-input>
-    <ol class="pipeline-wizard-steps" aria-label="创建同步管道步骤" data-wizard-progress
+    <ol class="pipeline-wizard-steps" aria-label="新建同步任务步骤" data-wizard-progress
         th:attr="data-step-count=${resourceId == null and draft.targetMode == 'AUTO' ? 4 : 2}">
       <li>
         <button type="button" data-wizard-target="1" aria-current="step">
@@ -72,7 +72,7 @@
           <p th:if="${resourceId != null}" class="alert theme-info">同步边界在创建后固定；可调整执行周期。</p>
           <div class="row g-5">
             <div class="md:col-6">
-              <label class="form-label" for="name">管道名称</label>
+              <label class="form-label" for="name">任务名称</label>
               <input class="form-control" th:field="*{name}" required maxlength="100">
             </div>
             <div class="md:col-6">
@@ -111,7 +111,7 @@
                 <option th:each="quality : ${qualityChoices}" th:value="${quality.id}"
                         th:text="${quality.name + ' · ' + quality.tableName}">订单质量 · ods_orders</option>
               </select>
-              <div class="form-text">可选一个质量任务。任务须检查此管道的 ODS 目标，且时间字段只能使用本管道 Watermark 列；强规则失败或扫描错误会阻断数据就绪。</div>
+              <div class="form-text">可选一个质量任务。质量任务须检查此同步任务的 ODS 目标，且时间字段只能使用本同步任务 Watermark 列；强规则失败或扫描错误会阻断数据就绪。</div>
             </div>
             <div class="md:col-6" data-auto-target th:hidden="${resourceId != null or draft.targetMode != 'AUTO'}">
               <label class="form-label" for="autoTargetTable">自动生成的 ODS 表</label>
@@ -470,19 +470,19 @@
           </button>
           <button class="btn-solid theme-primary" type="submit"
                   th:disabled="${resourceId == null and draft.targetMode == 'AUTO' and (#strings.isEmpty(draft.previewHash) or odsPreview == null or !odsPreview.ready)}"
-                  th:text="${resourceId != null ? '保存修改' : (draft.targetMode == 'AUTO' ? '创建表、登记模型并创建管道' : '创建管道')}"
-                  data-create-button>创建管道
+                  th:text="${resourceId != null ? '保存修改' : (draft.targetMode == 'AUTO' ? '创建表、登记模型并新建同步任务' : '新建同步任务')}"
+                  data-create-button>新建同步任务
           </button>
         </div>
       </div>
     </section>
     <div class="d-flex gap-3 wizard-fallback-submit">
-      <button class="btn-solid theme-primary" type="submit">保存管道</button>
+      <button class="btn-solid theme-primary" type="submit">保存任务</button>
       <a class="btn-outline theme-secondary"
          th:href="${workflowId == null ? '/pipelines' : '/workflows/' + workflowId}">取消</a>
     </div>
   </form>
-  <p th:unless="${canEdit}" class="alert theme-info">当前账号仅可查看同步管道。</p>
+  <p th:unless="${canEdit}" class="alert theme-info">当前账号仅可查看同步任务。</p>
   <template id="manual-range-template">
     <tr data-manual-range-row>
       <td>

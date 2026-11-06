@@ -93,6 +93,129 @@ class WorkflowIntegrationTest {
     }
 
     @Test
+    void listEnablesAndPausesTheSavedCronAndPreservesFiltersWithoutAClientGraphHash() throws Exception {
+        long flow = workflow("list-cron");
+        task(flow, "ads_list_cron");
+        var original = workflows.view(flow);
+        workflows.save(flow, save(original, "0 30 8 ? * MON-FRI", original.nodes(), List.of(), Map.of(), List.of()), "dev");
+        String enable = "/workflows/" + flow + "/scheduling/enable", pause = "/workflows/" + flow + "/scheduling/pause";
+        mvc.perform(get("/workflows").with(user("dev").roles("DEVELOPER")))
+            .andExpect(status().isOk())
+            .andExpect(content().string(org.hamcrest.Matchers.containsString(enable)));
+        String canvas = mvc.perform(get("/workflows/" + flow).with(user("dev").roles("DEVELOPER")))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(canvas).contains("/workflows/" + flow + "/run", "运行加工任务")
+            .doesNotContain("data-schedule-cron", "data-schedule-preview", "data-workflow-current-cron", enable, pause);
+        mvc.perform(post(enable).with(user("dev").roles("DEVELOPER")).with(csrf())
+                .param("version", Integer.toString(workflows.require(flow).getVersion()))
+                .param("keyword", "list-cron").param("pageNum", "2").param("pageSize", "10"))
+            .andExpect(status().is3xxRedirection())
+            .andExpect(redirectedUrl("/workflows?pageNum=2&pageSize=10&keyword=list-cron"))
+            .andExpect(flash().attribute("success", "加工任务定时调度已启用"));
+        assertThat(workflows.require(flow).getStatus()).isEqualTo("SCHEDULED");
+        verify(engine).createSchedule(801L, "0 30 8 ? * MON-FRI");
+        mvc.perform(get("/workflows").with(user("dev").roles("DEVELOPER")))
+            .andExpect(status().isOk())
+            .andExpect(content().string(org.hamcrest.Matchers.containsString(pause)))
+            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(enable))));
+        mvc.perform(post(pause).with(user("dev").roles("DEVELOPER")).with(csrf())
+                .param("version", Integer.toString(workflows.require(flow).getVersion()))
+                .param("keyword", "list-cron").param("pageNum", "2").param("pageSize", "10"))
+            .andExpect(status().is3xxRedirection())
+            .andExpect(redirectedUrl("/workflows?pageNum=2&pageSize=10&keyword=list-cron"));
+        assertThat(workflows.require(flow).getStatus()).isEqualTo("PAUSED");
+        verify(engine).offline(91);
+    }
+
+    @Test
+    void listSchedulingKeepsRoleCsrfVersionReviewAndSavedGraphValidation() throws Exception {
+        long flow = workflow("list-protection");
+        String enable = "/workflows/" + flow + "/scheduling/enable", pause = "/workflows/" + flow + "/scheduling/pause";
+        String version = Integer.toString(workflows.require(flow).getVersion());
+        for (String path : List.of(enable, pause)) {
+            mvc.perform(post(path).with(user("viewer").roles("VIEWER")).with(csrf()).param("version", version))
+                .andExpect(status().isForbidden());
+            mvc.perform(post(path).with(user("dev").roles("DEVELOPER")).param("version", version))
+                .andExpect(status().isForbidden());
+        }
+        mvc.perform(post(enable).with(user("dev").roles("DEVELOPER")).with(csrf()).param("version", version))
+            .andExpect(status().is3xxRedirection()).andExpect(flash().attributeExists("error"));
+        assertThat(workflows.require(flow).getStatus()).isEqualTo("DRAFT");
+        mvc.perform(post(enable).with(user("dev").roles("DEVELOPER")).with(csrf())
+                .param("version", version).param("pageNum", "0"))
+            .andExpect(status().isBadRequest());
+        task(flow, "ads_list_protection");
+        var current = workflows.view(flow);
+        workflows.save(flow, save(current, current.nodes(), List.of()), "dev");
+        mvc.perform(post(enable).with(user("dev").roles("DEVELOPER")).with(csrf()).param("version", Integer.toString(current.version())))
+            .andExpect(status().isConflict());
+        jdbc.update("UPDATE processing_workflow SET review_required=TRUE WHERE id=?", flow);
+        mvc.perform(post(enable).with(user("dev").roles("DEVELOPER")).with(csrf())
+                .param("version", Integer.toString(workflows.require(flow).getVersion())))
+            .andExpect(status().is3xxRedirection()).andExpect(flash().attributeExists("error"));
+        mvc.perform(get("/workflows").with(user("viewer").roles("VIEWER")))
+            .andExpect(status().isOk())
+            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("/scheduling/enable"))))
+            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("/scheduling/pause"))));
+        verifyNoInteractions(engine);
+    }
+
+    @Test
+    void listCanRetryPendingScheduleAndPauseEvenWhenTheSavedSqlIsBroken() throws Exception {
+        long flow = workflow("list-retry"), sql = task(flow, "ads_list_retry");
+        String enable = "/workflows/" + flow + "/scheduling/enable", pause = "/workflows/" + flow + "/scheduling/pause";
+        String version = Integer.toString(workflows.require(flow).getVersion());
+        doThrow(new IllegalStateException("test engine unavailable")).when(engine).online(91);
+        mvc.perform(post(enable).with(user("dev").roles("DEVELOPER")).with(csrf()).param("version", version))
+            .andExpect(status().is3xxRedirection()).andExpect(flash().attributeExists("error"));
+        assertThat(workflows.require(flow).getStatus()).isEqualTo("SCHEDULE_PENDING");
+        mvc.perform(get("/workflows").with(user("dev").roles("DEVELOPER")))
+            .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("重试启用定时")))
+            .andExpect(content().string(org.hamcrest.Matchers.containsString(pause)));
+        doNothing().when(engine).online(91);
+        mvc.perform(post(enable).with(user("dev").roles("DEVELOPER")).with(csrf()).param("version", version))
+            .andExpect(status().is3xxRedirection());
+        assertThat(workflows.require(flow).getStatus()).isEqualTo("SCHEDULED");
+        verify(engine, times(1)).createSchedule(anyLong(), anyString());
+        jdbc.update("UPDATE sql_task SET sql_text='broken sql' WHERE id=?", sql);
+        mvc.perform(post(pause).with(user("dev").roles("DEVELOPER")).with(csrf()).param("version", version))
+            .andExpect(status().is3xxRedirection());
+        assertThat(workflows.require(flow).getStatus()).isEqualTo("PAUSED");
+        verify(engine).offline(91);
+    }
+
+    @Test
+    void eventSubscriptionsMoveToTheListWhileCanvasEditingRetainsCsrf() throws Exception {
+        long pipeline = pipeline("ods_list_event");
+        var draft = new ProcessingWorkflow();
+        draft.setName("list-event");
+        draft.setTriggerMode("EVENT");
+        draft.setTriggerPipelineId(pipeline);
+        long flow = workflows.metadata(null, draft, "dev");
+        task(flow, "dwd_list_event");
+        var result = mvc.perform(get("/workflows/" + flow).with(user("dev").roles("DEVELOPER")))
+            .andExpect(status().isOk()).andReturn();
+        var token = (org.springframework.security.web.csrf.CsrfToken) result.getRequest()
+            .getAttribute(org.springframework.security.web.csrf.CsrfToken.class.getName());
+        assertThat(result.getResponse().getContentAsString())
+            .contains("name=\"" + token.getParameterName() + "\"", "value=\"" + token.getToken() + "\"", "事件记录")
+            .doesNotContain("/workflows/" + flow + "/run", "data-schedule-cron", "data-schedule-preview");
+        String version = Integer.toString(workflows.require(flow).getVersion());
+        mvc.perform(post("/workflows/" + flow + "/scheduling/enable").with(user("dev").roles("DEVELOPER")).with(csrf())
+                .param("version", version))
+            .andExpect(status().is3xxRedirection()).andExpect(flash().attribute("success", "加工任务事件订阅已启用"));
+        assertThat(workflows.require(flow).getStatus()).isEqualTo("EVENT_ENABLED");
+        mvc.perform(get("/workflows").with(user("dev").roles("DEVELOPER")))
+            .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("暂停事件订阅")));
+        mvc.perform(post("/workflows/" + flow + "/scheduling/pause").with(user("dev").roles("DEVELOPER")).with(csrf())
+                .param("version", version))
+            .andExpect(status().is3xxRedirection());
+        assertThat(workflows.require(flow).getStatus()).isEqualTo("PAUSED");
+        verify(engine, never()).createSchedule(anyLong(), anyString());
+        verify(engine, never()).offline(anyInt());
+    }
+
+    @Test
     void createsEmptyWorkflowThenBuildsIndependentMultiOutputCanvas() {
         long flow = workflow("月末加工");
         var empty = workflows.view(flow);

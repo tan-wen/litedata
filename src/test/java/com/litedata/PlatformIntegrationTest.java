@@ -909,7 +909,7 @@ class PlatformIntegrationTest {
         var failed = mvc.perform(pipelineEdit(pipeline).param("name", label).param("cronExpression", "invalid"))
             .andExpect(status().isOk()).andReturn();
         @SuppressWarnings("unchecked") var editing = (java.util.List<com.litedata.web.PageBreadcrumbs.Item>) failed.getModelAndView().getModel().get("breadcrumbs");
-        assertThat(editing.getLast().label()).isEqualTo("编辑同步管道");
+        assertThat(editing.getLast().label()).isEqualTo("编辑同步任务");
         assertThat(editing.get(2).href()).isEqualTo("/pipelines#pipeline-" + pipeline.getId());
         mvc.perform(get("/sources/new").with(user("developer").roles("DEVELOPER")))
             .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("aria-current=\"page\">新增数据源")));
@@ -962,7 +962,7 @@ class PlatformIntegrationTest {
             jdbc.update("INSERT INTO pipeline_run(pipeline_id,status,started_at,lower_bound,upper_bound) VALUES(?,'FAILED',?,?,?)", pipeline.getId(), time, time, time);
         mvc.perform(get("/pipelines?pageSize=1").with(user("viewer").roles("VIEWER")))
             .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("2026-11-05 04:02:03")))
-            .andExpect(content().string(org.hamcrest.Matchers.containsString("运行记录")))
+            .andExpect(content().string(org.hamcrest.Matchers.containsString("/scheduling/pipeline/" + pipeline.getId())))
             .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("运行实例"))));
         verifyNoInteractions(monitor);
     }

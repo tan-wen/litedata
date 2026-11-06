@@ -163,7 +163,7 @@ public class ModelingService {
         var model = requireModel(mapper.lockModel(id));
         checkVersion(model, version);
         if (mapper.pipelineReferences(model.getTableName()) > 0)
-            throw new IllegalArgumentException("模型仍关联同步管道，请先删除相关管道");
+            throw new IllegalArgumentException("模型仍关联同步任务，请先删除相关同步任务");
         if (sqlTasks.modelReferences(id) > 0) throw new IllegalArgumentException("模型仍关联数据加工，请先删除加工任务");
         if (metrics.modelReferences(id) > 0) throw new IllegalArgumentException("模型仍关联指标，请先删除相关指标");
         dependencies.check(model.getTableName());

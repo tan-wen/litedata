@@ -8,7 +8,7 @@
     <p class="page-subtitle mb-0">目标库 warehouse。分步维护后预览服务器生成的 Doris DDL。</p></div>
   <div th:replace="~{fragments/messages :: messages}"></div>
   <p th:if="${modelId == null and draft.layer == 'ODS'}" class="alert theme-info">源表贴源接入可在<a
-    th:href="@{/pipelines/new}">同步管道</a>自动读取结构并生成 ODS，无需重复填写字段。此处保留自定义 ODS 物理策略的建模能力。
+    th:href="@{/pipelines/new}">数据同步</a>自动读取结构并生成 ODS，无需重复填写字段。此处保留自定义 ODS 物理策略的建模能力。
   </p>
   <form th:if="${canEdit}" id="model-form" th:action="${modelId == null ? '/models' : '/models/' + modelId}"
         method="post" th:object="${draft}" th:attr="data-error-step=${errorStep}">

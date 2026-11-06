@@ -1,6 +1,9 @@
 package com.litedata;
 
 import static org.assertj.core.api.Assertions.*;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import com.litedata.quality.*;
 import com.litedata.model.DataModel;
@@ -164,6 +167,32 @@ class DataReadyIntegrationTest {
     void processingCanvasRejectsDirectPipelineNodes() {
         assertThatIllegalArgumentException().isThrownBy(() -> WorkflowGraph.upstream(List.of("pipeline-1"), List.of()))
             .withMessageContaining("数据就绪订阅");
+    }
+
+    @Test
+    void eventMetadataDoesNotRequireCronAndKeepsThePreviousCronWhenEditing() throws Exception {
+        long pipeline = pipeline("ods_event_form");
+        mvc.perform(post("/workflows").with(user("dev").roles("DEVELOPER")).with(csrf())
+                .param("name", "event-form").param("triggerMode", "EVENT")
+                .param("triggerPipelineId", Long.toString(pipeline)).param("cronExpression", "ignored"))
+            .andExpect(status().is3xxRedirection());
+        long id = jdbc.queryForObject("SELECT id FROM processing_workflow WHERE name='event-form'", Long.class);
+        assertThat(workflows.require(id).getCronExpression()).isEqualTo("0 0 * * * ?");
+        assertThat(workflows.require(id).getTriggerPipelineId()).isEqualTo(pipeline);
+        String html = mvc.perform(get("/workflows/" + id + "/edit").with(user("dev").roles("DEVELOPER")))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(html).containsPattern("(?s)<input[^>]*disabled[^>]*name=\"cronExpression\"|<input[^>]*name=\"cronExpression\"[^>]*disabled");
+        assertThat(html).containsPattern("(?s)<select[^>]*required[^>]*name=\"triggerPipelineId\"|<select[^>]*name=\"triggerPipelineId\"[^>]*required");
+        jdbc.update("UPDATE processing_workflow SET cron_expression='0 0 2 * * ?' WHERE id=?", id);
+        mvc.perform(post("/workflows/" + id + "/metadata").with(user("dev").roles("DEVELOPER")).with(csrf())
+                .param("name", "event-form").param("version", Integer.toString(workflows.require(id).getVersion()))
+                .param("triggerMode", "EVENT").param("triggerPipelineId", Long.toString(pipeline)))
+            .andExpect(status().is3xxRedirection());
+        assertThat(workflows.require(id).getCronExpression()).isEqualTo("0 0 2 * * ?");
+        mvc.perform(post("/workflows").with(user("dev").roles("DEVELOPER")).with(csrf())
+                .param("name", "event-missing-source").param("triggerMode", "EVENT"))
+            .andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attributeExists("error"));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM processing_workflow WHERE name='event-missing-source'", Long.class)).isZero();
     }
 
     @Test

@@ -228,11 +228,11 @@ public class OdsPipelineService {
             if (physical.columns().isEmpty()) {
                 var result = modeling.physicalize(modelId, modelPreview.model().getVersion(), modelPreview.hash(), actor);
                 if (!result.success())
-                    throw new IllegalArgumentException("ODS 创建未完成，管道未保存；请核对目标表后重新预览。" + result.message());
+                    throw new IllegalArgumentException("ODS 创建未完成，同步任务未保存；请核对目标表后重新预览。" + result.message());
             } else if (!modeling.compare(modelId, modelPreview.model().getVersion(), actor).matches())
-                throw new IllegalArgumentException("ODS 目标结构已变化，管道未保存，请重新预览");
+                throw new IllegalArgumentException("ODS 目标结构已变化，同步任务未保存，请重新预览");
         } catch (SQLException exception) {
-            throw new IllegalArgumentException("ODS 创建未完成，管道未保存；请核对目标表后重试");
+            throw new IllegalArgumentException("ODS 创建未完成，同步任务未保存；请核对目标表后重试");
         }
         platform.audit(actor, "ODS_PIPELINE_CREATE", Long.toString(pipelineId), "SUCCESS");
         return pipelineId;

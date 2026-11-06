@@ -99,7 +99,7 @@
     display: none;
 }
 
-.workflow-page-heading, .workflow-toolbar, .workflow-runbar-actions {
+.workflow-page-heading, .workflow-toolbar {
     display: flex;
     flex-wrap: wrap;
     justify-content: space-between;
@@ -116,23 +116,6 @@
     flex-wrap: wrap;
     gap: .75rem;
     align-items: center;
-}
-
-.workflow-runbar .card-body {
-    display: grid;
-    gap: 1rem;
-}
-
-.workflow-runbar-actions {
-    align-items: center;
-}
-
-.workflow-cron-settings {
-    min-width: 0;
-}
-
-.workflow-cron {
-    width: min(34rem, 100%);
 }
 
 .schedule-preview {
@@ -169,16 +152,12 @@
         max-width: 100%;
     }
 
-    .workflow-page-heading, .workflow-toolbar, .workflow-runbar-actions {
+    .workflow-page-heading, .workflow-toolbar {
         align-items: flex-start;
         flex-direction: column;
     }
 
     .workflow-actions {
-        width: 100%;
-    }
-
-    .workflow-cron {
         width: 100%;
     }
 
@@ -200,9 +179,6 @@
         white-space: normal;
     }
 
-    .workflow-runbar .card-body {
-        padding-inline: 1rem;
-    }
 }
 
 .workflow-readonly {

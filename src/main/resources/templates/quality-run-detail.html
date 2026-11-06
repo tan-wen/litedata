@@ -29,7 +29,7 @@
         </div>
         <div class="col-12" th:if="${run.pipelineRunId != null and (run.status == 'WARNING' or run.status == 'FAILED' or run.status == 'ERROR')}">
           <p class="alert mb-0" th:classappend="${run.status == 'WARNING' ? 'theme-warning' : 'theme-danger'}"
-             th:text="${run.status == 'WARNING' ? '弱规则出现异常：已记录结果并允许数据就绪事件继续投递。' : '质量门禁未放行：不会投递数据就绪事件，加工流程不会启动。'}"></p>
+             th:text="${run.status == 'WARNING' ? '弱规则出现异常：已记录结果并允许数据就绪事件继续投递。' : '质量门禁未放行：不会投递数据就绪事件，加工任务不会启动。'}"></p>
         </div>
         <div class="col-12" th:if="${run.pipelineRunId == null and (run.status == 'WARNING' or run.status == 'FAILED' or run.status == 'ERROR')}">
           <p class="alert mb-0" th:classappend="${run.status == 'WARNING' ? 'theme-warning' : 'theme-danger'}"

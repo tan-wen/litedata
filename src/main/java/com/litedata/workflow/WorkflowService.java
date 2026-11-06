@@ -125,21 +125,24 @@ public class WorkflowService {
         if (draft.getDescription().length() > 500) throw new IllegalArgumentException("描述最长500字符");
         if (!Set.of("CRON", "EVENT").contains(Objects.toString(draft.getTriggerMode(), "")))
             throw new IllegalArgumentException("请选择 Cron 或事件触发模式");
+        var existing = id == null ? null : require(id);
         if ("EVENT".equals(draft.getTriggerMode())) {
             if (draft.getTriggerPipelineId() == null || platform.pipeline(draft.getTriggerPipelineId()) == null)
-                throw new IllegalArgumentException("事件触发须选择一个有效同步管道作为数据就绪来源");
+                throw new IllegalArgumentException("事件触发须选择一个有效同步任务作为数据就绪来源");
+            draft.setCronExpression(existing == null ? new ProcessingWorkflow().getCronExpression() : existing.getCronExpression());
         } else {
             if (draft.getTriggerPipelineId() != null) throw new IllegalArgumentException("Cron 模式不能同时订阅数据就绪事件");
+            draft.setCronExpression(SchedulePreview.validate(draft.getCronExpression()));
         }
         if (id == null) {
             draft.setId(null);
             mapper.insert(draft);
             id = draft.getId();
         } else {
-            var existing = require(id);
             version(existing, draft.getVersion());
             ensureEditable(existing);
-            if (!Objects.equals(existing.getTriggerMode(), draft.getTriggerMode()) || !Objects.equals(existing.getTriggerPipelineId(), draft.getTriggerPipelineId()))
+            if (!Objects.equals(existing.getTriggerMode(), draft.getTriggerMode()) || !Objects.equals(existing.getTriggerPipelineId(), draft.getTriggerPipelineId())
+                || !Objects.equals(existing.getCronExpression(), draft.getCronExpression()))
                 mapper.schedule(id, null, "DRAFT");
             draft.setId(id);
             mapper.metadata(draft);
@@ -377,6 +380,20 @@ public class WorkflowService {
             case "run" -> scheduler.run(id, actor);
             case "schedule" -> scheduler.schedule(id, actor);
             default -> throw new IllegalArgumentException("操作无效");
+        }
+    }
+
+    /** List actions operate on the saved graph, with the displayed version checked under the graph lock. */
+    @Transactional(noRollbackFor = IllegalStateException.class)
+    public void setScheduling(long id, int expected, boolean enabled, String actor) {
+        sql.lockGraph();
+        var workflow = require(id);
+        version(workflow, expected);
+        if (enabled) {
+            requireReviewed(workflow);
+            scheduler.schedule(id, actor);
+        } else {
+            scheduler.pause(id, actor);
         }
     }
 

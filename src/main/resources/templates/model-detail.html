@@ -17,7 +17,7 @@
   <div th:replace="~{fragments/messages :: messages}"></div>
   <p th:if="${!#strings.isEmpty(definition.description)}" th:text="${definition.description}"></p>
   <div th:if="${definition.modelType == 'UNIQUE'}" class="alert theme-info">建表后还需写入数据：ODS 由<a
-    th:href="@{/pipelines}" class="alert-link">同步管道</a>从业务库接入；DIM / DWD / DWS / ADS 在<a
+    th:href="@{/pipelines}" class="alert-link">数据同步</a>从业务库接入；DIM / DWD / DWS / ADS 在<a
     th:href="@{/transforms}" class="alert-link">数据加工</a>配置 <code>INSERT INTO ... SELECT</code>，声明上游后运行整条依赖链，并在末端启用定时调度。
   </div>
   <div th:unless="${definition.modelType == 'UNIQUE'}" class="alert theme-warning">当前为 <strong

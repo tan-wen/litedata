@@ -52,7 +52,7 @@ public class WorkflowController {
 
     @InitBinder("draft")
     void bind(WebDataBinder binder) {
-        binder.setAllowedFields("name", "description", "version", "triggerMode", "triggerPipelineId");
+        binder.setAllowedFields("name", "description", "version", "triggerMode", "triggerPipelineId", "cronExpression");
     }
 
     @GetMapping
@@ -95,14 +95,14 @@ public class WorkflowController {
 
     private String metadata(Long id, ProcessingWorkflow draft, BindingResult errors, Model model, Principal principal, RedirectAttributes redirect) {
         try {
-            if (errors.hasErrors()) throw new IllegalArgumentException("加工流程表单格式有误");
+            if (errors.hasErrors()) throw new IllegalArgumentException("加工任务表单格式有误");
             long saved = workflows.metadata(id, draft, principal.getName());
-            redirect.addFlashAttribute("success", "加工流程已保存，请在画布中编排依赖");
+            redirect.addFlashAttribute("success", "加工任务已保存，请在画布中编排依赖");
             return "redirect:/workflows/" + saved;
         } catch (IllegalArgumentException e) {
             model.addAttribute("error", e.getMessage());
         } catch (org.springframework.dao.DuplicateKeyException e) {
-            model.addAttribute("error", "加工流程名称已被使用，请打开现有加工流程");
+            model.addAttribute("error", "加工任务名称已被使用，请打开现有加工任务");
         }
         return form(model, draft, id);
     }
@@ -179,9 +179,9 @@ public class WorkflowController {
                    @RequestParam(defaultValue = "") String graphHash, Principal principal, RedirectAttributes redirect) {
         workflows.execute(id, version, graphHash, action, principal.getName());
         redirect.addFlashAttribute("success", switch (action) {
-            case "run" -> "已提交整条加工流程，请进入运行记录查看结果";
-            case "schedule" -> "EVENT".equals(workflows.require(id).getTriggerMode()) ? "加工流程事件订阅已启用" : "加工流程定时调度已启用";
-            default -> "EVENT".equals(workflows.require(id).getTriggerMode()) ? "加工流程事件订阅已停用，已提交任务继续执行" : "加工流程定时调度已停用，已提交任务继续执行";
+            case "run" -> "已提交加工任务，请进入运行记录查看结果";
+            case "schedule" -> "EVENT".equals(workflows.require(id).getTriggerMode()) ? "加工任务事件订阅已启用" : "加工任务定时调度已启用";
+            default -> "EVENT".equals(workflows.require(id).getTriggerMode()) ? "加工任务事件订阅已停用，已提交任务继续执行" : "加工任务定时调度已停用，已提交任务继续执行";
         });
         return "redirect:/workflows/" + id;
     }
@@ -189,15 +189,37 @@ public class WorkflowController {
     @PostMapping("/{id}/delete")
     String delete(@PathVariable long id, @RequestParam int version, @RequestParam Map<String, String> params,
                   Principal principal, RedirectAttributes redirect) {
+        String target = listReturnPath(params);
+        workflows.archive(id, version, principal.getName());
+        redirect.addFlashAttribute("success", "加工任务及其 SQL 任务已归档；同步任务、物理数据和运行历史已保留");
+        return "redirect:" + target;
+    }
+
+    @PostMapping("/{id}/scheduling/{action:enable|pause}")
+    String scheduling(@PathVariable long id, @PathVariable String action, @RequestParam int version,
+                      @RequestParam Map<String, String> params, Principal principal, RedirectAttributes redirect) {
+        String target = listReturnPath(params);
+        try {
+            boolean enabled = "enable".equals(action);
+            workflows.setScheduling(id, version, enabled, principal.getName());
+            boolean event = "EVENT".equals(workflows.require(id).getTriggerMode());
+            redirect.addFlashAttribute("success", enabled
+                ? (event ? "加工任务事件订阅已启用" : "加工任务定时调度已启用")
+                : (event ? "加工任务事件订阅已暂停，已提交任务继续执行" : "加工任务定时调度已暂停，已提交任务继续执行"));
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            redirect.addFlashAttribute("error", e.getMessage());
+        }
+        return "redirect:" + target;
+    }
+
+    private String listReturnPath(Map<String, String> params) {
         var page = QueryPage.parse(params, 20);
         var target = UriComponentsBuilder.fromPath("/workflows")
             .queryParam("pageNum", page.pageNum()).queryParam("pageSize", page.pageSize());
         String keyword = params.getOrDefault("keyword", "").trim();
         if (keyword.length() > 100) throw new IllegalArgumentException("搜索关键字最长100字符");
         if (!keyword.isBlank()) target.queryParam("keyword", keyword);
-        workflows.archive(id, version, principal.getName());
-        redirect.addFlashAttribute("success", "加工流程及其 SQL 任务已归档；同步管道、物理数据和运行历史已保留");
-        return "redirect:" + target.build().encode().toUriString();
+        return target.build().encode().toUriString();
     }
 
     @ExceptionHandler(org.springframework.dao.DuplicateKeyException.class)

@@ -31,7 +31,7 @@ public class WorkflowGraph {
 
     public TransformService.Graph graph(long id) {
         if (workflows.workflow(id) == null)
-            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "加工流程不存在或已删除");
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "加工任务不存在或已删除");
         var upstream = upstream(workflows.nodeKeys(id), workflows.edges(id));
         var ordered = new ArrayList<String>();
         var visited = new HashSet<String>();
@@ -62,7 +62,7 @@ public class WorkflowGraph {
                 "/transforms/" + id + "/edit?workflowId=" + workflowId, "SQL：" + task.getName(), hash(fingerprint), false);
         }
         var pipe = platform.pipeline(id);
-        if (pipe == null) throw new IllegalArgumentException("同步管道不存在");
+        if (pipe == null) throw new IllegalArgumentException("同步任务不存在");
         String fingerprint = pipe.getName() + "|" + pipe.getSourceId() + "|" + pipe.getSourceTable() + "|" + pipe.getTargetTable() + "|" + pipe.getWatermarkColumn();
         return new WorkflowService.Node(key, pipe.getName(), "同步", id, 0, upstream, pipe.getTargetTable(),
             "/pipelines/" + id + "/edit?workflowId=" + workflowId, "同步：" + pipe.getName(), hash(fingerprint),
@@ -75,12 +75,12 @@ public class WorkflowGraph {
         var upstream = new TreeMap<String, SortedSet<String>>();
         for (String key : keys) {
             parse(key);
-            if (!key.startsWith("sql-")) throw new IllegalArgumentException("加工画布不能包含同步管道，请配置数据就绪订阅");
+            if (!key.startsWith("sql-")) throw new IllegalArgumentException("加工画布不能包含同步任务，请配置数据就绪订阅");
             if (upstream.putIfAbsent(key, new TreeSet<>()) != null) throw new IllegalArgumentException("节点重复");
         }
         for (var edge : edges) {
             if (edge == null || !upstream.containsKey(edge.from()) || !upstream.containsKey(edge.to()) || !edge.to().startsWith("sql-"))
-                throw new IllegalArgumentException("连线须连接画布中的节点，同步管道只能作为上游");
+                throw new IllegalArgumentException("连线须连接画布中的节点，同步任务只能作为上游");
             if (edge.from().equals(edge.to())) throw new IllegalArgumentException("节点不能依赖自身");
             if (!upstream.get(edge.to()).add(edge.from())) throw new IllegalArgumentException("连线重复");
         }

@@ -79,7 +79,7 @@
   </article>
   <div th:if="${!#lists.isEmpty(resource.codes)}" th:replace="~{fragments/pagination :: pagination}"></div>
   <p class="small fg-2 mt-5 mb-0">
-    运行编号来自调度引擎。同步管道的回调会在对应运行详情中展示；旧记录未保存运行编号，不会按时间推测关联，仍在“历史未关联回调”中保留。</p>
+    运行编号来自调度引擎。同步任务的回调会在对应运行详情中展示；旧记录未保存运行编号，不会按时间推测关联，仍在“历史未关联回调”中保留。</p>
 </section>
 </body>
 </html>

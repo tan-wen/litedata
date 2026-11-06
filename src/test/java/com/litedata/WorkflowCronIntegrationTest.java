@@ -92,6 +92,91 @@ class WorkflowCronIntegrationTest {
     }
 
     @Test
+    void creationWizardPersistsItsCronBeforeOpeningTheCanvas() throws Exception {
+        String html = mvc.perform(get("/workflows/new").with(user("dev").roles("DEVELOPER")))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(html).contains("新建加工任务")
+            .containsPattern("(?s)data-wizard-step=\"2\".*name=\"triggerMode\".*name=\"cronExpression\".*</section>");
+        mvc.perform(post("/workflows").with(user("dev").roles("DEVELOPER")).with(csrf())
+                .param("name", "wizard-cron").param("description", "创建时设置执行周期")
+                .param("triggerMode", "CRON").param("cronExpression", "  0   30  8 ? * MON-FRI "))
+            .andExpect(status().is3xxRedirection());
+        long id = jdbc.queryForObject("SELECT id FROM processing_workflow WHERE name='wizard-cron'", Long.class);
+        assertThat(workflows.require(id).getCronExpression()).isEqualTo("0 30 8 ? * MON-FRI");
+        assertThat(workflows.require(id).getTriggerPipelineId()).isNull();
+        assertThat(workflows.view(id).nodes()).isEmpty();
+        mvc.perform(get("/workflows/" + id).with(user("dev").roles("DEVELOPER")))
+            .andExpect(status().isOk())
+            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("data-schedule-cron"))));
+        mvc.perform(get("/workflows/" + id + "/graph").with(user("dev").roles("DEVELOPER")))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.cronExpression").value("0 30 8 ? * MON-FRI"));
+        task(id, "ads_wizard_cron");
+        var view = workflows.view(id);
+        workflows.execute(id, view.version(), view.graphHash(), "schedule", "dev");
+        verify(engine).createSchedule(901L, "0 30 8 ? * MON-FRI");
+    }
+
+    @Test
+    void invalidCreationCronKeepsInputsAndDoesNotInsertAWorkflow() throws Exception {
+        for (String invalid : List.of("", "invalid", "1 0 * * * ?", "0 0 0 31 2 ?")) {
+            var failed = mvc.perform(post("/workflows").with(user("dev").roles("DEVELOPER")).with(csrf())
+                    .param("name", "invalid-wizard").param("description", "保留任务说明")
+                    .param("triggerMode", "CRON").param("cronExpression", invalid))
+                .andExpect(status().isOk()).andExpect(view().name("workflow-form"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attributeExists("error")).andReturn();
+            var draft = (ProcessingWorkflow) failed.getModelAndView().getModel().get("draft");
+            assertThat(draft.getName()).isEqualTo("invalid-wizard");
+            assertThat(draft.getDescription()).isEqualTo("保留任务说明");
+            assertThat(draft.getCronExpression()).isEqualTo(invalid);
+            assertThat(failed.getResponse().getContentAsString()).contains("data-initial-step=\"2\"");
+        }
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM processing_workflow", Long.class)).isZero();
+        mvc.perform(post("/workflows").with(user("viewer").roles("VIEWER")).with(csrf())
+                .param("name", "forbidden").param("cronExpression", "0 0 2 * * ?"))
+            .andExpect(status().isForbidden());
+        mvc.perform(post("/workflows").with(user("dev").roles("DEVELOPER"))
+                .param("name", "missing-csrf").param("cronExpression", "0 0 2 * * ?"))
+            .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void metadataCronEditsRequirePauseAndReplaceTheScheduleWithoutChangingTheGraph() throws Exception {
+        long id = workflow("metadata-cron"), root = task(id, "ads_metadata_cron");
+        var initial = workflows.view(id);
+        workflows.execute(id, initial.version(), initial.graphHash(), "schedule", "dev");
+        mvc.perform(post("/workflows/" + id + "/metadata").with(user("dev").roles("DEVELOPER")).with(csrf())
+                .param("name", initial.name()).param("version", Integer.toString(initial.version()))
+                .param("triggerMode", "CRON").param("cronExpression", "0 30 8 ? * MON-FRI"))
+            .andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attributeExists("error"));
+        assertThat(workflows.require(id).getCronExpression()).isEqualTo(initial.cronExpression());
+        workflows.execute(id, initial.version(), "", "pause", "dev");
+        var paused = workflows.view(id);
+        int sqlVersion = tasks.require(root).getVersion();
+        mvc.perform(post("/workflows/" + id + "/metadata").with(user("dev").roles("DEVELOPER")).with(csrf())
+                .param("name", paused.name()).param("version", Integer.toString(paused.version()))
+                .param("triggerMode", "CRON").param("cronExpression", "invalid"))
+            .andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attributeExists("error"));
+        assertThat(workflows.require(id).getVersion()).isEqualTo(paused.version());
+        mvc.perform(post("/workflows/" + id + "/metadata").with(user("dev").roles("DEVELOPER")).with(csrf())
+                .param("name", paused.name()).param("version", Integer.toString(paused.version()))
+                .param("triggerMode", "CRON").param("cronExpression", "0 30 8 ? * MON-FRI"))
+            .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/workflows/" + id));
+        var changed = workflows.view(id);
+        assertThat(changed.cronExpression()).isEqualTo("0 30 8 ? * MON-FRI");
+        assertThat(changed.scheduleId()).isNull();
+        assertThat(changed.status()).isEqualTo("DRAFT");
+        assertThat(changed.graphHash()).isEqualTo(paused.graphHash());
+        assertThat(tasks.require(root).getVersion()).isEqualTo(sqlVersion);
+        mvc.perform(post("/workflows/" + id + "/metadata").with(user("dev").roles("DEVELOPER")).with(csrf())
+                .param("name", paused.name()).param("version", Integer.toString(paused.version()))
+                .param("triggerMode", "CRON").param("cronExpression", "0 0 3 * * ?"))
+            .andExpect(status().isConflict());
+        assertThat(workflows.require(id).getCronExpression()).isEqualTo(changed.cronExpression());
+        workflows.execute(id, changed.version(), changed.graphHash(), "schedule", "dev");
+        verify(engine).createSchedule(901L, "0 30 8 ? * MON-FRI");
+    }
+
+    @Test
     void savesAnySupportedQuartzCronNormalizesItAndSchedulesTheSavedValue() throws Exception {
         long id = workflow("cron"), root = task(id, "ads_cron");
         var view = workflows.view(id);

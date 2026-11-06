@@ -21,7 +21,7 @@
     }).format(new Date(iso));
     const previewError = (message) => `<div class="schedule-preview-heading">下 3 次计划触发</div><p class="fg-danger mb-0">${escape(message)}</p>`;
     const loadPreview = async () => {
-        if (!preview || !cron) return;
+        if (!preview || !cron || cron.disabled) return;
         const value = cron.value.trim();
         if (!value) {
             activeRequest += 1;
@@ -47,6 +47,10 @@
     const schedulePreview = () => {
         clearTimeout(previewTimer);
         activeRequest += 1;
+        if (cron.disabled) {
+            window.platformFeedback.clear('schedule-preview');
+            return;
+        }
         if (!cron.value.trim()) {
             showPreview(previewError('请输入 Cron 表达式后再预览。'));
             return;

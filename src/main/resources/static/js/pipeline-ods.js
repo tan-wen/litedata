@@ -136,7 +136,7 @@
         if (autoInput) autoInput.disabled = !auto;
         if (existingInput) existingInput.disabled = auto || modes.length === 0;
         [bucketsAuto, buckets, distribution, partitionType, partitionColumn].filter(Boolean).forEach(item => item.disabled = !auto);
-        if (create) create.textContent = modes.length === 0 ? '保存修改' : auto ? '创建表、登记模型并创建管道' : '创建管道';
+        if (create) create.textContent = modes.length === 0 ? '保存修改' : auto ? '创建表、登记模型并新建同步任务' : '新建同步任务';
         refreshPartition();
         updateCreate();
     };
@@ -201,7 +201,7 @@
             tableSelect.value = sourceTable.value;
             tableSelect.disabled = true;
             tableSelect.required = false;
-            tableStatus.textContent = '该管道的来源表已固定。';
+            tableStatus.textContent = '该同步任务的来源表已固定。';
             return;
         }
         const ticket = ++request;

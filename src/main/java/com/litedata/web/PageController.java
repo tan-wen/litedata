@@ -284,14 +284,14 @@ public class PageController {
                     draft.getTargetTable(), draft.getTransformSql(), draft.getCronExpression(), draft.getQualityTaskId());
             audit(principal, id == null ? "PIPELINE_CREATE" : "PIPELINE_UPDATE", draft.getName());
             redirect.addFlashAttribute("success", id == null && "AUTO".equals(draft.getTargetMode())
-                ? "ODS 表、模型与同步管道已创建，可以运行同步；加工请在数据加工中配置"
-                : "ODS 同步管道已保存；完成目标模型建表后可执行，加工请在数据加工中配置");
+                ? "ODS 表、模型与同步任务已创建，可以运行同步；加工请在数据加工中配置"
+                : "ODS 同步任务已保存；完成目标模型建表后可执行，加工请在数据加工中配置");
             if (model.getAttribute("workflowId") instanceof Long workflowId) return "redirect:/workflows/" + workflowId;
             return "redirect:/pipelines";
         } catch (IllegalArgumentException exception) {
             model.addAttribute("error", exception.getMessage());
         } catch (DuplicateKeyException exception) {
-            model.addAttribute("error", "管道名称或目标模型已存在，请核对后选择已有 ODS 或调整名称");
+            model.addAttribute("error", "同步任务名称或目标模型已存在，请核对后选择已有 ODS 或调整名称");
         }
         failedSave(principal, "pipelines", id);
         draft.setConfirmed(false);
@@ -334,7 +334,7 @@ public class PageController {
     String archivePipeline(@PathVariable long id, RedirectAttributes redirect, Principal principal) {
         pipelines.archive(id);
         audit(principal, "PIPELINE_ARCHIVE", Long.toString(id));
-        redirect.addFlashAttribute("success", "同步管道已删除，ODS 物理表与运行历史已保留");
+        redirect.addFlashAttribute("success", "同步任务已删除，ODS 物理表与运行历史已保留");
         return "redirect:/pipelines";
     }
 
@@ -453,7 +453,7 @@ public class PageController {
 
     private com.litedata.model.Pipeline pipeline(long id) {
         var pipeline = mapper.pipeline(id);
-        if (pipeline == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "同步管道不存在");
+        if (pipeline == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "同步任务不存在");
         return pipeline;
     }
 

@@ -73,7 +73,7 @@ public class PipelineService {
         if ("SCHEDULED".equals(pipeline.getStatus()) || "SCHEDULE_PENDING".equals(pipeline.getStatus()))
             throw new IllegalArgumentException("请先停用定时调度，再删除同步任务");
         if (mapper.activePipelineTaskReferences(id) > 0)
-            throw new IllegalArgumentException("同步任务仍被有效加工流程引用，请先移除该依赖");
+            throw new IllegalArgumentException("同步任务仍被有效加工任务引用，请先移除该依赖");
         mapper.archivePipeline(id);
     }
 
@@ -88,10 +88,10 @@ public class PipelineService {
         if (existing == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "同步任务不存在");
         if (existing.getActiveRunId() != null || ready.pendingPipeline(id) > 0) throw new IllegalArgumentException("同步或关联质量检查正在执行，请等待完成后编辑");
         if (existing.getTransformSql() != null && !existing.getTransformSql().isBlank())
-            throw new IllegalArgumentException("请先将旧加工 SQL 迁移到数据加工，再编辑同步管道");
+            throw new IllegalArgumentException("请先将旧加工 SQL 迁移到数据加工，再编辑同步任务");
         if (existing.getSourceId() != sourceId || !Objects.equals(existing.getSourceTable(), table) ||
             !Objects.equals(existing.getWatermarkColumn(), column) || !Objects.equals(existing.getTargetTable(), target))
-            throw new IllegalArgumentException("同步边界创建后固定，调整时请新建管道以避免复用旧水位");
+            throw new IllegalArgumentException("同步边界创建后固定，调整时请新建同步任务以避免复用旧水位");
         var pipeline = definition(name, sourceId, table, column, target, transform, cron);
         validateQuality(qualityTaskId, pipeline.getTargetTable(), pipeline.getWatermarkColumn());
         pipeline.setQualityTaskId(qualityTaskId);
@@ -111,7 +111,7 @@ public class PipelineService {
         cron = SchedulePreview.validate(cron);
         transform = transform == null ? "" : transform.trim();
         if (!transform.isEmpty())
-            throw new IllegalArgumentException("同步管道仅负责 ODS 贴源同步，加工 SQL 请在数据加工中配置");
+            throw new IllegalArgumentException("同步任务仅负责 ODS 贴源同步，加工 SQL 请在数据加工中配置");
         Pipeline pipeline = new Pipeline();
         pipeline.setName(name.trim());
         pipeline.setSourceId(sourceId);
@@ -127,7 +127,7 @@ public class PipelineService {
         if (id == null) return;
         var task = quality.lock(id);
         if (task == null || task.isArchived() || task.getSourceId() != null || !target.equalsIgnoreCase(task.getTableName()))
-            throw new IllegalArgumentException("质量任务须检查本管道的 Doris ODS 目标表");
+            throw new IllegalArgumentException("质量任务须检查本同步任务的 Doris ODS 目标表");
         if (!task.getTimeColumn().isBlank() && !task.getTimeColumn().equalsIgnoreCase(watermarkColumn))
             throw new IllegalArgumentException("关联质量任务的时间字段须为空或使用同步水位列");
     }
@@ -219,7 +219,7 @@ public class PipelineService {
     public void validateExecutable(Pipeline pipeline) {
         requireOdsTarget(pipeline.getTargetTable());
         if (pipeline.getTransformSql() != null && !pipeline.getTransformSql().isBlank())
-            throw new IllegalArgumentException("旧加工 SQL 尚未迁移，请先在同步管道编辑页迁移到数据加工");
+            throw new IllegalArgumentException("旧加工 SQL 尚未迁移，请先在同步任务编辑页迁移到数据加工");
         schemaGuard.validate(pipeline);
     }
 

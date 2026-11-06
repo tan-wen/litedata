@@ -48,11 +48,11 @@ public interface WorkflowMapper {
     @Select("SELECT root_task_id,graph_hash FROM workflow_legacy_binding WHERE workflow_id=#{id}")
     LegacyBinding legacyBinding(long id);
 
-    @Insert("INSERT INTO processing_workflow(name,description,trigger_mode,trigger_pipeline_id) VALUES(#{name},#{description},#{triggerMode},#{triggerPipelineId})")
+    @Insert("INSERT INTO processing_workflow(name,description,trigger_mode,trigger_pipeline_id,cron_expression) VALUES(#{name},#{description},#{triggerMode},#{triggerPipelineId},#{cronExpression})")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     void insert(ProcessingWorkflow workflow);
 
-    @Update("UPDATE processing_workflow SET name=#{name},description=#{description},trigger_mode=#{triggerMode},trigger_pipeline_id=#{triggerPipelineId},trigger_generation=trigger_generation+1,version=version+1 WHERE id=#{id}")
+    @Update("UPDATE processing_workflow SET name=#{name},description=#{description},trigger_mode=#{triggerMode},trigger_pipeline_id=#{triggerPipelineId},cron_expression=#{cronExpression},trigger_generation=trigger_generation+1,version=version+1 WHERE id=#{id}")
     void metadata(ProcessingWorkflow workflow);
 
     @Update("UPDATE processing_workflow SET positions_json=#{positions},cron_expression=#{cron},version=version+1 WHERE id=#{id}")

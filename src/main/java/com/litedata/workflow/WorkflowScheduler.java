@@ -35,7 +35,7 @@ public class WorkflowScheduler {
         sql.lockGraph();
         requireReviewed(id);
         if ("EVENT".equals(mapper.workflow(id).getTriggerMode()))
-            throw new IllegalArgumentException("事件模式由数据就绪事件放行，请运行来源同步管道");
+            throw new IllegalArgumentException("事件模式由数据就绪事件放行，请运行来源同步任务");
         var graph = graphs.graph(id);
         preflight(graph);
         long code = definition(id, graph);
@@ -104,7 +104,7 @@ public class WorkflowScheduler {
     private void requireReviewed(long id) {
         var workflow = mapper.workflow(id);
         if (workflow == null || workflow.isReviewRequired())
-            throw new IllegalArgumentException("加工流程不存在或迁移尚未核对，无法运行或启用调度");
+            throw new IllegalArgumentException("加工任务不存在或迁移尚未核对，无法运行或启用调度");
     }
 
     private long definition(long id, TransformService.Graph graph) {

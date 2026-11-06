@@ -72,13 +72,13 @@
         svg = root.querySelector('[data-workflow-edges]'), editable = root.dataset.editable === 'true',
         csrf = root.querySelector('input[name="_csrf"]')?.value || '';
     const status = root.querySelector('[data-workflow-status]'),
-        saveButton = root.querySelector('[data-workflow-save]'), cron = root.querySelector('[data-workflow-cron]'),
+        saveButton = root.querySelector('[data-workflow-save]'),
         empty = root.querySelector('[data-workflow-empty]');
     const dialog = root.querySelector('[data-workflow-sql-dialog]'), sqlForm = dialog?.querySelector('form'),
         sqlSave = dialog?.querySelector('[data-workflow-sql-save]');
     let view = window.workflowCanvas || null, nodes = new Map(), positions = new Map(), sqlDrafts = new Map(),
         sqlModels = new Map(), generatedInsert = null, selected = null, edge = null, joining = null,
-        layoutDirty = false, graphDirty = false, cronDirty = false, saving = false, sqlSaving = false,
+        layoutDirty = false, graphDirty = false, saving = false, sqlSaving = false,
         sqlOpening = false, dialogInputDirty = false, loaded = false;
     const message = (value, level) => {
         if (status) status.textContent = value;
@@ -97,7 +97,7 @@
         return {x: 70, y: 55 + (positions.size + 1) * 220};
     }
 
-    const hasDraft = () => layoutDirty || graphDirty || cronDirty || sqlDrafts.size > 0;
+    const hasDraft = () => layoutDirty || graphDirty || sqlDrafts.size > 0;
     const leaveDialog = root.querySelector('[data-workflow-leave-dialog]');
     let pendingLeave = null, leaving = false;
     const hasUnsavedChanges = () => editable && (hasDraft() || dialogInputDirty);
@@ -365,7 +365,7 @@
         const confirm = root.querySelector('[data-workflow-review-confirm]'), body = {
             version: view.version,
             graphHash: view.graphHash,
-            cronExpression: cron ? cron.value : view.cronExpression,
+            cronExpression: view.cronExpression,
             nodes: [...nodes.values()],
             edges: edges(),
             positions: Object.fromEntries(positions),
@@ -407,8 +407,6 @@
         sqlDrafts.clear();
         dialogInputDirty = false;
         ownershipNotice();
-        const current = root.querySelector('[data-workflow-current-cron]');
-        if (current) current.textContent = data.cronExpression || '';
         nodes = new Map((data.nodes || []).map(node => [node.key, {
             ...node,
             upstreamKeys: [...(node.upstreamKeys || [])]
@@ -421,11 +419,9 @@
         }
         root.querySelectorAll('[data-workflow-version]').forEach(el => el.value = data.version);
         root.querySelectorAll('[data-workflow-hash]').forEach(el => el.value = data.graphHash || '');
-        if (cron) cron.value = data.cronExpression || cron.value;
         if (positions.size === 0 && nodes.size) layout(false); else render();
         layoutDirty = false;
         graphDirty = false;
-        cronDirty = false;
         select(selected);
         updateActions();
     }
@@ -437,8 +433,7 @@
         if (newSql) newSql.disabled = !loaded || saving || sqlOpening || sqlSaving;
         const hasNodes = nodes.size > 0, reviewRequired = Boolean(view?.reviewRequired);
         root.querySelectorAll('[data-workflow-action]').forEach(form => {
-            const pause = form.action.endsWith('/pause');
-            form.querySelector('button').disabled = !loaded || (!pause && (!hasNodes || reviewRequired));
+            form.querySelector('button').disabled = !loaded || !hasNodes || reviewRequired;
         });
     }
 
@@ -543,7 +538,7 @@
                 text = dialog.querySelector('[data-workflow-sql-text]'),
                 refresh = () => text.dispatchEvent(new Event('input'));
             sqlProblem('');
-            dialog.querySelector('[data-workflow-sql-title]').textContent = node ? '编辑 SQL 加工' : '新增 SQL 加工';
+            dialog.querySelector('[data-workflow-sql-title]').textContent = node ? '编辑SQL加工节点' : '新增SQL加工节点';
             if (!node) {
                 dialog.dataset.nodeKey = '';
                 id.value = '';
@@ -657,7 +652,6 @@
         render();
     });
     saveButton?.addEventListener('click', save);
-    cron?.addEventListener('input', () => cronDirty = true);
     root.querySelector('[data-workflow-new-sql]')?.addEventListener('click', () => openSql());
     dialog?.querySelectorAll('input,select,textarea').forEach(control => {
         const mark = () => {
@@ -683,17 +677,16 @@
         saveSql();
     });
     root.querySelectorAll('[data-workflow-action]').forEach(form => {
-        const pause = form.action.endsWith('/pause');
         form.addEventListener('submit', event => {
-            if (!pause && view?.reviewRequired) {
+            if (view?.reviewRequired) {
                 event.preventDefault();
-                problem('请先核对迁移后的输入表和依赖，勾选确认并保存画布后再运行或启用调度。');
-            } else if (hasDraft() && !pause) {
+                problem('请先核对迁移后的输入表和依赖，勾选确认并保存画布后再运行。');
+            } else if (hasDraft()) {
                 event.preventDefault();
-                problem('请先保存画布草稿后再运行或调整调度。');
-            } else if (!pause && !nodes.size) {
+                problem('请先保存画布草稿后再运行。');
+            } else if (!nodes.size) {
                 event.preventDefault();
-                problem('请至少添加一个节点后再运行或启用调度。');
+                problem('请至少添加一个节点后再运行。');
             }
         });
     });

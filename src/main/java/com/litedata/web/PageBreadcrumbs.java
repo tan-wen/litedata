@@ -16,7 +16,7 @@ public final class PageBreadcrumbs {
 
     private static final Map<String, Module> MODULES = Map.ofEntries(
         Map.entry("sources", new Module("数据源", "/sources")), Map.entry("models", new Module("数据建模", "/models")),
-        Map.entry("pipelines", new Module("同步管道", "/pipelines")), Map.entry("transforms", new Module("SQL任务", "/transforms")),
+        Map.entry("pipelines", new Module("数据同步", "/pipelines")), Map.entry("transforms", new Module("SQL任务", "/transforms")),
         Map.entry("workflows", new Module("数据加工", "/workflows")),
         Map.entry("services", new Module("数据服务", "/services")), Map.entry("metadata", new Module("元数据与血缘", "/metadata")),
         Map.entry("quality", new Module("数据质量", "/quality")), Map.entry("metrics", new Module("指标管理", "/metrics")),
@@ -39,7 +39,7 @@ public final class PageBreadcrumbs {
             case "source-form" -> form(items, model, "sources", "resourceId", "name", "新增数据源", "编辑数据源", true);
             case "model-form" -> form(items, model, "models", "modelId", "name", "新增模型", "编辑模型", false);
             case "pipeline-form" ->
-                form(items, model, "pipelines", "resourceId", "name", "创建同步管道", "编辑同步管道", true);
+                form(items, model, "pipelines", "resourceId", "name", "新建同步任务", "编辑同步任务", true);
             case "transform-form" -> {
                 if ("list".equals(model.get("returnTo"))) {
                     items.add(link("SQL任务", Objects.toString(model.get("listReturnPath"), "/transforms")));
@@ -47,12 +47,12 @@ public final class PageBreadcrumbs {
                 } else form(items, model, "transforms", "taskId", "name", "新增SQL任务", "编辑SQL任务", false);
             }
             case "workflow-form" ->
-                form(items, model, "workflows", "workflowId", "name", "新建加工流程", "编辑加工流程信息", false);
+                form(items, model, "workflows", "workflowId", "name", "新建加工任务", "编辑加工任务", false);
             case "workflow-canvas" -> detail(items, model, "workflows", "workflow");
             case "workflow-events" -> {
                 parent(items, "workflows");
                 var workflow = model.get("workflow");
-                items.add(link(name(workflow, "name", "加工流程"), resource("workflows", property(workflow, "id"))));
+                items.add(link(name(workflow, "name", "加工任务"), resource("workflows", property(workflow, "id"))));
                 items.add(current("数据就绪事件"));
             }
             case "quality-alerts" -> page(items, "quality", "质量告警");

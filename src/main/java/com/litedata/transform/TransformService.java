@@ -126,7 +126,7 @@ public class TransformService {
         if (input.getModelId() == null) throw new IllegalArgumentException("请选择目标模型");
         var model = models.require(input.getModelId());
         if ("ODS".equals(model.getLayer()))
-            throw new IllegalArgumentException("数据加工目标请选择 DIM、DWD、DWS 或 ADS 模型；ODS 使用同步管道接入");
+            throw new IllegalArgumentException("数据加工目标请选择 DIM、DWD、DWS 或 ADS 模型；ODS 使用同步任务接入");
         requireReplaySafe(model);
         var validated = policy.validate(input.getSqlText(), model.getTableName());
         input.setName(input.getName().trim());
@@ -134,9 +134,9 @@ public class TransformService {
         input.setUpstreamTaskIds(ids(input.getUpstreamTaskIds()));
         input.setUpstreamPipelineIds(ids(input.getUpstreamPipelineIds()));
         if (!input.getUpstreamPipelineIds().isEmpty())
-            throw new IllegalArgumentException("同步与加工不允许直接依赖，请在加工流程配置数据就绪订阅");
+            throw new IllegalArgumentException("同步与加工不允许直接依赖，请在加工任务配置数据就绪订阅");
         for (long pipeline : input.getUpstreamPipelineIds())
-            if (platform.pipeline(pipeline) == null) throw new IllegalArgumentException("上游同步管道不存在");
+            if (platform.pipeline(pipeline) == null) throw new IllegalArgumentException("上游同步任务不存在");
         return input;
     }
 
@@ -174,7 +174,7 @@ public class TransformService {
         var upstreamKeys = new ArrayList<String>();
         for (long pipelineId : task.getUpstreamPipelineIds()) {
             var pipeline = platform.pipeline(pipelineId);
-            if (pipeline == null) throw new IllegalArgumentException("上游同步管道不存在");
+            if (pipeline == null) throw new IllegalArgumentException("上游同步任务不存在");
             String key = "pipeline-" + pipelineId;
             if (!nodes.containsKey(key)) {
                 if (nodes.size() >= 100) throw new IllegalArgumentException("单条加工链最多100个节点");
@@ -214,15 +214,15 @@ public class TransformService {
 
     private void ensureOwnerEditable(long id) {
         var owner = workflows.workflow(id);
-        if (owner == null) throw new IllegalArgumentException("所属加工流程不存在或已删除");
+        if (owner == null) throw new IllegalArgumentException("所属加工任务不存在或已删除");
         if (owner.isReviewRequired())
             throw new IllegalArgumentException("请先在画布核对迁移后的输入表和依赖，确认并保存");
         if (Set.of("SCHEDULED", "SCHEDULE_PENDING", "EVENT_ENABLED").contains(owner.getStatus()))
-            throw new IllegalArgumentException("请先暂停所属加工流程的定时调度");
+            throw new IllegalArgumentException("请先暂停所属加工任务的定时调度");
         for (String key : workflows.nodeKeys(id)) {
             boolean active = key.startsWith("sql-") ? required(mapper.task(WorkflowGraph.parse(key))).getActiveRunId() != null
                 : platform.pipeline(WorkflowGraph.parse(key)).getActiveRunId() != null;
-            if (active) throw new IllegalArgumentException("所属加工流程存在运行中的节点，请等待完成");
+            if (active) throw new IllegalArgumentException("所属加工任务存在运行中的节点，请等待完成");
         }
     }
 
@@ -237,7 +237,7 @@ public class TransformService {
                 var pipeline = platform.pipeline(node.refId());
                 pipelines.validateExecutable(pipeline);
                 if (pipeline.getActiveRunId() != null)
-                    throw new IllegalArgumentException("上游同步管道正在运行，请等待完成");
+                    throw new IllegalArgumentException("上游同步任务正在运行，请等待完成");
             }
         }
     }
@@ -256,7 +256,7 @@ public class TransformService {
 
     private static void requireReplaySafe(DataModel model) {
         if ("ODS".equals(model.getLayer()))
-            throw new IllegalArgumentException("数据加工目标请选择 DIM、DWD、DWS 或 ADS 模型；ODS 使用同步管道接入");
+            throw new IllegalArgumentException("数据加工目标请选择 DIM、DWD、DWS 或 ADS 模型；ODS 使用同步任务接入");
         if (!"UNIQUE".equals(model.getModelType()))
             throw new IllegalArgumentException("当前数据加工使用可重试的 INSERT SELECT，目标须为 UNIQUE；DUPLICATE / AGGREGATE 请使用独立的写入与重算策略");
     }
@@ -277,7 +277,7 @@ public class TransformService {
         long ownerId = workflowId == null ? required(mapper.task(rootId)).getWorkflowId() : workflowId;
         var owner = workflows.workflow(ownerId);
         if (owner == null || owner.isReviewRequired())
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "加工流程已删除或迁移尚未核对");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "加工任务已删除或迁移尚未核对");
         for (var node : graph.nodes())
             if (node.kind().equals("SQL") && !Objects.equals(required(mapper.task(node.refId())).getWorkflowId(), ownerId))
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "SQL 任务不能跨流程运行，请重新发布");

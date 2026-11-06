@@ -4,7 +4,7 @@
 <body><section>
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-5">
     <div><h1 class="page-title">数据就绪事件</h1><p class="page-subtitle" th:text="${workflow.name}"></p></div>
-    <a class="btn-outline theme-secondary" th:href="@{/workflows/{id}(id=${workflow.id})}">返回加工流程</a>
+    <a class="btn-outline theme-secondary" th:href="@{/workflows/{id}(id=${workflow.id})}">返回加工任务</a>
   </div>
   <div th:replace="~{fragments/messages :: messages}"></div>
   <p class="alert theme-info">每个来源同步批次最多触发一次。已提交表示引擎接受请求，实际结果请查看运行记录。提交结果未知时，请先核对引擎实例，避免重复运行。</p>

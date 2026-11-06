@@ -23,7 +23,7 @@
     <div class="sm:col-6 xl:col-3">
       <article class="metric-card card">
         <div class="card-body">
-          <div class="metric-label">同步管道</div>
+          <div class="metric-label">数据同步</div>
           <div class="metric-value" th:text="${stats.get('pipelines')}">0</div>
           <div class="metric-note">全量与增量任务</div>
         </div>
@@ -75,7 +75,7 @@
                 <td class="text-truncate" style="max-width:210px" th:text="${run.message}">完成</td>
               </tr>
               <tr th:if="${#lists.isEmpty(recentRuns)}">
-                <td colspan="5" class="text-center fg-2 py-7">尚无运行记录，创建管道后即可手动运行。</td>
+                <td colspan="5" class="text-center fg-2 py-7">尚无运行记录，新建同步任务后即可手动运行。</td>
               </tr>
               </tbody>
             </table>

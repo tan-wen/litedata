@@ -607,7 +607,7 @@ class ModelingIntegrationTest {
         long sourceId = jdbc.queryForObject("SELECT id FROM data_source WHERE name='archive-guard-source'", Long.class);
         try {
             jdbc.update("INSERT INTO pipeline(name,source_id,source_table,watermark_column,target_table,transform_sql,cron_expression) VALUES('archive-guard-pipeline',?,'orders','updated_at',?,'','0 0 * * * ?')", sourceId, preview.model().getTableName());
-            assertThatIllegalArgumentException().isThrownBy(() -> service.archive(id, 1, "dev")).withMessageContaining("同步管道");
+            assertThatIllegalArgumentException().isThrownBy(() -> service.archive(id, 1, "dev")).withMessageContaining("同步任务");
             assertThat(mapper.model(id)).isNotNull();
             jdbc.update("UPDATE pipeline SET archived=TRUE WHERE name='archive-guard-pipeline'");
             service.archive(id, 1, "dev");
