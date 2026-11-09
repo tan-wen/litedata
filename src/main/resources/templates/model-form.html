@@ -4,8 +4,13 @@
 <head><title>编辑模型 · LiteData</title></head>
 <body>
 <section>
-  <div class="mb-7"><h1 class="page-title" th:text="${modelId == null ? '新增逻辑模型' : '编辑逻辑模型'}"></h1>
+  <header class="page-topbar">
+    <div th:replace="~{fragments/workspace :: context}"></div>
+    <div class="page-heading"><div class="page-heading-copy"><h1 class="page-title" th:text="${modelId == null ? '新增逻辑模型' : '编辑逻辑模型'}"></h1>
     <p class="page-subtitle mb-0">目标库 warehouse。分步维护后预览服务器生成的 Doris DDL。</p></div>
+    <a th:replace="~{fragments/workspace :: back}"></a>
+  </div>
+  </header>
   <div th:replace="~{fragments/messages :: messages}"></div>
   <p th:if="${modelId == null and draft.layer == 'ODS'}" class="alert theme-info">源表贴源接入可在<a
     th:href="@{/pipelines/new}">数据同步</a>自动读取结构并生成 ODS，无需重复填写字段。此处保留自定义 ODS 物理策略的建模能力。
@@ -33,7 +38,7 @@
     </ol>
 
     <section data-model-step="1" data-wizard-step="1">
-      <article class="platform-card card mb-5">
+      <article class="workspace-section mb-5">
         <div class="card-header">第一步：模型信息</div>
         <div class="card-body">
           <div class="row g-5">
@@ -66,11 +71,9 @@
                                                                                               required maxlength="100"
                                                                                               placeholder="订单明细">
             </div>
-            <div class="md:col-4"><label class="form-label" for="subjectArea">主题域</label><input class="form-control"
-                                                                                                   th:field="*{subjectArea}"
-                                                                                                   required
-                                                                                                   maxlength="100"
-                                                                                                   placeholder="交易域">
+            <div class="md:col-4"><label class="form-label" for="subjectArea">主题域</label>
+              <select th:replace="~{fragments/subject-area :: select('subjectArea','subjectArea',${draft.subjectArea},true,'请选择主题域',false)}"></select>
+              <div class="form-text">由系统管理的数据字典统一维护。</div>
             </div>
             <div class="col-12"><label class="form-label" for="description">业务说明</label><textarea
               class="form-control" th:field="*{description}" maxlength="500" rows="2"></textarea>
@@ -85,7 +88,7 @@
       </div>
     </section>
     <section data-model-step="2" data-wizard-step="2">
-      <article class="platform-card card mb-5" id="dimension-settings">
+      <article class="workspace-section mb-5" id="dimension-settings">
         <div class="card-header">公共维度特性</div>
         <div class="card-body"><p class="fg-2">DIM 使用 SCD1 保留当前成员，因此固定为 UNIQUE KEY 且不分区。</p>
           <div class="row g-5">
@@ -104,7 +107,7 @@
           <datalist id="dimension-fields"></datalist>
         </div>
       </article>
-      <article class="platform-card card mb-5">
+      <article class="workspace-section mb-5">
         <div class="card-header d-flex justify-content-between align-items-center"><span>字段定义 <small
           class="fg-2 fw-normal">最多 100 个字段</small></span>
           <button class="btn-outline theme-primary btn-sm" type="button" id="add-field">添加字段</button>
@@ -192,7 +195,7 @@
       </div>
     </section>
     <section data-model-step="3" data-wizard-step="3">
-      <article class="platform-card card mb-5">
+      <article class="workspace-section mb-5">
         <div class="card-header">基础设置</div>
         <div class="card-body">
           <div class="row g-5">
@@ -213,7 +216,7 @@
           </div>
         </div>
       </article>
-      <article class="platform-card card mb-5">
+      <article class="workspace-section mb-5">
         <div class="card-header">分桶设置</div>
         <div class="card-body">
           <div class="row g-5">
@@ -242,7 +245,7 @@
           </div>
         </div>
       </article>
-      <article class="platform-card card mb-5">
+      <article class="workspace-section mb-5">
         <div class="card-header">分区设置</div>
         <div class="card-body">
           <div class="row g-5">
@@ -380,7 +383,7 @@
         </div>
       </article>
       <p class="form-text mb-5">分区、分桶和表模型属于物理结构。已建表后如需调整，请新建目标表并迁移数据。</p>
-      <article class="platform-card card mb-5" data-aggregate-settings>
+      <article class="workspace-section mb-5" data-aggregate-settings>
         <div class="card-header">字段聚合规则</div>
         <div class="card-body"><p class="fg-2">仅在 AGGREGATE KEY 下生效。SUM 仅适用于数值字段；REPLACE_IF_NOT_NULL
           仅适用于可空字段。</p>

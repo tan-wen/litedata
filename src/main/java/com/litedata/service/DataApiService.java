@@ -1,6 +1,7 @@
 package com.litedata.service;
 
 import com.litedata.model.DataService;
+import com.litedata.dictionary.DictionaryService;
 import com.litedata.model.ServiceCall;
 import com.litedata.security.UserApiKeyService;
 import com.litedata.security.UserApiKeyService.Identity;
@@ -25,29 +26,55 @@ public class DataApiService {
     private final MyBatisRuntimeQueries queries;
     private final ServiceCallMapper calls;
     private final UserApiKeyService userKeys;
+    private final DictionaryService dictionaries;
     private static final ZoneId DISPLAY_ZONE = ZoneId.of("Asia/Shanghai");
     private final Semaphore concurrent = new Semaphore(8);
     private final ConcurrentMap<String, Window> limits = new ConcurrentHashMap<>();
 
-    public DataApiService(PlatformMapper mapper, QueryPolicy policy, MyBatisRuntimeQueries queries, ServiceCallMapper calls, UserApiKeyService userKeys) {
+    public DataApiService(PlatformMapper mapper, QueryPolicy policy, MyBatisRuntimeQueries queries, ServiceCallMapper calls, UserApiKeyService userKeys, DictionaryService dictionaries) {
         this.mapper = mapper;
         this.policy = policy;
         this.queries = queries;
         this.calls = calls;
         this.userKeys = userKeys;
+        this.dictionaries = dictionaries;
     }
 
+    @Transactional
     public void create(String name, String slug, String sql) {
-        mapper.insertService(definition(name, slug, sql));
+        create(name, slug, sql, "", "");
     }
 
+    @Transactional
+    public void create(String name, String slug, String sql, String subjectArea, String description) {
+        var service = definition(name, slug, sql);
+        service.setSubjectArea(dictionaries.subjectArea(subjectArea, "", false));
+        service.setDescription(description(description));
+        mapper.insertService(service);
+    }
+
+    @Transactional
     public void update(long id, String name, String slug, String sql) {
+        var current = get(id);
+        update(id, name, slug, sql, current.getSubjectArea(), current.getDescription());
+    }
+
+    @Transactional
+    public void update(long id, String name, String slug, String sql, String subjectArea, String description) {
         var existing = get(id);
         if (!existing.getSlug().equals(slug))
             throw new IllegalArgumentException("服务标识创建后固定，修改 API 路径请新建服务");
         var service = definition(name, slug, sql);
         service.setId(id);
+        service.setSubjectArea(dictionaries.subjectArea(subjectArea, existing.getSubjectArea(), false));
+        service.setDescription(description(description));
         mapper.updateService(service);
+    }
+
+    private static String description(String input) {
+        String value = Objects.toString(input, "").trim();
+        if (value.length() > 2000) throw new IllegalArgumentException("服务用途说明最长2000字符");
+        return value;
     }
 
     private DataService definition(String name, String slug, String sql) {

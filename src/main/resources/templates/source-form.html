@@ -4,12 +4,17 @@
 <head><title>数据源 · 数据中台</title></head>
 <body>
 <section>
-  <div class="mb-7"><h1 class="page-title" th:text="${resourceId == null ? '新增数据源' : '编辑数据源'}">新增数据源</h1>
+  <header class="page-topbar">
+    <div th:replace="~{fragments/workspace :: context}"></div>
+    <div class="page-heading"><div class="page-heading-copy"><h1 class="page-title" th:text="${resourceId == null ? '新增数据源' : '编辑数据源'}">新增数据源</h1>
     <p class="page-subtitle mb-0">支持 MySQL、PostgreSQL、SQL Server、Oracle；密码加密保存且不会回显。</p></div>
+    <a th:replace="~{fragments/workspace :: back}"></a>
+  </div>
+  </header>
   <div th:replace="~{fragments/messages :: messages}"></div>
   <form th:if="${canEdit}" th:object="${draft}" th:action="${formAction}" method="post">
     <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
-    <article class="platform-card card mb-5">
+    <article class="workspace-section mb-5">
       <div class="card-header">连接信息</div>
       <div class="card-body">
         <div class="row g-5">

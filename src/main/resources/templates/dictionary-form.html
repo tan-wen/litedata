@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title>维护数据字典 · LiteData</title></head>
+<body><section>
+  <header class="page-topbar">
+    <div th:replace="~{fragments/workspace :: context}"></div>
+    <div class="page-heading"><div class="page-heading-copy"><h1 class="page-title" th:text="${dictionaryCode == null ? '新增字典' : '编辑字典'}"></h1><p class="page-subtitle mb-0">定义一组可重复使用的标准选项，字典编码创建后固定。</p></div>
+    <a th:replace="~{fragments/workspace :: back}"></a>
+  </div>
+  </header>
+  <div th:replace="~{fragments/messages :: messages}"></div>
+  <article class="workspace-section"><div class="card-header">字典信息</div><div class="card-body">
+    <form class="row g-5" method="post" th:action="${formAction}" th:object="${draft}">
+      <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"><input type="hidden" th:field="*{version}">
+      <input type="hidden" name="pageNum" th:value="${returnPageNum}"><input type="hidden" name="pageSize" th:value="${returnPageSize}"><input type="hidden" name="keyword" th:value="${keyword}">
+      <div class="md:col-6"><label class="form-label" for="code">字典编码</label><input class="form-control" th:field="*{code}" th:readonly="${dictionaryCode != null}" required maxlength="50" pattern="[A-Z][A-Z0-9_]*" placeholder="例如：INDUSTRY_CATEGORY"></div>
+      <div class="md:col-6"><label class="form-label" for="name">字典名称</label><input class="form-control" th:field="*{name}" required maxlength="100" placeholder="例如：行业分类"></div>
+      <div class="col-12"><label class="form-label" for="description">说明</label><textarea class="form-control" th:field="*{description}" maxlength="1000" rows="4"></textarea></div>
+      <div class="col-12 d-flex gap-3"><button class="btn-solid theme-primary" type="submit">保存字典</button><a class="btn-outline theme-secondary" th:href="@{${listReturnPath}}">取消</a></div>
+    </form>
+  </div></article>
+</section></body></html>

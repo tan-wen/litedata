@@ -71,6 +71,7 @@ class MetricIntegrationTest {
     void setup() {
         flyway.clean();
         flyway.migrate();
+        TestDictionaries.seed(jdbc);
         jdbc.execute("CREATE TABLE metric_orders(id BIGINT, amount DECIMAL(12,2), region VARCHAR(20), status VARCHAR(20), occurred_at DATETIME)");
         jdbc.update("INSERT INTO metric_orders VALUES(1,10,'east','paid',?),(2,20,'west','pending',?),(3,30,'east','paid',?)",
             LocalDateTime.now().minusDays(1), LocalDateTime.now().minusDays(1), LocalDateTime.now().minusDays(40));

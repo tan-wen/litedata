@@ -24,4 +24,5 @@ __pycache__/
 # 手册维护 Markdown 和截图，导出件放 output/manual/。
 /docs/LiteData平台操作手册.html
 /docs/manual/*.pdf
+/.playwright-cli/
 

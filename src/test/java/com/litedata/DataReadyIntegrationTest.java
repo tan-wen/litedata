@@ -83,6 +83,7 @@ class DataReadyIntegrationTest {
     void resetDatabase() throws Exception {
         flyway.clean();
         flyway.migrate();
+        TestDictionaries.seed(jdbc);
         org.mockito.Mockito.reset(doris, engine);
         org.mockito.Mockito.when(doris.inspect(org.mockito.ArgumentMatchers.anyString())).thenReturn(
             new DorisModelGateway.Schema(List.of(new DorisModelGateway.Column("id", "BIGINT", false, "")), List.of("id"), List.of("id"), 1));

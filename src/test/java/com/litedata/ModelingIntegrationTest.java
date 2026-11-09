@@ -66,6 +66,7 @@ class ModelingIntegrationTest {
 
     @BeforeEach
     void clean() throws SQLException {
+        TestDictionaries.seed(jdbc);
         jdbc.update("DELETE FROM model_execution");
         jdbc.update("DELETE FROM model_field");
         jdbc.update("DELETE FROM data_model");

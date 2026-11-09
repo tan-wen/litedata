@@ -7,7 +7,7 @@ import os
 import re
 import sys
 import uuid
-from smoke import Client, SmokeFailure, load_dotenv, parse, post_form, require_success
+from smoke import Client, SmokeFailure, load_dotenv, parse, post_form, require_success, ensure_subject_area
 
 
 def confirmed(status: int, page: str, expected: str) -> None:
@@ -48,6 +48,7 @@ def main() -> dict[str, object]:
         for property_name, value in {"name": name, "dataType": data_type, "keyColumn": str(key).lower(),
                                      "nullable": str(nullable).lower(), "comment": comment, "standard": "STD-001" if index == 2 else ""}.items():
             fields[f"fields[{index}].{property_name}"] = value
+    ensure_subject_area(client, fields["subjectArea"], page)
     status, page = post_form(client, page, "/models", fields)
     confirmed(status, page, "逻辑模型已保存")
     actions = [str(item["action"]) for item in parse(page).forms]

@@ -1,6 +1,7 @@
 package com.litedata.catalog;
 
 import com.litedata.governance.JdbcMetadataCollector;
+import com.litedata.dictionary.DictionaryService;
 import com.litedata.service.QueryPage;
 import com.litedata.store.*;
 
@@ -21,6 +22,9 @@ public class AssetCatalogService {
     public record Stats(long total, long tables, long models, long metrics, long services) {
     }
 
+    public record CategoryCount(AssetType type, String key, String label, long count) {
+    }
+
     public record QualityLink(long id, String name, String status) {
         public String label() {
             return switch (status) {
@@ -37,11 +41,13 @@ public class AssetCatalogService {
     private final AssetCatalogMapper mapper;
     private final MetadataMapper metadata;
     private final PlatformMapper platform;
+    private final DictionaryService dictionaries;
 
-    public AssetCatalogService(AssetCatalogMapper mapper, MetadataMapper metadata, PlatformMapper platform) {
+    public AssetCatalogService(AssetCatalogMapper mapper, MetadataMapper metadata, PlatformMapper platform, DictionaryService dictionaries) {
         this.mapper = mapper;
         this.metadata = metadata;
         this.platform = platform;
+        this.dictionaries = dictionaries;
     }
 
     public long count(AssetFilters filters) {
@@ -54,6 +60,10 @@ public class AssetCatalogService {
 
     public Stats stats() {
         return mapper.stats();
+    }
+
+    public List<CategoryCount> categoryCounts() {
+        return mapper.categoryCounts();
     }
 
     public AssetEntry require(String type, long id) {
@@ -88,7 +98,7 @@ public class AssetCatalogService {
     public void save(String type, long id, AssetProfile input, String actor) {
         var asset = require(type, id);
         input.setBusinessName(text(input.getBusinessName(), 100, "业务名称"));
-        input.setSubjectArea(text(input.getSubjectArea(), 100, "主题域"));
+        input.setSubjectArea(dictionaries.subjectArea(input.getSubjectArea(), asset.getSubjectArea(), false));
         input.setOwner(text(input.getOwner(), 100, "负责人"));
         input.setDescription(text(input.getDescription(), 2000, "业务说明"));
         input.setUpdateFrequency(text(input.getUpdateFrequency(), 100, "更新频率"));
@@ -103,13 +113,22 @@ public class AssetCatalogService {
         if (tags.size() > 10) throw new IllegalArgumentException("最多填写10个标签");
         input.setTags(String.join(",", tags));
         if (input.getVersion() < 0) throw new IllegalArgumentException("资产描述版本无效，请重新打开编辑页面");
+        var stored = input;
+        if (asset.getType() == AssetType.SERVICE) {
+            stored = new AssetProfile();
+            org.springframework.beans.BeanUtils.copyProperties(input, stored);
+            stored.setSubjectArea("");
+            stored.setDescription("");
+        }
         if (input.getVersion() == 0) {
             try {
-                mapper.insert(asset.getType(), id, input, actor);
+                mapper.insert(asset.getType(), id, stored, actor);
             } catch (DuplicateKeyException e) {
                 throw stale();
             }
-        } else if (mapper.update(asset.getType(), id, input, actor) != 1) throw stale();
+        } else if (mapper.update(asset.getType(), id, stored, actor) != 1) throw stale();
+        if (asset.getType() == AssetType.SERVICE && platform.serviceMetadata(id, input.getSubjectArea(), input.getDescription()) != 1)
+            throw new IllegalArgumentException("服务不存在或已被移除");
         platform.audit(actor, "ASSET_PROFILE_SAVE", type + ":" + id, "SUCCESS");
     }
 

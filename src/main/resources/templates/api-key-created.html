@@ -4,15 +4,20 @@
 <head><title>API Key 已创建 · LiteData</title></head>
 <body>
 <section>
-  <div class="mb-7"><h1 class="page-title">API Key 已创建</h1>
+  <header class="page-topbar">
+    <div th:replace="~{fragments/workspace :: context}"></div>
+    <div class="page-heading"><div class="page-heading-copy"><h1 class="page-title">API Key 已创建</h1>
     <p class="page-subtitle mb-0">请立即复制到 Agent 的安全配置中。离开此页后无法再次查看明文。</p></div>
-  <article class="platform-card card mb-5">
+    <a th:replace="~{fragments/workspace :: back}"></a>
+  </div>
+  </header>
+  <article class="workspace-section mb-5">
     <div class="card-header">仅显示一次</div>
     <div class="card-body"><p class="alert theme-warning">此 Key 相当于密码。请勿提交到仓库、粘贴到对话或写入日志。</p>
       <code class="d-block user-select-all text-break p-3 border rounded" th:text="${issued.token}">ld_mcp_…</code>
     </div>
   </article>
-  <article class="platform-card card mb-5">
+  <article class="workspace-section mb-5">
     <div class="card-header">MCP 客户端配置</div>
     <div class="card-body"><p>将 MCP 服务地址设为 <code>https://&lt;LiteData 主机&gt;/mcp</code>，并在请求头加入：</p>
       <pre class="mb-0"><code>Authorization: Bearer &lt;刚创建的 API Key&gt;</code></pre>

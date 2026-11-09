@@ -4,7 +4,9 @@
 <head><title>指标详情 · LiteData</title></head>
 <body>
 <section>
-  <div class="d-flex flex-wrap justify-content-between align-items-start mb-7 gap-5">
+  <header class="page-topbar">
+    <div th:replace="~{fragments/workspace :: context}"></div>
+    <div class="page-heading d-flex flex-wrap justify-content-between align-items-start gap-5">
     <div><h1 class="page-title" th:text="${definition.name}"></h1>
       <p class="page-subtitle mb-0"><code th:text="${definition.code}"></code> · <span
         th:text="${definition.type.label}"></span> · <span th:text="${'v' + definition.version}"></span><span
@@ -16,7 +18,10 @@
                                                                              class="btn-outline theme-primary"
                                                                              th:href="@{/metrics/{id}/edit(id=${definition.id})}">编辑指标</a>
     </div>
+
+    <a th:replace="~{fragments/workspace :: back}"></a>
   </div>
+  </header>
   <div th:replace="~{fragments/messages :: messages}"></div>
   <div th:if="${historical}" class="alert theme-warning">这是已保存的历史版本，仅供追溯，不能编辑或删除。</div>
   <div class="alert theme-info" th:switch="${definition.type.name()}"><span th:case="'ATOMIC'">原子指标直接按来源模型聚合，SQL 在保存时固定。</span><span
@@ -24,12 +29,12 @@
   </div>
   <div class="row g-5 mb-5">
     <div class="xl:col-5">
-      <article class="platform-card card h-100">
+      <article class="workspace-section h-100">
         <div class="card-header">定义</div>
         <div class="card-body">
           <dl class="row mb-0">
             <dt class="sm:col-4">主题域</dt>
-            <dd class="sm:col-8" th:text="${definition.subjectArea ?: '—'}"></dd>
+            <dd class="sm:col-8" th:text="${subjectAreaLabels[definition.subjectArea] ?: (definition.subjectArea ?: '—')}"></dd>
             <dt class="sm:col-4">负责人</dt>
             <dd class="sm:col-8" th:text="${definition.owner ?: '—'}"></dd>
             <dt class="sm:col-4">单位</dt>
@@ -51,7 +56,7 @@
       </article>
     </div>
     <div class="xl:col-7">
-      <article class="platform-card card h-100">
+      <article class="workspace-section h-100">
         <div class="card-header">SQL 预览 <small class="fw-normal fg-2">保存的版本快照，不会随上游自动刷新</small></div>
         <div class="card-body">
           <pre class="code-preview mb-0" th:text="${sql}"></pre>
@@ -60,7 +65,7 @@
       </article>
     </div>
   </div>
-  <article class="platform-card card mb-5">
+  <article class="workspace-section mb-5">
     <div class="card-header">依赖快照</div>
     <div class="card-body p-0">
       <div class="table-responsive">
@@ -89,7 +94,7 @@
       </div>
     </div>
   </article>
-  <article class="platform-card card mb-5">
+  <article class="workspace-section mb-5">
     <div class="card-header">被引用的下游指标</div>
     <div class="card-body p-0">
       <div class="table-responsive">
@@ -117,7 +122,7 @@
       </div>
     </div>
   </article>
-  <article class="platform-card card mb-5">
+  <article class="workspace-section mb-5">
     <div class="card-header">版本历史 <small class="fw-normal fg-2">每次保存固定定义、SQL 与依赖版本</small></div>
     <div class="card-body p-0">
       <div class="table-responsive">

@@ -184,6 +184,45 @@ def post_form(client: Client, page: str, action: str, fields: dict[str, str]) ->
     return client.request("POST", action, {str(k): str(v) for k, v in form_inputs.items()})
 
 
+def ensure_subject_area(client: Client, value: str, page: str, label: str | None = None) -> None:
+    """Register a synthetic fixture's standard value through the normal admin form."""
+    known = getattr(client, "_subject_areas", set())
+    if value in known:
+        return
+
+    class Options(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.subject = False
+            self.values = {}
+
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if tag == "select":
+                self.subject = attrs.get("name") == "subjectArea"
+            elif tag == "option" and self.subject:
+                self.values[attrs.get("value", "")] = "disabled" in attrs
+
+        def handle_endtag(self, tag):
+            if tag == "select":
+                self.subject = False
+
+    options = Options()
+    options.feed(page)
+    if value in options.values:
+        if options.values[value]:
+            raise SmokeFailure("required fixture subject area is inactive")
+    else:
+        status, form = client.request("GET", "/dictionaries/SUBJECT_AREA/items/new")
+        if status != 200:
+            raise SmokeFailure("admin access is required to configure fixture subject areas")
+        status, result = post_form(client, form, "/dictionaries/SUBJECT_AREA/items", {
+            "value": value, "label": label or value, "sortOrder": "0", "enabled": "true"})
+        require_success(status, result, "字典项已保存")
+    known.add(value)
+    client._subject_areas = known
+
+
 def require_success(status: int, html: str, expected: str) -> None:
     if status != 200 or "alert-danger" in html or expected not in html:
         raise SmokeFailure("server did not confirm the requested operation")
@@ -227,6 +266,7 @@ def create_model(client: Client, table: str, layer: str, fields: list[tuple[str,
     for index, (name, data_type, key) in enumerate(fields):
         for prop, value in {"name": name, "dataType": data_type, "keyColumn": str(key).lower(), "nullable": "false", "comment": "", "standard": ""}.items():
             values[f"fields[{index}].{prop}"] = value
+    ensure_subject_area(client, values["subjectArea"], page)
     status, page = post_form(client, page, "/models", values)
     require_success(status, page, "逻辑模型已保存")
     model_id = resource_id(page, "/models", "physicalize")
@@ -330,13 +370,13 @@ def main() -> dict[str, object]:
         raise SmokeFailure("pipeline did not report successful completion before timeout")
 
     status, services = client.request("GET", "/services")
-    if status != 200 or 'href="/services/new"' not in services:
+    if status != 200 or 'href="/services/new' not in services:
         raise SmokeFailure("service list does not provide the create page")
     status, service_form = client.request("GET", "/services/new")
     if status != 200:
         raise SmokeFailure("service create page is unavailable")
     status, services = post_form(client, service_form, "/services", {
-        "name": f"Smoke orders {unique}", "slug": slug,
+        "name": f"Smoke orders {unique}", "slug": slug, "subjectArea": "冒烟验证", "description": "验证同步和 SQL 加工结果的测试接口。",
         "querySql": f"SELECT id, customer_name, amount, updated_at FROM {ads_table} WHERE id = :customerId ORDER BY id",
     })
     require_success(status, services, "服务草稿已保存")

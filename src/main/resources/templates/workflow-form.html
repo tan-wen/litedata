@@ -6,8 +6,13 @@
 <section class="scheduling-form pipeline-wizard">
   <link rel="stylesheet" th:href="@{/css/scheduling.css}">
   <link rel="stylesheet" th:href="@{/css/pipeline-wizard.css}">
-  <div class="mb-7"><h1 class="page-title" th:text="${workflowId == null ? '新建加工任务' : '编辑加工任务'}"></h1>
+  <header class="page-topbar">
+    <div th:replace="~{fragments/workspace :: context}"></div>
+    <div class="page-heading"><div class="page-heading-copy"><h1 class="page-title" th:text="${workflowId == null ? '新建加工任务' : '编辑加工任务'}"></h1>
     <p class="page-subtitle mb-0">分步填写任务信息和触发设置，保存后进入画布编排 SQL 依赖。</p></div>
+    <a th:replace="~{fragments/workspace :: back}"></a>
+  </div>
+  </header>
   <div th:replace="~{fragments/messages :: messages}"></div>
   <form th:if="${canEdit}" th:object="${draft}" data-workflow-form
         th:attr="data-initial-step=${error == null ? 1 : 2}"
@@ -23,7 +28,7 @@
       </button></li>
     </ol>
     <section data-wizard-step="1">
-      <article class="platform-card card mb-5">
+      <article class="workspace-section mb-5">
         <div class="card-header">第一步：基本信息</div>
         <div class="card-body">
           <div class="mb-5"><label class="form-label" for="name">任务名称</label>
@@ -39,7 +44,7 @@
       </div>
     </section>
     <section data-wizard-step="2">
-      <article class="platform-card card mb-5">
+      <article class="workspace-section mb-5">
         <div class="card-header">第二步：触发与调度</div>
         <div class="card-body">
           <div class="mb-5">

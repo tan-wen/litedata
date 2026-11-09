@@ -14,6 +14,7 @@
 | Cron、运行记录与节点日志 | [调度运维](scheduling-operations.md) |
 | 元数据采集与血缘 | [元数据与血缘](metadata-lineage.md) |
 | 统一资产检索与业务说明 | [资产目录](asset-directory.md) |
+| 行业标准选项、主题域与接口用途说明 | [数据字典](data-dictionaries.md) |
 | 同步后质量门禁、单来源数据就绪订阅 | [数据就绪事件](data-ready-triggers.md) |
 | 规则、阈值、时间窗口与质量运行 | [数据质量](data-quality.md) |
 | 指标口径、版本与字段血缘 | [指标管理](metrics.md) |

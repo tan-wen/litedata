@@ -8,7 +8,7 @@ import re
 import sys
 import uuid
 
-from smoke import Client, SmokeFailure, load_dotenv, post_form
+from smoke import Client, SmokeFailure, load_dotenv, post_form, ensure_subject_area
 from model_bucketing_smoke import doris, require
 
 
@@ -44,6 +44,7 @@ def compare(client: Client, detail: str, page: str, matches: bool = True) -> str
 def save(client: Client, fields: dict[str, str], detail: str = "") -> tuple[str, str]:
     status, form = client.request("GET", detail + "/edit" if detail else "/models/new")
     require(status, form, "model-form")
+    ensure_subject_area(client, fields["subjectArea"], form)
     status, page = post_form(client, form, detail or "/models", fields)
     require(status, page, "逻辑模型已保存")
     match = re.search(r'action="(/models/(\d+)/physicalize)"', page)

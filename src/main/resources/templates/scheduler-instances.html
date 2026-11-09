@@ -5,20 +5,24 @@
 <body>
 <section>
   <link rel="stylesheet" th:href="@{/css/scheduler-console.css}">
-  <div class="d-flex flex-wrap justify-content-between align-items-start gap-5 mb-7">
+  <header class="page-topbar">
+    <div th:replace="~{fragments/workspace :: context}"></div>
+    <div class="page-heading d-flex flex-wrap justify-content-between align-items-start gap-5">
     <div><h1 class="page-title">运行记录</h1>
       <p class="page-subtitle mb-0">查看每次调度执行；进入记录可查看节点日志和该记录收到的同步回调。</p></div>
     <div class="d-flex gap-3">
       <button class="btn-outline theme-primary" type="button" onclick="location.reload()">刷新记录</button>
       <a th:if="${resource.type == 'pipeline'}" class="btn-outline theme-secondary"
-         th:href="@{/pipelines/{id}/runs(id=${resource.id})}">历史未关联回调</a><a class="btn-outline theme-secondary"
-                                                                                   th:href="${resource.backPath}">返回任务</a>
+         th:href="@{/pipelines/{id}/runs(id=${resource.id})}">历史未关联回调</a>
     </div>
+
+    <a th:replace="~{fragments/workspace :: back}"></a>
   </div>
+  </header>
   <div th:if="${engineError}"><span hidden data-platform-notification="danger" th:text="${engineError}"></span> <a
     th:if="${resource.type == 'pipeline'}" th:href="${'/pipelines/' + resource.id + '/runs'}">查看历史未关联回调</a>
   </div>
-  <article class="platform-card card mb-5">
+  <article class="workspace-section mb-5">
     <div class="card-body">
       <form method="get" th:action="${resource.path()}" class="row g-5 align-items-end">
         <div class="md:col-6"><label for="workflow-code" class="form-label">执行链路版本</label><select
@@ -41,7 +45,7 @@
       <p class="form-text mb-0" id="workflow-code-help">保留已登记的历史链路；上游任务可查看其参与的加工链路。</p>
     </div>
   </article>
-  <article class="platform-card card">
+  <article class="workspace-section">
     <div class="card-header d-flex justify-content-between gap-3"><span>工作流运行记录</span><small
       class="fw-normal fg-2">调度引擎实时查询 · 引擎时间</small></div>
     <div class="card-body p-0">

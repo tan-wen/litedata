@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title>维护字典项 · LiteData</title></head>
+<body><section>
+  <header class="page-topbar">
+    <div th:replace="~{fragments/workspace :: context}"></div>
+    <div class="page-heading"><div class="page-heading-copy"><h1 class="page-title" th:text="${itemId == null ? '新增字典项' : '编辑字典项'}"></h1><p class="page-subtitle mb-0" th:text="${dictionary.name}"></p></div>
+    <a th:replace="~{fragments/workspace :: back}"></a>
+  </div>
+  </header>
+  <div th:replace="~{fragments/messages :: messages}"></div>
+  <article class="workspace-section"><div class="card-header">字典项信息</div><div class="card-body">
+    <form class="row g-5" method="post" th:action="${formAction}" th:object="${draft}">
+      <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"><input type="hidden" th:field="*{version}">
+      <input type="hidden" name="pageNum" th:value="${returnPageNum}"><input type="hidden" name="pageSize" th:value="${returnPageSize}"><input type="hidden" name="keyword" th:value="${keyword}">
+      <div class="md:col-6"><label class="form-label" for="value">字典项编码</label><input class="form-control" th:field="*{value}" th:readonly="${itemId != null}" maxlength="100" required placeholder="例如：PRODUCTION"><div class="form-text">编码用于绑定，创建后固定；历史主题域保留原值作为编码。</div></div>
+      <div class="md:col-6"><label class="form-label" for="label">字典项名称</label><input class="form-control" th:field="*{label}" maxlength="100" required placeholder="例如：生产制造"></div>
+      <div class="md:col-6"><label class="form-label" for="sortOrder">排序</label><input class="form-control" type="number" th:field="*{sortOrder}" min="0" max="100000" required></div>
+      <div class="md:col-6 d-flex align-items-end"><label class="check mb-2"><input type="checkbox" th:field="*{enabled}">启用</label></div>
+      <div class="col-12"><label class="form-label" for="description">说明</label><textarea class="form-control" th:field="*{description}" maxlength="1000" rows="4" placeholder="说明该标准项的业务范围和使用边界"></textarea></div>
+      <div class="col-12 d-flex gap-3"><button class="btn-solid theme-primary" type="submit">保存字典项</button><a class="btn-outline theme-secondary" th:href="@{${listReturnPath}}">取消</a></div>
+    </form>
+  </div></article>
+</section></body></html>

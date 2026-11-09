@@ -4,12 +4,20 @@
 <head><title>服务调用记录 · 数据中台</title></head>
 <body>
 <section>
-  <div class="d-flex justify-content-between align-items-start mb-7 gap-5">
+  <header class="page-topbar">
+    <div th:replace="~{fragments/workspace :: context}"></div>
+    <div class="page-heading d-flex justify-content-between align-items-start gap-5">
     <div><h1 class="page-title">调用记录</h1>
       <p class="page-subtitle mb-0"><span th:text="${service.name}">客户查询</span> · <code th:text="${service.slug}">customers</code>
         · 按时间查看调用状态、耗时和返回行数。</p></div>
-    <a class="btn-outline theme-secondary" th:href="@{/services}">返回服务列表</a></div>
-  <article class="platform-card card">
+    <a th:replace="~{fragments/workspace :: back}"></a>
+  </div>
+  </header>
+  <article class="workspace-section">
+    <div class="card-body" th:if="${!#strings.isEmpty(service.description) or !#strings.isEmpty(service.subjectArea)}">
+      <p class="small fg-2" th:text="${'所属主题域：' + (subjectAreaLabels[service.subjectArea] ?: (service.subjectArea ?: '未分类'))}"></p>
+      <p class="mb-0" th:if="${!#strings.isEmpty(service.description)}" th:text="${service.description}"></p>
+    </div>
     <div class="card-header">调用记录 <small class="fw-normal fg-2">北京时间</small></div>
     <div class="card-body p-0">
       <div class="table-responsive">

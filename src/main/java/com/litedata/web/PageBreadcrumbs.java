@@ -21,7 +21,8 @@ public final class PageBreadcrumbs {
         Map.entry("services", new Module("数据服务", "/services")), Map.entry("metadata", new Module("元数据与血缘", "/metadata")),
         Map.entry("quality", new Module("数据质量", "/quality")), Map.entry("metrics", new Module("指标管理", "/metrics")),
         Map.entry("assets", new Module("资产目录", "/assets")), Map.entry("api-keys", new Module("我的 API Key", "/settings/api-keys")),
-        Map.entry("users", new Module("账号权限", "/users")));
+        Map.entry("users", new Module("账号权限", "/users")), Map.entry("dictionaries", new Module("数据字典", "/dictionaries")),
+        Map.entry("settings", new Module("系统设置", "/settings")));
 
     private PageBreadcrumbs() {
     }
@@ -36,6 +37,19 @@ public final class PageBreadcrumbs {
             return List.copyOf(items);
         }
         switch (view) {
+            case "dictionary-form" -> {
+                items.add(link("数据字典", Objects.toString(model.get("listReturnPath"), "/dictionaries")));
+                items.add(current(model.get("dictionaryCode") == null ? "新增字典" : "编辑字典"));
+            }
+            case "dictionary-items", "dictionary-item-form" -> {
+                parent(items, "dictionaries");
+                String label = name(model.get("dictionary"), "name", "字典项");
+                if (view.endsWith("form")) {
+                    String code = name(model.get("dictionary"), "code", "SUBJECT_AREA");
+                    items.add(link(label, Objects.toString(model.get("listReturnPath"), "/dictionaries/" + code + "/items")));
+                    items.add(current(model.get("itemId") == null ? "新增字典项" : "编辑字典项"));
+                } else items.add(current(label));
+            }
             case "source-form" -> form(items, model, "sources", "resourceId", "name", "新增数据源", "编辑数据源", true);
             case "model-form" -> form(items, model, "models", "modelId", "name", "新增模型", "编辑模型", false);
             case "pipeline-form" ->
@@ -56,8 +70,10 @@ public final class PageBreadcrumbs {
                 items.add(current("数据就绪事件"));
             }
             case "quality-alerts" -> page(items, "quality", "质量告警");
-            case "service-form" ->
-                form(items, model, "services", "resourceId", "name", "创建数据服务", "编辑数据服务", true);
+            case "service-form" -> {
+                items.add(link("数据服务", Objects.toString(model.get("listReturnPath"), "/services")));
+                items.add(current(model.get("resourceId") == null ? "创建数据服务" : "编辑数据服务"));
+            }
             case "metric-form" -> form(items, model, "metrics", "metricId", "name", "新增指标", "编辑指标", false);
             case "quality-form" ->
                 form(items, model, "quality", "taskId", "name", "新增质量任务", "编辑质量任务", false);
@@ -94,6 +110,21 @@ public final class PageBreadcrumbs {
             }
         }
         return List.copyOf(items);
+    }
+
+    /** The same destination is used by both visible back links; primary lists have none. */
+    public static Item backForView(String view, Map<String, Object> model) {
+        if ("dashboard".equals(view) || MODULES.containsKey(view)) return null;
+        if (view.endsWith("-form")) {
+            if (model.get("backPath") instanceof String path) return link("上一页", path);
+            if (("pipeline-form".equals(view) || "transform-form".equals(view)) && model.get("workflowId") instanceof Number id)
+                return link("加工任务", "/workflows/" + number(id));
+            if (model.get("listReturnPath") instanceof String path) return link("列表", path);
+            if ("source-form".equals(view)) return link("数据源", "/sources");
+            if ("user-form".equals(view)) return link("账号权限", "/users");
+        }
+        var items = forView(view, model);
+        return items.size() > 1 ? items.get(items.size() - 2) : null;
     }
 
     private static void form(List<Item> items, Map<String, Object> model, String module, String idKey, String nameKey,
@@ -133,6 +164,11 @@ public final class PageBreadcrumbs {
     }
 
     private static void asset(List<Item> items, Map<String, Object> model, boolean edit) {
+        if (edit && "list".equals(model.get("returnTo"))) {
+            items.add(link("资产目录", Objects.toString(model.get("listReturnPath"), "/assets")));
+            items.add(current("编辑目录信息"));
+            return;
+        }
         parent(items, "assets");
         var asset = model.get("asset");
         String label = name(asset, "name", "资产详情");

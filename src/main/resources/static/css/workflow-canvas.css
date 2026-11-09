@@ -203,7 +203,7 @@
     overflow: hidden;
 }
 
-.platform-card > .card-body.workflow-list-filters {
+.workspace-section > .card-body.workflow-list-filters {
     display: flex;
     flex-direction: row;
     flex-wrap: wrap;

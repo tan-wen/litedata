@@ -95,7 +95,7 @@ class RunnerContractTest(unittest.TestCase):
         demo.client = Client("http://localhost:8080/")
         demo.report = {"resources": {"models": {}}}
         model = next(item for item in self.scenario["models"] if item["key"] == "dwd_utility_day")
-        form = ('<form action="/models"><input name="_csrf" value="token"></form>'
+        form = ('<form action="/models"><input name="_csrf" value="token"><select name="subjectArea"><option value="chemical_park">化工园区</option></select></form>'
                 '<form action="/models/42/physicalize"><input name="_csrf" value="token"></form>')
         calls = []
 

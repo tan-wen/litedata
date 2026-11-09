@@ -4,18 +4,22 @@
 <head><title>历史未关联回调 · 数据中台</title></head>
 <body>
 <section>
-  <div class="d-flex flex-wrap justify-content-between align-items-start mb-7 gap-5">
+  <header class="page-topbar">
+    <div th:replace="~{fragments/workspace :: context}"></div>
+    <div class="page-heading d-flex flex-wrap justify-content-between align-items-start gap-5">
     <div>
       <h1 class="page-title">历史未关联回调</h1>
       <p class="page-subtitle mb-0">保留未携带调度运行编号的旧平台回调，供历史排查。</p>
     </div>
     <div class="d-flex flex-wrap gap-2">
       <a class="btn-outline theme-primary" th:href="@{/scheduling/pipeline/{id}(id=${pipeline.id})}">运行记录</a>
-      <a class="btn-outline theme-secondary" th:href="@{/pipelines}">返回数据同步</a>
     </div>
-  </div>
 
-  <article class="platform-card card mb-5">
+    <a th:replace="~{fragments/workspace :: back}"></a>
+  </div>
+  </header>
+
+  <article class="workspace-section mb-5">
     <div class="card-header">任务信息</div>
     <div class="card-body">
       <div class="row g-5">
@@ -36,7 +40,7 @@
     </div>
   </article>
 
-  <article class="platform-card card">
+  <article class="workspace-section">
     <div class="card-header">历史平台回调 <small class="fw-normal fg-2">未关联运行记录</small></div>
     <div class="card-body border-bottom"><p class="mb-2">
       这些回调来自旧执行，未保存调度运行编号。为了避免按时间误关联，不会将它们归入某条运行记录。</p>

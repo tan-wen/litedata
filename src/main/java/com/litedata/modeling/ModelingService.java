@@ -6,6 +6,7 @@ import com.litedata.store.MetricMapper;
 import com.litedata.store.PlatformMapper;
 import com.litedata.store.SqlTaskMapper;
 import com.litedata.service.QueryPage;
+import com.litedata.dictionary.DictionaryService;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -65,8 +66,9 @@ public class ModelingService {
     private final SqlTaskMapper sqlTasks;
     private final MetricMapper metrics;
     private final ModelDependencyGuard dependencies;
+    private final DictionaryService dictionaries;
 
-    public ModelingService(ModelMapper mapper, PlatformMapper platform, DorisDdl ddl, DorisModelGateway gateway, SqlTaskMapper sqlTasks, MetricMapper metrics, ModelDependencyGuard dependencies) {
+    public ModelingService(ModelMapper mapper, PlatformMapper platform, DorisDdl ddl, DorisModelGateway gateway, SqlTaskMapper sqlTasks, MetricMapper metrics, ModelDependencyGuard dependencies, DictionaryService dictionaries) {
         this.mapper = mapper;
         this.platform = platform;
         this.ddl = ddl;
@@ -74,6 +76,7 @@ public class ModelingService {
         this.sqlTasks = sqlTasks;
         this.metrics = metrics;
         this.dependencies = dependencies;
+        this.dictionaries = dictionaries;
     }
 
     public List<DataModel> list(String keyword, String layer) {
@@ -128,6 +131,7 @@ public class ModelingService {
     @Transactional
     public long save(Long id, DataModel input, String actor) {
         ddl.generate(input);
+        input.setSubjectArea(dictionaries.subjectArea(input.getSubjectArea(), id == null ? "" : requireModel(mapper.lockModel(id)).getSubjectArea(), true));
         String replicaError = replicationError(input);
         if (replicaError != null) throw new IllegalArgumentException(replicaError);
         if (id == null) {

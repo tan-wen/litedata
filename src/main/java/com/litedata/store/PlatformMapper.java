@@ -138,6 +138,12 @@ public interface PlatformMapper {
     @Update("UPDATE pipeline_run SET status=#{status},message=#{message},finished_at=CURRENT_TIMESTAMP(6) WHERE id=#{id} AND status='RUNNING'")
     int finishRun(@Param("id") long id, @Param("status") String status, @Param("message") String message);
 
+    @Select("SELECT COUNT(*) FROM pipeline_run r JOIN pipeline p ON p.id=r.pipeline_id WHERE p.archived=FALSE")
+    long recentRunCount();
+
+    @Select("SELECT r.*,p.name pipeline_name FROM pipeline_run r JOIN pipeline p ON p.id=r.pipeline_id WHERE p.archived=FALSE ORDER BY r.id DESC LIMIT #{limit} OFFSET #{offset}")
+    List<PipelineRun> recentRunsPage(@Param("limit") int limit, @Param("offset") long offset);
+
     @Select("SELECT r.*,p.name pipeline_name FROM pipeline_run r JOIN pipeline p ON p.id=r.pipeline_id WHERE p.archived=FALSE ORDER BY r.id DESC LIMIT 50")
     List<PipelineRun> recentRuns();
 
@@ -172,12 +178,15 @@ public interface PlatformMapper {
     @Select("SELECT * FROM data_service WHERE slug=#{slug} AND archived=FALSE")
     DataService serviceBySlug(String slug);
 
-    @Insert("INSERT INTO data_service(name,slug,query_sql) VALUES(#{name},#{slug},#{querySql})")
+    @Insert("INSERT INTO data_service(name,slug,query_sql,subject_area,description) VALUES(#{name},#{slug},#{querySql},#{subjectArea},#{description})")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     void insertService(DataService service);
 
-    @Update("UPDATE data_service SET name=#{name},query_sql=#{querySql},published=FALSE WHERE id=#{id}")
+    @Update("UPDATE data_service SET name=#{name},subject_area=#{subjectArea},description=#{description},published=CASE WHEN CAST(query_sql AS BINARY)=CAST(#{querySql} AS BINARY) THEN published ELSE FALSE END,query_sql=#{querySql} WHERE id=#{id} AND archived=FALSE")
     void updateService(DataService service);
+
+    @Update("UPDATE data_service SET subject_area=#{area},description=#{description} WHERE id=#{id} AND archived=FALSE")
+    int serviceMetadata(@Param("id") long id, @Param("area") String area, @Param("description") String description);
 
     @Update("UPDATE data_service SET published=#{published} WHERE id=#{id}")
     void publish(@Param("id") long id, @Param("published") boolean published);

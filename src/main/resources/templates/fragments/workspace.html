@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<body>
+<div th:fragment="context" class="page-context">
+  <button class="shell-toggle mobile-toggle" type="button" data-mobile-nav-open aria-controls="mobile-navigation"
+          aria-haspopup="dialog" aria-label="打开导航">
+    <svg class="nav-icon" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 4h12M3 9h12M3 14h12"/></svg>
+  </button>
+  <th:block th:replace="~{fragments/breadcrumb :: breadcrumb(${breadcrumbs})}"></th:block>
+</div>
+<a th:fragment="back" th:if="${pageBack != null}" class="btn-outline theme-secondary workspace-back"
+   th:href="@{${pageBack.href}}" th:attr="aria-label=${'返回' + pageBack.label}"><span aria-hidden="true">←</span> 返回</a>
+<div th:fragment="user" class="sidebar-user">
+  <a class="user-profile" th:href="@{/settings}" th:title="${shellUsername + ' · ' + shellRole + ' · 系统设置'}">
+    <span class="user-avatar" th:text="${#strings.substring(shellUsername, 0, 1)}" aria-hidden="true">L</span>
+    <span class="user-copy"><strong th:text="${shellUsername}">用户</strong><span th:text="${shellRole}">角色</span>
+      <span class="user-environment">单机开发环境</span></span>
+  </a>
+  <form th:action="@{/logout}" method="post">
+    <button class="shell-toggle" type="submit" aria-label="退出登录" title="退出登录">
+      <svg class="nav-icon" viewBox="0 0 18 18" aria-hidden="true"><path d="M7 3H3v12h4M8 9h9l-3-3M17 12l-3-3"/></svg>
+    </button>
+  </form>
+</div>
+</body>
+</html>

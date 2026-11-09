@@ -7,7 +7,9 @@
          th:attr="data-status-url=${statusUrl ?: resource.path() + '/instances/' + instanceId + '/status'},data-instance-path=${resource.path() + '/instances/' + instanceId},data-can-read-logs=${canEdit}">
   <link rel="stylesheet" th:href="@{/css/scheduler-console.css}">
   <link rel="stylesheet" th:href="@{/css/workflow-canvas.css}">
-  <div class="d-flex flex-wrap justify-content-between align-items-start gap-5 mb-7">
+  <header class="page-topbar">
+    <div th:replace="~{fragments/workspace :: context}"></div>
+    <div class="page-heading d-flex flex-wrap justify-content-between align-items-start gap-5">
     <div>
       <h1 class="page-title">运行记录详情</h1>
       <p class="page-subtitle mb-0"
@@ -24,12 +26,14 @@
       <button th:unless="${instance != null}" class="btn-outline theme-primary" type="button"
               onclick="location.reload()">刷新状态
       </button>
-      <a class="btn-outline theme-secondary" th:href="${resource.path()}">返回运行记录</a>
     </div>
+
+    <a th:replace="~{fragments/workspace :: back}"></a>
   </div>
+  </header>
   <div th:if="${engineError}" hidden data-platform-notification="danger" th:text="${engineError}"></div>
   <th:block th:if="${instance != null}">
-    <article class="platform-card card mb-5">
+    <article class="workspace-section mb-5">
       <div class="card-body">
         <div class="scheduler-summary">
           <div class="scheduler-summary-item">
@@ -56,7 +60,7 @@
       </div>
     </article>
   </th:block>
-  <article class="platform-card card mb-5" th:if="${callbackPage != null}" data-callback-records
+  <article class="workspace-section mb-5" th:if="${callbackPage != null}" data-callback-records
            th:attr="data-callback-history-url=@{/pipelines/{id}/runs(id=${resource.id})}">
     <div class="card-header d-flex justify-content-between gap-3"><span>同步回调记录</span><small class="fw-normal fg-2"
                                                                                                   data-callback-total
@@ -130,7 +134,7 @@
     </template>
   </article>
   <th:block th:if="${instance != null}">
-    <article th:if="${executionGraph != null}" class="platform-card card mb-5">
+    <article th:if="${executionGraph != null}" class="workspace-section mb-5">
       <div class="card-header">工作流运行图 <small class="fw-normal fg-2">仅显示本次工作流快照，不推测历史版本</small>
       </div>
       <div class="card-body workflow-execution" data-workflow-execution>
@@ -143,7 +147,7 @@
       </div>
     </article>
     <div class="scheduler-workspace">
-      <article class="platform-card card scheduler-node-panel">
+      <article class="workspace-section scheduler-node-panel">
         <div class="card-header">执行节点</div>
         <div class="card-body p-0">
           <nav aria-label="执行节点选择" class="scheduler-node-list" data-scheduler-nodes>
@@ -186,7 +190,7 @@
           <time data-node-end></time>
         </div>
       </a></template>
-      <article class="platform-card card scheduler-log-panel" th:if="${canEdit}" data-log-console
+      <article class="workspace-section scheduler-log-panel" th:if="${canEdit}" data-log-console
                th:attr="data-log-url=${selectedNode != null ? (logUrl ?: '') : ''},data-selected-id=${selectedNode != null ? selectedNode.id : ''},data-selected-name=${selectedNode != null ? selectedNode.name : ''}">
         <div class="card-header scheduler-log-heading"><span data-log-title
                                                              th:text="${selectedNode != null ? selectedNode.name : '等待节点派发'}"></span><span
@@ -221,7 +225,7 @@
           <noscript><p class="alert theme-info mt-3">请启用 JavaScript 以分段读取节点日志。</p></noscript>
         </div>
       </article>
-      <article th:if="${!canEdit}" class="platform-card card">
+      <article th:if="${!canEdit}" class="workspace-section">
         <div class="card-body fg-2">当前账号可查看运行状态。节点执行日志仅向管理员和开发者开放。</div>
       </article>
     </div>

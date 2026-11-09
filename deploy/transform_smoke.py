@@ -8,7 +8,7 @@ import time
 import uuid
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
-from smoke import Client, SmokeFailure, load_dotenv, parse, post_form, require_success, id_from_row, generated_key, create_workflow, create_workflow_sql, request_json, update_workflow_sql, workflow_action
+from smoke import Client, SmokeFailure, load_dotenv, parse, post_form, require_success, id_from_row, generated_key, create_workflow, create_workflow_sql, request_json, update_workflow_sql, workflow_action, ensure_subject_area
 
 
 def checked(status, page, text):
@@ -34,6 +34,7 @@ def model(client, table, layer, definitions):
     for i, (name, data_type, key) in enumerate(definitions):
         for prop, value in {"name": name, "dataType": data_type, "keyColumn": str(key).lower(), "nullable": "false", "comment": "", "standard": ""}.items():
             fields[f"fields[{i}].{prop}"] = value
+    ensure_subject_area(client, fields["subjectArea"], page)
     status, page = post_form(client, page, "/models", fields)
     checked(status, page, "逻辑模型已保存")
     identifier = resource_id(page, "/models", "physicalize")

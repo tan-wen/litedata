@@ -4,12 +4,17 @@
 <head><title>指标管理 · LiteData</title></head>
 <body>
 <section>
-  <div class="d-flex flex-wrap justify-content-between align-items-center mb-7 gap-5">
+  <header class="page-topbar">
+    <div th:replace="~{fragments/workspace :: context}"></div>
+    <div class="page-heading d-flex flex-wrap justify-content-between align-items-center gap-5">
     <div><h1 class="page-title">指标管理</h1>
       <p class="page-subtitle mb-0">维护可复用的原子、派生和复合指标定义，以及每次保存时固定的 SQL 快照。</p></div>
-    <a th:if="${canEdit}" class="btn-solid theme-primary" th:href="@{/metrics/new(type=ATOMIC)}">新增指标</a></div>
+    <a th:if="${canEdit}" class="btn-solid theme-primary" th:href="@{/metrics/new(type=ATOMIC)}">新增指标</a>
+    <a th:replace="~{fragments/workspace :: back}"></a>
+  </div>
+  </header>
   <div th:replace="~{fragments/messages :: messages}"></div>
-  <article class="platform-card card">
+  <article class="workspace-section">
     <div class="card-header">指标目录</div>
     <div class="card-body">
       <form class="row g-3 mb-5" th:action="@{/metrics}" method="get">
@@ -46,7 +51,7 @@
               <div class="small fg-2" th:text="${metric.name}"></div>
             </td>
             <td><span class="badge theme-info" th:text="${metric.type.label}"></span></td>
-            <td th:text="${metric.subjectArea ?: '—'}"></td>
+            <td th:text="${subjectAreaLabels[metric.subjectArea] ?: (metric.subjectArea ?: '—')}"></td>
             <td class="modeling-diff"
                 th:text="${#strings.isEmpty(metric.dimensions) ? '无维度' : metric.dimensions}"></td>
             <td th:text="${metric.owner ?: '—'}"></td>

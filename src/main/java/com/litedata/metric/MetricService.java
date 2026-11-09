@@ -1,6 +1,7 @@
 package com.litedata.metric;
 
 import com.litedata.model.DataModel;
+import com.litedata.dictionary.DictionaryService;
 import com.litedata.service.QueryPage;
 import com.litedata.store.*;
 
@@ -21,13 +22,15 @@ public class MetricService {
     private final PlatformMapper platform;
     private final ObjectMapper json;
     private final MetricLineageService lineage;
+    private final DictionaryService dictionaries;
 
-    public MetricService(MetricMapper mapper, ModelMapper models, PlatformMapper platform, ObjectMapper json, MetricLineageService lineage) {
+    public MetricService(MetricMapper mapper, ModelMapper models, PlatformMapper platform, ObjectMapper json, MetricLineageService lineage, DictionaryService dictionaries) {
         this.mapper = mapper;
         this.models = models;
         this.platform = platform;
         this.json = json;
         this.lineage = lineage;
+        this.dictionaries = dictionaries;
     }
 
     public record Option(Long id, String code, String name, MetricType type, int version) {
@@ -96,6 +99,7 @@ public class MetricService {
     public long save(Long id, MetricDefinition input, String actor) {
         mapper.lockGraph();
         common(input);
+        input.setSubjectArea(dictionaries.subjectArea(input.getSubjectArea(), id == null ? "" : active(mapper.metric(id)).getSubjectArea(), true));
         if (id != null) {
             var current = active(mapper.metric(id));
             checkVersion(current, input.getVersion());

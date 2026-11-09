@@ -4,13 +4,18 @@
 <head><title>我的 API Key · LiteData</title></head>
 <body>
 <section>
-  <div class="d-flex justify-content-between align-items-start gap-5 mb-7">
+  <header class="page-topbar">
+    <div th:replace="~{fragments/workspace :: context}"></div>
+    <div class="page-heading d-flex justify-content-between align-items-start gap-5">
     <div><h1 class="page-title">我的 API Key</h1>
       <p class="page-subtitle mb-0">为 Agent 创建权限受限的 MCP 凭证。密钥只在创建时显示一次。</p></div>
-    <a class="btn-solid theme-primary" th:href="@{/settings/api-keys/new}">创建 API Key</a></div>
+    <a class="btn-solid theme-primary" th:href="@{/settings/api-keys/new}">创建 API Key</a>
+    <a th:replace="~{fragments/workspace :: back}"></a>
+  </div>
+  </header>
   <div th:replace="~{fragments/messages :: messages}"></div>
   <p class="fg-2">时间以 UTC 显示。权限或资源范围需要调整时，请创建替代 Key 并吊销旧 Key。</p>
-  <article class="platform-card card">
+  <article class="workspace-section">
     <div class="card-header">已创建的 Key</div>
     <div class="card-body p-0">
       <div class="table-responsive">

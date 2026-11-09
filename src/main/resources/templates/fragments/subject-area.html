@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org"><body>
+<select th:fragment="select(fieldId,fieldName,selected,required,emptyLabel,filter)" class="form-control"
+        th:id="${fieldId}" th:name="${fieldName}" th:required="${required}">
+  <option value="" th:text="${emptyLabel}" th:selected="${#strings.isEmpty(selected)}"></option>
+  <option th:each="item : ${subjectAreaChoices}" th:value="${item.value}"
+          th:text="${item.label + (item.enabled ? '' : '（已停用）')}"
+          th:selected="${#strings.equalsIgnoreCase(item.value,selected)}"
+          th:disabled="${!filter and !item.enabled and !#strings.equalsIgnoreCase(item.value,selected)}"></option>
+  <option th:if="${!#strings.isEmpty(selected) and !subjectAreaLabels.containsKey(selected)}" th:value="${selected}"
+          th:text="${selected + '（未登记）'}" selected></option>
+</select>
+</body></html>

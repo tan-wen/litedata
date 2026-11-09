@@ -55,6 +55,19 @@ class PageBreadcrumbsTest {
     }
 
     @Test
+    void assetEditorBreadcrumbsFollowItsEntryPoint() {
+        var list = model();
+        list.put("returnTo", "list");
+        list.put("listReturnPath", "/assets?assetType=MODEL&keyword=orders&pageNum=2&pageSize=20");
+        assertThat(PageBreadcrumbs.forView("asset-form", list)).extracting(PageBreadcrumbs.Item::href)
+            .containsExactly("/", "/assets?assetType=MODEL&keyword=orders&pageNum=2&pageSize=20", null);
+        var detail = model();
+        detail.put("returnTo", "detail");
+        assertThat(PageBreadcrumbs.forView("asset-form", detail)).extracting(PageBreadcrumbs.Item::href)
+            .containsExactly("/", "/assets", "/assets/MODEL/7", null);
+    }
+
+    @Test
     void historicalLineagePreservesTheVersionAndSchedulerNodesPreserveTaskIdentity() {
         var history = model();
         history.put("backPath", "/metrics/7/versions/3");
@@ -72,6 +85,23 @@ class PageBreadcrumbsTest {
         current.put("resource", new SchedulerOperations.Resource("transform", 8, "加工任务", "/transforms/8", List.of(99L)));
         assertThat(PageBreadcrumbs.forView("scheduler-instances", current)).extracting(PageBreadcrumbs.Item::href)
             .containsExactly("/", "/transforms", "/transforms/8", null);
+    }
+
+    @Test
+    void workspaceBackLinksAreAbsentOnPrimaryPagesAndPreserveFormContext() {
+        for (String view : List.of("dashboard", "models", "sources", "assets", "metrics", "settings", "dictionaries", "api-keys"))
+            assertThat(PageBreadcrumbs.backForView(view, model())).as(view).isNull();
+        assertThat(PageBreadcrumbs.backForView("model-detail", model()).href()).isEqualTo("/models");
+        assertThat(PageBreadcrumbs.backForView("model-form", model()).href()).isEqualTo("/models/7");
+        assertThat(PageBreadcrumbs.backForView("source-form", model()).href()).isEqualTo("/sources");
+        var context = model();
+        context.put("backPath", "/assets?keyword=orders&pageNum=3&pageSize=50");
+        assertThat(PageBreadcrumbs.backForView("asset-form", context).href()).isEqualTo(context.get("backPath"));
+        context.remove("backPath");
+        context.put("workflowId", 42L);
+        assertThat(PageBreadcrumbs.backForView("pipeline-form", context).href()).isEqualTo("/workflows/42");
+        context.put("backPath", "https://untrusted.example");
+        assertThatIllegalArgumentException().isThrownBy(() -> PageBreadcrumbs.backForView("asset-form", context));
     }
 
     @Test

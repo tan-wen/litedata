@@ -706,7 +706,7 @@
         panel.setAttribute('aria-label', ['', '第一步：模型信息', '第二步：字段定义', '第三步：Doris 物理设置'][target]);
         panel.focus({preventScroll: true});
         const panelTop = panel.getBoundingClientRect().top;
-        const topbarBottom = document.querySelector('.topbar')?.getBoundingClientRect().bottom || 0;
+        const topbarBottom = document.querySelector('.page-topbar')?.getBoundingClientRect().bottom || 0;
         // Keep the viewport steady when using the visible step tabs. Bottom controls may need to reveal the new panel.
         if (panelTop < topbarBottom || panelTop >= window.innerHeight) panel.scrollIntoView({
             block: 'start',

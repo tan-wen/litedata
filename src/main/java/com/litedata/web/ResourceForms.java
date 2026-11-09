@@ -273,6 +273,12 @@ public final class ResourceForms {
         private String name = "";
         private String slug = "";
         private String querySql = "";
+        private String subjectArea = "", description = "";
+
+        public String getSubjectArea() { return subjectArea; }
+        public void setSubjectArea(String value) { subjectArea = value; }
+        public String getDescription() { return description; }
+        public void setDescription(String value) { description = value; }
 
         public String getName() {
             return name;

@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[2]
 # JDBC runtime use its local calendar so DataX's local formatter preserves them.
 SOURCE_JDBC = "jdbc:mysql://demo-mysql:3306/demo_source?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=LOCAL"
 sys.path.insert(0, str(ROOT / "deploy"))
-from smoke import PageParser, generated_key, load_dotenv  # noqa: E402
+from smoke import PageParser, generated_key, load_dotenv, ensure_subject_area, SmokeFailure  # noqa: E402
 
 
 class DemoFailure(RuntimeError):
@@ -218,6 +218,10 @@ class Demo:
             for key in ("name", "dataType", "keyColumn", "nullable", "comment", "standard"):
                 value = field.get(key, "" if key in ("comment", "standard") else False)
                 fields[f"fields[{index}].{key}"] = str(value).lower() if isinstance(value, bool) else value
+        try:
+            ensure_subject_area(self.client, fields["subjectArea"], page, "化工园区")
+        except SmokeFailure as error:
+            raise DemoFailure(str(error)) from error
         page = checked(self.client.post(page, "/models", fields), "逻辑模型已保存")
         found = re.fullmatch(r"/models/(\d+)", self.client.last_path)
         if not found:
@@ -458,7 +462,8 @@ class Demo:
         for service in self.manifest["services"]:
             _, page = self.client.request("GET", "/services/new")
             sql = self.metric_sql[service["metricKey"]] if service.get("metricKey") else service["querySql"]
-            fields = {"name": self.args.prefix + " " + service["name"], "slug": service["slug"], "querySql": sql}
+            fields = {"name": self.args.prefix + " " + service["name"], "slug": service["slug"], "querySql": sql,
+                      "subjectArea": "chemical_park", "description": service.get("description", service["name"])}
             page = checked(self.client.post(page, "/services", fields), "服务草稿已保存")
             service_id = identifier(page, service["slug"], "services", "publish")
             page = checked(self.client.post(page, f"/services/{service_id}/publish"), "发布状态已更新")

@@ -4,11 +4,16 @@
 <head><title>工作台 · 数据中台</title></head>
 <body>
 <section>
-  <div class="d-flex flex-wrap justify-content-between gap-5 mb-7">
+  <header class="page-topbar">
+    <div th:replace="~{fragments/workspace :: context}"></div>
+    <div class="page-heading d-flex flex-wrap justify-content-between gap-5">
     <div><h1 class="page-title">工作台</h1>
       <p class="page-subtitle mb-0">查看数据同步、加工调度和受控服务的当前状态。</p></div>
     <span class="badge theme-primary align-self-center">自定义周期增量同步</span>
+
+    <a th:replace="~{fragments/workspace :: back}"></a>
   </div>
+  </header>
   <div th:replace="~{fragments/messages :: messages}"></div>
   <div class="row g-5 mb-5">
     <div class="sm:col-6 xl:col-3">
@@ -50,16 +55,16 @@
   </div>
   <div class="row g-5">
     <div class="xl:col-8">
-      <article class="platform-card card h-100">
+      <article class="workspace-section h-100">
         <div class="card-header d-flex justify-content-between"><span>近期运行</span><a th:href="@{/pipelines}"
-                                                                                        class="small text-decoration-none">查看管道</a>
+                                                                                        class="small text-decoration-none">查看数据同步</a>
         </div>
         <div class="card-body p-0">
           <div class="table-responsive">
             <table class="table table-hover mb-0">
               <thead>
               <tr>
-                <th>管道</th>
+                <th>数据同步</th>
                 <th>状态</th>
                 <th>开始时间</th>
                 <th>结束时间</th>
@@ -81,10 +86,11 @@
             </table>
           </div>
         </div>
+        <div th:replace="~{fragments/pagination :: pagination}"></div>
       </article>
     </div>
     <div class="xl:col-4">
-      <article class="platform-card card h-100">
+      <article class="workspace-section h-100">
         <div class="card-header">引擎状态</div>
         <ul class="list-group list-group-flush">
           <li class="list-group-item engine-status-row d-flex justify-content-between align-items-center"

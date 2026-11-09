@@ -4,8 +4,13 @@
 <head><title>SQL 任务 · LiteData</title></head>
 <body>
 <section class="scheduling-form">
-  <div class="mb-7"><h1 class="page-title" th:text="${taskId == null ? '新增 SQL 任务' : '编辑 SQL 任务'}"></h1>
+  <header class="page-topbar">
+    <div th:replace="~{fragments/workspace :: context}"></div>
+    <div class="page-heading"><div class="page-heading-copy"><h1 class="page-title" th:text="${taskId == null ? '新增 SQL 任务' : '编辑 SQL 任务'}"></h1>
     <p class="page-subtitle mb-0">一个任务写入一个模型；依赖和执行周期请在数据加工画布中配置。</p></div>
+    <a th:replace="~{fragments/workspace :: back}"></a>
+  </div>
+  </header>
   <div th:replace="~{fragments/messages :: messages}"></div>
   <form th:if="${canEdit}" th:object="${draft}" th:action="${taskId == null ? '/transforms' : '/transforms/' + taskId}"
         method="post">
@@ -15,7 +20,7 @@
     <input type="hidden" name="returnTo" th:value="${returnTo}"><input th:if="${returnPageNum != null}" type="hidden"
                                                                        name="pageNum" th:value="${returnPageNum}"><input
     th:if="${returnPageSize != null}" type="hidden" name="pageSize" th:value="${returnPageSize}">
-    <article class="platform-card card mb-5">
+    <article class="workspace-section mb-5">
       <div class="card-header">1. 基础信息</div>
       <div class="card-body">
         <div class="row g-5">
@@ -34,7 +39,7 @@
         </div>
       </div>
     </article>
-    <article class="platform-card card mb-5">
+    <article class="workspace-section mb-5">
       <div class="card-header">2. 加工 SQL</div>
       <div class="card-body"><label class="form-label" for="sqlText">Doris 加工 SQL</label><textarea
         class="form-control code-preview" th:field="*{sqlText}" data-sql-editor spellcheck="false" rows="8" required

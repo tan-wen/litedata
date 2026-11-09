@@ -14,40 +14,46 @@ public interface AssetCatalogMapper {
           COALESCE(m.subject_area,'') subject_area,'' owner,t.comment description,COALESCE(m.layer,'') layer,
           CASE WHEN t.scope_key='doris' THEN 'Doris 数仓' ELSE COALESCE(s.name,'来源已移除') END source_name,
           CASE WHEN t.present=FALSE OR (t.scope_key<>'doris' AND s.id IS NULL) THEN 'MISSING' ELSE 'ACTIVE' END status,
-          t.version resource_version,t.id metadata_id,FLOOR(UNIX_TIMESTAMP(t.collected_at)) collected_epoch,t.scope_key,t.table_name
+          t.version resource_version,t.id metadata_id,FLOOR(UNIX_TIMESTAMP(t.collected_at)) collected_epoch,t.scope_key,t.table_name,t.scope_key category_key
         FROM metadata_table t LEFT JOIN data_source s ON t.scope_key=CONCAT('source:',s.id) AND s.archived=FALSE
           LEFT JOIN data_model m ON t.scope_key='doris' AND t.catalog_name='warehouse' AND LOWER(t.table_name)=m.table_name AND m.archived=FALSE
         WHERE t.scope_key='doris' OR NOT EXISTS(SELECT 1 FROM data_source archived_source
           WHERE t.scope_key=CONCAT('source:',archived_source.id) AND archived_source.archived=TRUE)
         UNION ALL
         SELECT 'MODEL',m.id,m.name,m.table_name,m.subject_area,'',m.description,m.layer,'Doris 数仓',
-          CASE WHEN m.archived THEN 'ARCHIVED' ELSE 'ACTIVE' END,m.version,t.id,FLOOR(UNIX_TIMESTAMP(t.collected_at)),'doris',m.table_name
+          CASE WHEN m.archived THEN 'ARCHIVED' ELSE 'ACTIVE' END,m.version,t.id,FLOOR(UNIX_TIMESTAMP(t.collected_at)),'doris',m.table_name,m.layer
         FROM data_model m LEFT JOIN metadata_table t ON t.scope_key='doris' AND t.catalog_name='warehouse' AND LOWER(t.table_name)=m.table_name
         UNION ALL
         SELECT 'METRIC',d.id,d.name,d.code,d.subject_area,d.owner,d.description,'','指标管理',
-          CASE WHEN d.archived THEN 'ARCHIVED' ELSE 'ACTIVE' END,d.version,NULL,NULL,'',''
+          CASE WHEN d.archived THEN 'ARCHIVED' ELSE 'ACTIVE' END,d.version,NULL,NULL,'','',d.type
         FROM metric_definition d
         UNION ALL
-        SELECT 'SERVICE',s.id,s.name,s.slug,'','','','','数据服务',
-          CASE WHEN s.published THEN 'PUBLISHED' ELSE 'UNPUBLISHED' END,0,NULL,NULL,'',''
+        SELECT 'SERVICE',s.id,s.name,s.slug,s.subject_area,'',s.description,'','数据服务',
+          CASE WHEN s.published THEN 'PUBLISHED' ELSE 'UNPUBLISHED' END,0,NULL,NULL,'','',''
         FROM data_service s WHERE s.archived=FALSE
         """;
     String ENTRIES = """
         SELECT a.asset_type,a.resource_id,COALESCE(NULLIF(p.business_name,''),a.name) name,a.code,
-          COALESCE(NULLIF(p.subject_area,''),a.subject_area) subject_area,
-          COALESCE(NULLIF(p.owner,''),a.owner) owner,COALESCE(NULLIF(p.description,''),a.description) description,
+          CASE WHEN a.asset_type='SERVICE' THEN a.subject_area ELSE COALESCE(NULLIF(p.subject_area,''),a.subject_area) END subject_area,
+          COALESCE(NULLIF(p.owner,''),a.owner) owner,
+          CASE WHEN a.asset_type='SERVICE' THEN a.description ELSE COALESCE(NULLIF(p.description,''),a.description) END description,
           a.layer,a.source_name,a.status,a.resource_version,a.metadata_id,a.collected_epoch,a.scope_key,a.table_name,
-          COALESCE(p.tags,'') tags,COALESCE(p.update_frequency,'') update_frequency,COALESCE(p.sensitivity,'INTERNAL') sensitivity
+          COALESCE(p.tags,'') tags,COALESCE(p.update_frequency,'') update_frequency,COALESCE(p.sensitivity,'INTERNAL') sensitivity,
+          CASE WHEN a.asset_type='SERVICE' THEN
+            CASE WHEN a.subject_area='' THEN 'unclassified' ELSE CONCAT('area:',a.subject_area) END
+            ELSE a.category_key END category_key
         FROM (
         """ + INVENTORY + ") a LEFT JOIN asset_profile p ON p.asset_type=a.asset_type AND p.resource_id=a.resource_id ";
     String FROM = " FROM (" + ENTRIES + ") a ";
     String FILTER = """
         WHERE (#{f.assetType}='' OR a.asset_type=#{f.assetType})
+          AND (#{f.assetCategory}='' OR a.category_key=#{f.assetCategory})
           AND (#{f.subjectArea}='' OR a.subject_area=#{f.subjectArea})
           AND (#{f.owner}='' OR a.owner=#{f.owner})
           AND (#{f.status}='' OR a.status=#{f.status})
           AND (#{f.tag}='' OR FIND_IN_SET(#{f.tag},a.tags)>0)
-          AND (#{f.keyword}='' OR LOCATE(#{f.keyword},LOWER(CONCAT_WS(' ',a.name,a.code,a.subject_area,a.owner,a.description,a.tags,a.source_name)))>0)
+          AND (#{f.keyword}='' OR LOCATE(#{f.keyword},LOWER(CONCAT_WS(' ',a.name,a.code,a.subject_area,a.owner,a.description,a.tags,a.source_name,
+            (SELECT di.label FROM data_dictionary_item di WHERE di.dictionary_code='SUBJECT_AREA' AND di.value=a.subject_area))))>0)
         """;
     String COLUMNS = "SELECT a.*,a.asset_type type ";
 
@@ -62,6 +68,14 @@ public interface AssetCatalogMapper {
 
     @Select("SELECT COUNT(*) total,COALESCE(SUM(asset_type='TABLE'),0) tables,COALESCE(SUM(asset_type='MODEL'),0) models,COALESCE(SUM(asset_type='METRIC'),0) metrics,COALESCE(SUM(asset_type='SERVICE'),0) services FROM (" + INVENTORY + ") a")
     AssetCatalogService.Stats stats();
+
+    @Select("""
+        SELECT a.asset_type type,a.category_key `key`,
+          CASE WHEN a.asset_type='TABLE' THEN a.source_name
+            WHEN a.asset_type='SERVICE' THEN COALESCE(NULLIF(a.subject_area,''),'未分类')
+            ELSE a.category_key END label,COUNT(*) count
+        """ + FROM + " GROUP BY a.asset_type,a.category_key,label ORDER BY a.asset_type,label,a.category_key")
+    List<AssetCatalogService.CategoryCount> categoryCounts();
 
     @Select("SELECT *,FLOOR(UNIX_TIMESTAMP(updated_at)) updated_epoch FROM asset_profile WHERE asset_type=#{type} AND resource_id=#{id}")
     AssetProfile profile(@Param("type") AssetType type, @Param("id") long id);

@@ -5,18 +5,23 @@
 <body>
 <section>
   <link rel="stylesheet" th:href="@{/css/workflow-canvas.css}">
-  <div class="d-flex justify-content-between align-items-center mb-7 gap-5">
+  <header class="page-topbar">
+    <div th:replace="~{fragments/workspace :: context}"></div>
+    <div class="page-heading d-flex justify-content-between align-items-center gap-5">
     <div><h1 class="page-title">SQL 任务</h1>
       <p class="page-subtitle mb-0">通过 Doris SQL 连接 ODS、DIM、DWD、DWS、ADS；依赖和运行计划统一在数据加工中维护。</p>
     </div>
     <div class="d-flex gap-3"><a class="btn-outline theme-secondary" th:href="@{/workflows}">数据加工</a><a
       th:if="${canEdit}" class="btn-solid theme-primary" th:href="@{/transforms/new}">新增 SQL 任务</a></div>
+
+    <a th:replace="~{fragments/workspace :: back}"></a>
   </div>
+  </header>
   <div th:replace="~{fragments/messages :: messages}"></div>
   <div class="alert theme-info">SQL 任务只维护基础信息和 SQL，且仅属于一个加工任务。请在所属数据加工画布新增和编辑
     SQL、组织依赖、设置周期并集中运行。
   </div>
-  <article class="platform-card card">
+  <article class="workspace-section">
     <div class="card-header">SQL 任务目录</div>
     <div class="card-body p-0">
       <div class="table-responsive">

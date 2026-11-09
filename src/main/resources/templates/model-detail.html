@@ -4,16 +4,21 @@
 <head><title>模型详情 · LiteData</title></head>
 <body>
 <section>
-  <div class="d-flex justify-content-between align-items-start mb-7 gap-5">
+  <header class="page-topbar">
+    <div th:replace="~{fragments/workspace :: context}"></div>
+    <div class="page-heading d-flex justify-content-between align-items-start gap-5">
     <div><h1 class="page-title" th:text="${definition.name}"></h1>
       <p class="page-subtitle mb-0"><span th:text="${'warehouse.' + definition.tableName}"></span> · <span
-        th:text="${definition.layer}"></span> · <span th:text="${definition.subjectArea}"></span> · <span
+        th:text="${definition.layer}"></span> · <span th:text="${subjectAreaLabels[definition.subjectArea] ?: definition.subjectArea}"></span> · <span
         th:text="${definition.modelType + ' KEY'}"></span> · <span th:text="${'v' + definition.version}"></span> <span
         class="badge theme-info"
         th:text="${creationStatus.created and definition.physicalVersion == null ? '待核对' : definition.physicalStatus}"></span>
       </p></div>
     <a th:if="${canEdit}" class="btn-outline theme-primary"
-       th:href="@{/models/{id}/edit(id=${definition.id})}">编辑模型</a></div>
+       th:href="@{/models/{id}/edit(id=${definition.id})}">编辑模型</a>
+    <a th:replace="~{fragments/workspace :: back}"></a>
+  </div>
+  </header>
   <div th:replace="~{fragments/messages :: messages}"></div>
   <p th:if="${!#strings.isEmpty(definition.description)}" th:text="${definition.description}"></p>
   <div th:if="${definition.modelType == 'UNIQUE'}" class="alert theme-info">建表后还需写入数据：ODS 由<a
@@ -23,7 +28,7 @@
   <div th:unless="${definition.modelType == 'UNIQUE'}" class="alert theme-warning">当前为 <strong
     th:text="${definition.modelType + ' KEY'}"></strong>。平台同步和自动重试加工不写入此表；请在数据加工或外部作业中明确追加、聚合与重算策略后再写入。
   </div>
-  <article th:if="${definition.layer == 'DIM'}" class="platform-card card mb-5">
+  <article th:if="${definition.layer == 'DIM'}" class="workspace-section mb-5">
     <div class="card-header">公共维度特性</div>
     <div class="card-body">
       <dl class="row mb-0">
@@ -39,7 +44,7 @@
         KEY；其余字段为维度属性。同键写入覆盖旧属性，不保留历史版本，不会自动删除源端已消失的成员。事实加工可关联此表，并声明维度加工为上游；维度更新后，已写入事实宽表的属性需要重新加工才会更新。</p>
     </div>
   </article>
-  <article class="platform-card card mb-5">
+  <article class="workspace-section mb-5">
     <div class="card-header">物理设置</div>
     <div class="card-body">
       <dl class="row mb-0">
@@ -106,7 +111,7 @@
       </div>
     </div>
   </article>
-  <article class="platform-card card mb-5">
+  <article class="workspace-section mb-5">
     <div class="card-header">字段定义</div>
     <div class="card-body p-0">
       <div class="table-responsive">
@@ -142,7 +147,7 @@
   </article>
   <div class="row g-5 mb-5">
     <div class="xl:col-8">
-      <article class="platform-card card h-100">
+      <article class="workspace-section h-100">
         <div class="card-header">Doris DDL 预览</div>
         <div class="card-body">
           <pre class="code-preview mb-0" th:text="${ddl}"></pre>
@@ -150,7 +155,7 @@
       </article>
     </div>
     <div class="xl:col-4">
-      <article class="platform-card card h-100">
+      <article class="workspace-section h-100">
         <div class="card-header">物理化与核对</div>
         <div class="card-body">
           <p>确认下方操作会在 Doris 创建 <strong th:text="${'warehouse.' + definition.tableName}"></strong>。已有表请先比对结构。
@@ -179,7 +184,7 @@
       </article>
     </div>
   </div>
-  <article th:if="${comparison != null}" class="platform-card card mb-5">
+  <article th:if="${comparison != null}" class="workspace-section mb-5">
     <div class="card-header">结构比对结果</div>
     <div class="card-body p-0">
       <div class="table-responsive">
@@ -205,7 +210,7 @@
       </div>
     </div>
   </article>
-  <article class="platform-card card mb-5">
+  <article class="workspace-section mb-5">
     <div class="card-header">最近执行记录 <small class="fg-2 fw-normal">最近 30 条 · 北京时间</small></div>
     <div class="card-body p-0">
       <div class="table-responsive">

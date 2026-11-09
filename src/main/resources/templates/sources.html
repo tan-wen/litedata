@@ -4,12 +4,17 @@
 <head><title>数据源 · 数据中台</title></head>
 <body>
 <section>
-  <div class="d-flex justify-content-between align-items-start mb-7 gap-5">
+  <header class="page-topbar">
+    <div th:replace="~{fragments/workspace :: context}"></div>
+    <div class="page-heading d-flex justify-content-between align-items-start gap-5">
     <div><h1 class="page-title">数据源</h1>
       <p class="page-subtitle mb-0">支持 MySQL、PostgreSQL、SQL Server、Oracle；密码加密保存且不会回显。</p></div>
-    <a th:if="${canEdit}" class="btn-solid theme-primary" th:href="@{/sources/new}">新增数据源</a></div>
+    <a th:if="${canEdit}" class="btn-solid theme-primary" th:href="@{/sources/new}">新增数据源</a>
+    <a th:replace="~{fragments/workspace :: back}"></a>
+  </div>
+  </header>
   <div th:replace="~{fragments/messages :: messages}"></div>
-  <article class="platform-card card">
+  <article class="workspace-section">
     <div class="card-header">已登记数据源</div>
     <div class="card-body p-0">
       <div class="table-responsive">

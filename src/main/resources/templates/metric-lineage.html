@@ -4,17 +4,21 @@
 <head><title>指标血缘 · LiteData</title></head>
 <body>
 <section>
-  <div class="d-flex flex-wrap justify-content-between align-items-center mb-7 gap-5">
+  <header class="page-topbar">
+    <div th:replace="~{fragments/workspace :: context}"></div>
+    <div class="page-heading d-flex flex-wrap justify-content-between align-items-center gap-5">
     <div>
       <h1 class="page-title" th:text="${definition.name}"></h1>
       <p class="page-subtitle mb-0"><code th:text="${definition.code}"></code> · <span
         th:text="${definition.type.label}"></span> · <span th:text="${'v' + definition.version}"></span></p>
     </div>
-    <a class="btn-outline theme-secondary" th:href="${backPath}">返回指标详情</a>
+
+    <a th:replace="~{fragments/workspace :: back}"></a>
   </div>
+  </header>
   <div th:replace="~{fragments/messages :: messages}"></div>
 
-  <article class="platform-card card mb-5">
+  <article class="workspace-section mb-5">
     <div class="card-body">
       <form class="d-flex flex-wrap align-items-center gap-3 mb-5" method="get" th:action="${lineagePath}">
         <label for="metric-lineage-field">输出字段</label>
@@ -109,7 +113,7 @@
     </div>
   </article>
 
-  <details class="platform-card card mb-5" th:if="${!#lists.isEmpty(projection.contexts)}" data-lineage-contexts>
+  <details class="workspace-section mb-5" th:if="${!#lists.isEmpty(projection.contexts)}" data-lineage-contexts>
     <summary class="card-header"
              th:text="${'影响结果的条件（' + projection.contexts.size() + ' 组，点击查看）'}"></summary>
     <div class="card-body">
@@ -142,7 +146,7 @@
     </div>
   </details>
 
-  <article class="platform-card card">
+  <article class="workspace-section">
     <div class="card-header">当前范围关系明细 <small class="fw-normal fg-2">与上方关系图保持一致</small></div>
     <div class="card-body p-0">
       <div class="table-responsive">

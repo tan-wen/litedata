@@ -596,7 +596,8 @@ class PlatformIntegrationTest {
             String base = "/" + resource;
             mvc.perform(get(base).with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("href=\"" + base + "/new\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("href=\"" + base + "/new" +
+                    (resource.equals("services") ? "?pageNum=1&amp;pageSize=20" : "") + "\"")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString(base + "/" + ids.get(resource) + "/edit")))
                 .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("name=\"" + (resource.equals("users") ? "username" : "name") + "\""))));
             for (String path : java.util.List.of(base + "/new", base + "/" + ids.get(resource) + "/edit")) {
@@ -1021,5 +1022,45 @@ class PlatformIntegrationTest {
         pipelineService.create("orders-hourly", source.getId(), "source_orders", "updated_at", "ods_orders",
             "", "0 0 * * * ?");
         return mapper.pipelines().getFirst();
+    }
+
+    @Test
+    void dashboardRecentRunsPaginatesAndRenamesLabels() throws Exception {
+        sourceService.create("dashboard-source", MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
+        var source = mapper.sources().getFirst();
+        pipelineService.create("dashboard-pipe", source.getId(), "source_orders", "updated_at", "ods_orders", "", "0 0 * * * ?");
+        var pipe = mapper.pipelines().getFirst();
+        for (int i = 0; i < 5; i++) {
+            var run = new PipelineRun();
+            run.setPipelineId(pipe.getId());
+            run.setStatus("SUCCESS");
+            run.setStartedAt(LocalDateTime.of(2026, 11, 9, 10, i, 0));
+            run.setFinishedAt(LocalDateTime.of(2026, 11, 9, 10, i, 30));
+            run.setLowerBound(LocalDateTime.of(2026, 11, 9, 9, 0, 0));
+            run.setUpperBound(LocalDateTime.of(2026, 11, 9, 10, 0, 0));
+            run.setMessage("batch-" + i);
+            mapper.insertRun(run);
+        }
+
+        var first = mvc.perform(get("/").with(user("admin").roles("ADMIN")).param("pageSize", "2"))
+            .andExpect(status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("totalCount", 5L))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("totalPages", 3L))
+            .andExpect(content().string(org.hamcrest.Matchers.containsString("查看数据同步")))
+            .andExpect(content().string(org.hamcrest.Matchers.containsString("<th>数据同步</th>")))
+            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("<th>管道</th>"))))
+            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("查看管道"))))
+            .andReturn().getModelAndView().getModel();
+        assertThat(((java.util.List<?>) first.get("recentRuns"))).hasSize(2);
+
+        var last = mvc.perform(get("/").with(user("admin").roles("ADMIN")).param("pageSize", "2").param("pageNum", "999"))
+            .andExpect(status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("pageNum", 3))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.model().attribute("hasMore", false))
+            .andReturn().getModelAndView().getModel();
+        assertThat(((java.util.List<?>) last.get("recentRuns"))).hasSize(1);
+
+        mvc.perform(get("/").with(user("admin").roles("ADMIN")).param("pageSize", "0"))
+            .andExpect(status().isBadRequest());
     }
 }

@@ -14,10 +14,12 @@ public interface ModelMapper {
     @Select("SELECT * FROM data_model WHERE archived=FALSE ORDER BY id DESC")
     List<DataModel> models();
 
-    @Select("SELECT COUNT(*) FROM data_model WHERE archived=FALSE AND (#{layer}='' OR layer=#{layer}) AND (#{keyword}='' OR LOCATE(#{keyword}, LOWER(CONCAT(table_name, ' ', name, ' ', subject_area)))>0)")
+    String FILTER = " WHERE archived=FALSE AND (#{layer}='' OR layer=#{layer}) AND (#{keyword}='' OR LOCATE(#{keyword},LOWER(CONCAT_WS(' ',table_name,name,subject_area,(SELECT di.label FROM data_dictionary_item di WHERE di.dictionary_code='SUBJECT_AREA' AND di.value=data_model.subject_area))))>0) ";
+
+    @Select("SELECT COUNT(*) FROM data_model" + FILTER)
     long countModels(@Param("keyword") String keyword, @Param("layer") String layer);
 
-    @Select("SELECT * FROM data_model WHERE archived=FALSE AND (#{layer}='' OR layer=#{layer}) AND (#{keyword}='' OR LOCATE(#{keyword}, LOWER(CONCAT(table_name, ' ', name, ' ', subject_area)))>0) ORDER BY id DESC LIMIT #{limit} OFFSET #{offset}")
+    @Select("SELECT * FROM data_model" + FILTER + " ORDER BY id DESC LIMIT #{limit} OFFSET #{offset}")
     List<DataModel> modelPage(@Param("keyword") String keyword, @Param("layer") String layer, @Param("limit") int limit, @Param("offset") long offset);
 
     @Select("SELECT * FROM data_model WHERE id=#{id} AND archived=FALSE")

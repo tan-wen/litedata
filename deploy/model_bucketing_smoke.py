@@ -13,7 +13,7 @@ import subprocess
 import sys
 import uuid
 
-from smoke import Client, SmokeFailure, load_dotenv, post_form
+from smoke import Client, SmokeFailure, load_dotenv, post_form, ensure_subject_area
 
 
 def require(status: int, page: str, text: str) -> None:
@@ -58,6 +58,7 @@ def create_model(client: Client, table: str, label: str, model_type: str, distri
     status, form = client.request("GET", "/models/new")
     if status != 200:
         raise SmokeFailure("model create page is unavailable")
+    ensure_subject_area(client, fields["subjectArea"], form)
     status, detail_page = post_form(client, form, "/models", fields)
     require(status, detail_page, "逻辑模型已保存")
     distribution = (f"DISTRIBUTED BY {distribution_type}"

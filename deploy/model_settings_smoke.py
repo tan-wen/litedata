@@ -8,7 +8,7 @@ import re
 import subprocess
 import sys
 import uuid
-from smoke import Client, SmokeFailure, load_dotenv, post_form
+from smoke import Client, SmokeFailure, load_dotenv, post_form, ensure_subject_area
 
 
 def require(status: int, page: str, text: str) -> None:
@@ -50,6 +50,7 @@ def main() -> dict[str, object]:
                                 "nullable": str(nullable).lower(), "aggregation": function if kind == "AGGREGATE" else ""}.items():
                 fields[f"fields[{index}].{prop}"] = value
         status, page = client.request("GET", "/models/new")
+        ensure_subject_area(client, fields["subjectArea"], page)
         status, page = post_form(client, page, "/models", fields)
         require(status, page, "逻辑模型已保存")
         require(status, page, "BUCKETS AUTO")

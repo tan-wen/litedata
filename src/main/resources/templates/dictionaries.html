@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title>数据字典 · LiteData</title></head>
+<body><section>
+  <header class="page-topbar">
+    <div th:replace="~{fragments/workspace :: context}"></div>
+    <div class="page-heading d-flex flex-wrap justify-content-between align-items-start gap-5">
+    <div><h1 class="page-title">数据字典</h1><p class="page-subtitle mb-0">维护行业标准选项，供模型、指标、资产和数据服务统一选择。</p></div>
+    <a class="btn-solid theme-primary" th:href="@{/dictionaries/new(pageNum=${pageNum},pageSize=${pageSize},keyword=${keyword})}">新增字典</a>
+
+    <a th:replace="~{fragments/workspace :: back}"></a>
+  </div>
+  </header>
+  <div th:replace="~{fragments/messages :: messages}"></div>
+  <article class="workspace-section">
+    <div class="card-header">字典列表</div>
+    <div class="card-body"><form class="d-flex gap-3" method="get" th:action="@{/dictionaries}">
+      <input type="hidden" name="pageSize" th:value="${pageSize}">
+      <input class="form-control" name="keyword" aria-label="搜索字典" maxlength="100" th:value="${keyword}" placeholder="字典编码、名称或说明">
+      <button class="btn-solid theme-primary text-nowrap" type="submit">查询</button><a class="btn-link theme-primary text-nowrap" th:href="@{/dictionaries}">重置</a>
+    </form></div>
+    <div class="table-responsive"><table class="table table-hover mb-0">
+      <thead><tr><th>字典名称</th><th>字典编码</th><th>说明</th><th>操作</th></tr></thead>
+      <tbody><tr th:each="item : ${dictionaries}">
+        <td><a th:href="@{/dictionaries/{code}/items(code=${item.code})}" th:text="${item.name}"></a></td>
+        <td><code th:text="${item.code}"></code><span th:if="${item.code == 'SUBJECT_AREA'}" class="badge theme-info ms-2">系统字典</span></td>
+        <td th:text="${item.description}"></td>
+        <td><div class="d-flex flex-wrap gap-2">
+          <a class="btn-outline theme-primary btn-sm" th:href="@{/dictionaries/{code}/items(code=${item.code})}">维护字典项</a>
+          <a class="btn-link theme-primary btn-sm" th:href="@{/dictionaries/{code}/edit(code=${item.code},pageNum=${pageNum},pageSize=${pageSize},keyword=${keyword})}">编辑</a>
+          <form th:if="${item.code != 'SUBJECT_AREA'}" method="post" th:action="@{/dictionaries/{code}/delete(code=${item.code})}">
+            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"><input type="hidden" name="version" th:value="${item.version}">
+            <input type="hidden" name="pageNum" th:value="${pageNum}"><input type="hidden" name="pageSize" th:value="${pageSize}"><input type="hidden" name="keyword" th:value="${keyword}">
+            <button class="btn-outline theme-danger btn-sm" type="submit">删除</button>
+          </form>
+        </div></td>
+      </tr><tr th:if="${#lists.isEmpty(dictionaries)}"><td colspan="4" class="text-center fg-2 py-10">暂无符合条件的字典。</td></tr></tbody>
+    </table></div>
+  </article>
+  <div th:replace="~{fragments/pagination :: pagination}"></div>
+</section></body></html>

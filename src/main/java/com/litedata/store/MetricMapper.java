@@ -8,7 +8,7 @@ import org.apache.ibatis.annotations.*;
 
 @Mapper
 public interface MetricMapper {
-    String FILTER = " WHERE archived=FALSE AND (#{type}='' OR type=#{type}) AND (#{keyword}='' OR LOCATE(#{keyword},LOWER(CONCAT(code,' ',name,' ',subject_area,' ',owner)))>0) ";
+    String FILTER = " WHERE archived=FALSE AND (#{type}='' OR type=#{type}) AND (#{keyword}='' OR LOCATE(#{keyword},LOWER(CONCAT_WS(' ',code,name,subject_area,owner,(SELECT di.label FROM data_dictionary_item di WHERE di.dictionary_code='SUBJECT_AREA' AND di.value=metric_definition.subject_area))))>0) ";
 
     @Select("SELECT id FROM metric_graph_guard WHERE id=1 FOR UPDATE")
     int lockGraph();

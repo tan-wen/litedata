@@ -182,7 +182,7 @@
             button.classList.toggle('is-complete', index >= 0 && index < steps.indexOf(activeStep));
         });
         setNotice('');
-        window.scrollTo({top: 0, behavior: 'smooth'});
+        (document.getElementById('main-content') || window).scrollTo({top: 0, behavior: 'smooth'});
     };
     const renumber = selector => all(selector).forEach((row, index) => row.querySelectorAll('[data-partition-property]').forEach(input => input.name = `partitions[${index}].${input.dataset.partitionProperty}`));
     const addPartition = type => {

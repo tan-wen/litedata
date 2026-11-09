@@ -5,24 +5,29 @@
 <body>
 <section>
   <link rel="stylesheet" th:href="@{/css/workflow-canvas.css}">
-  <div class="d-flex justify-content-between align-items-start mb-7 gap-5">
+  <header class="page-topbar">
+    <div th:replace="~{fragments/workspace :: context}"></div>
+    <div class="page-heading d-flex justify-content-between align-items-start gap-5">
     <div><h1 class="page-title" th:text="${task.name}"></h1>
       <p class="page-subtitle mb-0"
          th:text="${task.layer + ' / warehouse.' + task.targetTable + ' · v' + task.version}"></p></div>
     <a th:if="${canEdit}" class="btn-outline theme-primary"
-       th:href="@{/transforms/{id}/edit(id=${task.id},returnTo='detail')}">编辑 SQL 任务</a></div>
+       th:href="@{/transforms/{id}/edit(id=${task.id},returnTo='detail')}">编辑 SQL 任务</a>
+    <a th:replace="~{fragments/workspace :: back}"></a>
+  </div>
+  </header>
   <div th:replace="~{fragments/messages :: messages}"></div>
   <div class="alert theme-info">SQL 任务只维护名称、目标模型和 SQL。依赖、Cron、调度状态和运行由所属加工任务管理。</div>
   <div class="d-flex flex-wrap gap-3 mb-5"><a th:if="${canEdit}" class="btn-solid theme-primary"
                                               th:href="@{/workflows/new}">新建加工任务</a><a
     class="btn-outline theme-secondary" href="#platform-runs">平台 SQL 记录</a></div>
-  <article class="platform-card card mb-5">
+  <article class="workspace-section mb-5">
     <div class="card-header">本节点 SQL</div>
     <div class="card-body">
       <pre class="code-preview mb-0" th:text="${task.sqlText}"></pre>
     </div>
   </article>
-  <article class="platform-card card mb-5">
+  <article class="workspace-section mb-5">
     <div class="card-header">所属加工任务（唯一）</div>
     <div class="card-body"><p th:if="${#lists.isEmpty(taskWorkflows)}" class="fg-2 mb-0">此 SQL
       任务已删除，或尚未迁移到加工任务。</p>
@@ -34,7 +39,7 @@
       </div>
     </div>
   </article>
-  <article id="platform-runs" class="platform-card card mb-5">
+  <article id="platform-runs" class="workspace-section mb-5">
     <div class="card-header">SQL 节点运行记录 <small class="fw-normal fg-2">最近 100 条 · 北京时间</small></div>
     <div class="card-body p-0">
       <div class="table-responsive">

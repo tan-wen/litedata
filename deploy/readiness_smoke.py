@@ -16,7 +16,7 @@ import sys
 import time
 import uuid
 
-from smoke import (Client, SmokeFailure, create_workflow, create_workflow_sql,
+from smoke import (ensure_subject_area, Client, SmokeFailure, create_workflow, create_workflow_sql,
                    id_from_row, load_dotenv, parse, post_form, request_json,
                    require_success, workflow_action)
 
@@ -45,6 +45,7 @@ def model(client: Client, table: str, layer: str, definitions: list[tuple[str, s
             "comment": "", "standard": "",
         }.items():
             fields[f"fields[{index}].{prop}"] = value
+    ensure_subject_area(client, fields["subjectArea"], page)
     status, page = post_form(client, page, "/models", fields)
     checked(status, page, "逻辑模型已保存")
     match = next((re.fullmatch(r"/models/(\d+)/physicalize", str(form["action"])) for form in parse(page).forms

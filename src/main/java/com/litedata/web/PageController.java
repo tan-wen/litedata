@@ -68,7 +68,7 @@ public class PageController {
     @InitBinder("draft")
     void bind(WebDataBinder binder) {
         binder.setAllowedFields("name", "databaseType", "jdbcUrl", "username", "password", "sourceId", "sourceTable", "watermarkColumn",
-            "targetTable", "transformSql", "cronExpression", "qualityTaskId", "slug", "querySql", "targetMode", "keyColumns", "previewHash", "confirmed", "autoBuckets", "buckets", "replicationNum",
+            "targetTable", "transformSql", "cronExpression", "qualityTaskId", "slug", "querySql", "subjectArea", "description", "targetMode", "keyColumns", "previewHash", "confirmed", "autoBuckets", "buckets", "replicationNum",
             "wizardStep", "distributionType", "distributionColumns", "partitionType", "partitionColumn", "partitionUnit", "partitionRangeStyle", "dynamicPartitionProperties",
             "partitions[*].name", "partitions[*].lowerBound", "partitions[*].upperBound", "partitions[*].valuesText");
         binder.setAutoGrowCollectionLimit(100);
@@ -97,9 +97,10 @@ public class PageController {
     }
 
     @GetMapping("/")
-    String dashboard(Model model) {
+    String dashboard(@RequestParam Map<String, String> params, Model model) {
+        var page = ListPagination.prepare(model, "/", params, mapper.recentRunCount());
         model.addAttribute("stats", mapper.stats());
-        model.addAttribute("recentRuns", displayRuns());
+        model.addAttribute("recentRuns", displayRuns(mapper.recentRunsPage(page.pageSize(), page.offset())));
         model.addAttribute("engineStatus", Map.of("平台数据库", "已连接", "DolphinScheduler", scheduler.configured() ? "已配置，运行时校验" : "等待初始化",
             "Doris", "固定目标：" + properties.doris().jdbcUrl().split("\\?")[0]));
         return "dashboard";
@@ -346,12 +347,14 @@ public class PageController {
     }
 
     @GetMapping("/services/new")
-    String newService(Model model) {
+    String newService(@RequestParam Map<String, String> params, Model model) {
+        serviceContext(model, params);
         return form(model, new ServiceDraft(), null, "services");
     }
 
     @GetMapping("/services/{id}/edit")
-    String editService(@PathVariable long id, Model model) {
+    String editService(@PathVariable long id, @RequestParam Map<String, String> params, Model model) {
+        serviceContext(model, params);
         var draft = new ServiceDraft();
         BeanUtils.copyProperties(services.get(id), draft);
         return form(model, draft, id, "services");
@@ -368,13 +371,15 @@ public class PageController {
 
     @PostMapping("/services")
     String createService(@ModelAttribute("draft") ServiceDraft draft, BindingResult errors,
-                         Model model, RedirectAttributes redirect, Principal principal) {
+                         @RequestParam Map<String, String> params, Model model, RedirectAttributes redirect, Principal principal) {
+        serviceContext(model, params);
         return saveService(null, draft, errors, model, redirect, principal);
     }
 
     @PostMapping("/services/{id}")
     String updateService(@PathVariable long id, @ModelAttribute("draft") ServiceDraft draft,
-                         BindingResult errors, Model model, RedirectAttributes redirect, Principal principal) {
+                         BindingResult errors, @RequestParam Map<String, String> params, Model model, RedirectAttributes redirect, Principal principal) {
+        serviceContext(model, params);
         services.get(id);
         return saveService(id, draft, errors, model, redirect, principal);
     }
@@ -382,11 +387,11 @@ public class PageController {
     private String saveService(Long id, ServiceDraft draft, BindingResult errors, Model model, RedirectAttributes redirect, Principal principal) {
         try {
             if (errors.hasErrors()) throw new IllegalArgumentException("服务表单格式有误");
-            if (id == null) services.create(draft.getName(), draft.getSlug(), draft.getQuerySql());
-            else services.update(id, draft.getName(), draft.getSlug(), draft.getQuerySql());
+            if (id == null) services.create(draft.getName(), draft.getSlug(), draft.getQuerySql(), draft.getSubjectArea(), draft.getDescription());
+            else services.update(id, draft.getName(), draft.getSlug(), draft.getQuerySql(), draft.getSubjectArea(), draft.getDescription());
             audit(principal, id == null ? "SERVICE_CREATE" : "SERVICE_UPDATE", draft.getSlug());
-            redirect.addFlashAttribute("success", "服务草稿已保存，请确认后发布");
-            return "redirect:/services";
+            redirect.addFlashAttribute("success", id == null ? "服务草稿已保存，请确认后发布" : "服务信息已保存；SQL 变更后需重新发布");
+            return "redirect:" + model.getAttribute("listReturnPath");
         } catch (IllegalArgumentException exception) {
             model.addAttribute("error", exception.getMessage());
         } catch (DuplicateKeyException exception) {
@@ -443,6 +448,14 @@ public class PageController {
             case "pipelines" -> "pipeline-form";
             default -> "service-form";
         };
+    }
+
+    private static void serviceContext(Model model, Map<String, String> params) {
+        var page = com.litedata.service.QueryPage.parse(params, 20);
+        model.addAttribute("returnPageNum", params.containsKey("pageNum") ? page.pageNum() : null);
+        model.addAttribute("returnPageSize", params.containsKey("pageSize") ? page.pageSize() : null);
+        model.addAttribute("listReturnPath", params.containsKey("pageNum") || params.containsKey("pageSize")
+            ? "/services?pageNum=" + page.pageNum() + "&pageSize=" + page.pageSize() : "/services");
     }
 
     private com.litedata.model.DataSource source(long id) {

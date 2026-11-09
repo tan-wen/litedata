@@ -8,10 +8,15 @@
 <section class="scheduling-form pipeline-wizard" data-pipeline-ods-form>
   <link rel="stylesheet" th:href="@{/css/scheduling.css}">
   <link rel="stylesheet" th:href="@{/css/pipeline-wizard.css}">
-  <div class="mb-7">
+  <header class="page-topbar">
+    <div th:replace="~{fragments/workspace :: context}"></div>
+    <div class="page-heading"><div class="page-heading-copy">
     <h1 class="page-title" th:text="${resourceId == null ? '新建同步任务' : '编辑同步任务'}">新建同步任务</h1>
     <p class="page-subtitle mb-0">ODS 负责贴源同步；清洗、关联和汇总请在数据加工中配置独立任务。</p>
   </div>
+    <a th:replace="~{fragments/workspace :: back}"></a>
+  </div>
+  </header>
   <div th:replace="~{fragments/messages :: messages}">
   </div>
   <form th:if="${canEdit}" th:object="${draft}" th:action="${formAction}" method="post" data-pipeline-form novalidate
@@ -47,7 +52,7 @@
 
 
     <section data-wizard-step="1">
-      <article class="platform-card card mb-5">
+      <article class="workspace-section mb-5">
         <div class="card-header">第一步：来源与 ODS 目标</div>
         <div class="card-body">
           <div class="mb-5" data-ods-entry-mode th:if="${resourceId == null}">
@@ -144,7 +149,7 @@
     </section>
 
     <section data-wizard-step="2" th:hidden="${resourceId != null or draft.targetMode != 'AUTO'}">
-      <article class="platform-card card mb-5" data-ods-preview>
+      <article class="workspace-section mb-5" data-ods-preview>
         <div class="card-header">第二步：字段映射与键列</div>
         <div class="card-body">
           <div data-auto-preview-content th:hidden="${resourceId != null or draft.targetMode != 'AUTO'}">
@@ -218,7 +223,7 @@
     </section>
 
     <section data-wizard-step="3" th:hidden="${resourceId != null or draft.targetMode != 'AUTO'}">
-      <article class="platform-card card mb-5" data-auto-settings
+      <article class="workspace-section mb-5" data-auto-settings
                th:hidden="${resourceId != null or draft.targetMode != 'AUTO'}">
         <div class="card-header">第三步：Doris 物理设置</div>
         <div class="card-body">
@@ -241,7 +246,7 @@
           </div>
         </div>
       </article>
-      <article class="platform-card card mb-5" data-auto-settings
+      <article class="workspace-section mb-5" data-auto-settings
                th:hidden="${resourceId != null or draft.targetMode != 'AUTO'}">
         <div class="card-header">分桶设置</div>
         <div class="card-body">
@@ -268,7 +273,7 @@
           </div>
         </div>
       </article>
-      <article class="platform-card card mb-5" data-auto-settings
+      <article class="workspace-section mb-5" data-auto-settings
                th:hidden="${resourceId != null or draft.targetMode != 'AUTO'}">
         <div class="card-header">分区设置</div>
         <div class="card-body">
@@ -398,7 +403,7 @@
         </div>
       </article>
       <article data-existing-physical th:hidden="${resourceId == null and draft.targetMode != 'EXISTING'}"
-               class="platform-card card mb-5">
+               class="workspace-section mb-5">
         <div class="card-header">第三步：Doris 物理设置</div>
         <div class="card-body">
           <p class="alert theme-info mb-0">已有 ODS
@@ -412,7 +417,7 @@
     </section>
 
     <section data-wizard-step="4">
-      <article class="platform-card card mb-5">
+      <article class="workspace-section mb-5">
         <div class="card-header" data-final-step-heading
              th:text="${resourceId == null and draft.targetMode == 'AUTO' ? '第四步：调度与确认' : '第二步：调度与确认'}">
           第四步：调度与确认

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org" th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title>系统设置 · LiteData</title></head>
+<body><section>
+  <header class="page-topbar">
+    <div th:replace="~{fragments/workspace :: context}"></div>
+    <div class="page-heading"><div><h1 class="page-title">系统设置</h1><p class="page-subtitle mb-0">管理工作区外观，查看当前账号和环境。</p></div></div>
+  </header>
+  <div class="settings-content">
+    <section class="settings-section" aria-labelledby="appearance-heading">
+      <div><h2 id="appearance-heading">外观与主题</h2><p class="fg-2 mb-0">偏好自动保存在当前浏览器，并应用于所有页面。</p></div>
+      <div th:replace="~{fragments/appearance :: controls}"></div>
+    </section>
+    <section class="settings-section" aria-labelledby="account-heading">
+      <div><h2 id="account-heading">账号与角色</h2><p class="fg-2 mb-0">当前登录账号及其访问权限。</p></div>
+      <dl class="settings-facts"><dt>当前账号</dt><dd th:text="${shellUsername}"></dd><dt>当前角色</dt><dd th:text="${shellRole}"></dd></dl>
+      <a th:if="${canManageUsers}" class="btn-outline theme-secondary" th:href="@{/users}">管理账号权限</a>
+      <a class="btn-outline theme-secondary" th:href="@{/settings/api-keys}">我的 API Key</a>
+    </section>
+    <section class="settings-section" aria-labelledby="environment-heading">
+      <div><h2 id="environment-heading">运行环境</h2><p class="fg-2 mb-0">LiteData 单机工作空间。</p></div>
+      <span class="environment">单机开发环境</span><a class="btn-link theme-primary" th:href="@{/}">查看引擎状态</a>
+    </section>
+  </div>
+</section></body></html>

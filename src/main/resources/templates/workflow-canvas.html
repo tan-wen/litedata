@@ -7,7 +7,9 @@
          th:attr="data-workflow-id=${workflow.id},data-graph-url=@{/workflows/{id}/graph(id=${workflow.id})},data-sql-url=@{/workflows/{id}/sql-tasks(id=${workflow.id})},data-editable=${canEdit}">
   <link rel="stylesheet" th:href="@{/css/workflow-canvas.css}">
   <input th:if="${canEdit}" type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
-  <div class="workflow-page-heading mb-5">
+  <header class="page-topbar">
+    <div th:replace="~{fragments/workspace :: context}"></div>
+    <div class="page-heading workflow-page-heading">
     <div><h1 class="page-title" th:text="${workflow.name}"></h1>
       <p class="page-subtitle mb-0" th:text="${workflow.description ?: '未填写说明'}"></p></div>
     <div class="workflow-actions">
@@ -22,9 +24,11 @@
          th:href="@{/workflows/{id}/events(id=${workflow.id})}">事件记录</a>
       <a th:if="${canEdit}" class="btn-outline theme-secondary"
                                      th:href="@{/workflows/{id}/edit(id=${workflow.id})}">编辑信息</a><a
-      class="btn-outline theme-secondary" th:href="@{/scheduling/workflow/{id}(id=${workflow.id})}">运行记录</a><a
-      class="btn-outline theme-secondary" th:href="@{/workflows}">返回数据加工</a></div>
+      class="btn-outline theme-secondary" th:href="@{/scheduling/workflow/{id}(id=${workflow.id})}">运行记录</a></div>
+
+    <a th:replace="~{fragments/workspace :: back}"></a>
   </div>
+  </header>
   <div th:replace="~{fragments/messages :: messages}"></div>
   <div class="alert theme-warning" data-workflow-ownership-warning hidden>
     <strong>请核对迁移后的输入表和依赖。</strong><span class="ms-2" data-workflow-ownership-notice></span><label
@@ -58,7 +62,7 @@
   </div>
   <dialog th:if="${canEdit}" class="workflow-sql-dialog workflow-leave-dialog" data-workflow-leave-dialog
           aria-labelledby="workflow-leave-title" aria-describedby="workflow-leave-description">
-    <article class="platform-card card">
+    <article class="workspace-section">
       <div class="card-header" id="workflow-leave-title">画布修改尚未保存</div>
       <div class="card-body"><p id="workflow-leave-description">离开后，未保存的节点、连线、位置和 SQL
         修改将丢失。可继续编辑并保存画布，或放弃修改后离开。</p>
@@ -70,7 +74,7 @@
     </article>
   </dialog>
   <dialog class="workflow-sql-dialog" data-workflow-sql-dialog aria-labelledby="workflow-sql-title">
-    <form method="dialog" class="platform-card card">
+    <form method="dialog" class="workspace-section">
       <div class="card-header d-flex justify-content-between align-items-center"><span id="workflow-sql-title" data-workflow-sql-title>新增SQL加工节点</span>
         <button class="btn-link theme-secondary" type="button" data-workflow-sql-close aria-label="关闭">关闭</button>
       </div>

@@ -4,12 +4,16 @@
 <head><title>表级血缘 · LiteData</title></head>
 <body>
 <section>
-  <div class="d-flex flex-wrap justify-content-between align-items-center mb-7 gap-5">
+  <header class="page-topbar">
+    <div th:replace="~{fragments/workspace :: context}"></div>
+    <div class="page-heading d-flex flex-wrap justify-content-between align-items-center gap-5">
     <div><h1 class="page-title" th:text="${table.catalogName + '.' + table.tableName}"></h1>
       <p class="page-subtitle mb-0">箭头由读取表指向写入表，追溯数据来源与下游影响。</p></div>
-    <a class="btn-outline theme-secondary" th:href="@{/metadata/{id}(id=${table.id})}">返回表详情</a></div>
+    <a th:replace="~{fragments/workspace :: back}"></a>
+  </div>
+  </header>
   <div th:replace="~{fragments/messages :: messages}"></div>
-  <article class="platform-card card mb-5">
+  <article class="workspace-section mb-5">
     <div class="card-body">
       <form class="d-flex flex-wrap align-items-center gap-3 mb-5" method="get"
             th:action="@{/metadata/{id}/lineage(id=${table.id})}"><label for="lineage-direction">查看方向</label><select
@@ -48,7 +52,7 @@
       <p th:if="${#lists.isEmpty(graph.edges)}" class="fg-2 mt-3">当前范围内未发现可解析的表级读写关系。</p>
     </div>
   </article>
-  <article class="platform-card card">
+  <article class="workspace-section">
     <div class="card-header">关系明细</div>
     <div class="card-body">
       <div class="table-responsive">

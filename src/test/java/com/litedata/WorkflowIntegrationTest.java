@@ -83,6 +83,7 @@ class WorkflowIntegrationTest {
 
     @BeforeEach
     void prepare() throws Exception {
+        TestDictionaries.seed(jdbc);
         for (String table : List.of("data_ready_delivery", "data_ready_event", "quality_alert", "sql_task_run", "workflow_definition_snapshot", "processing_workflow_snapshot", "processing_workflow_edge", "processing_workflow_node", "pipeline_transform_archive", "sql_task_dependency", "sql_pipeline_dependency", "sql_task", "processing_workflow", "model_execution", "model_field", "data_model", "pipeline_run", "pipeline", "data_source", "audit_event"))
             jdbc.update("DELETE FROM " + table);
         reset(doris, engine, monitor);

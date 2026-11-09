@@ -41,7 +41,7 @@ public class SecurityConfiguration {
     SecurityFilterChain pageSecurity(HttpSecurity http) throws Exception {
         return http.authorizeHttpRequests(a -> a
                 .requestMatchers("/login", "/css/**", "/js/**", "/vendor/**", "/favicon.ico", "/actuator/health").permitAll()
-                .requestMatchers("/users", "/users/**").hasRole("ADMIN")
+                .requestMatchers("/users", "/users/**", "/dictionaries", "/dictionaries/**").hasRole("ADMIN")
                 .requestMatchers("/settings/api-keys", "/settings/api-keys/**").authenticated()
                 .requestMatchers(HttpMethod.POST, "/services/*/credentials").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.GET, "/scheduling/*/*/instances/*/tasks/*/log").hasAnyRole("ADMIN", "DEVELOPER")

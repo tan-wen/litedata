@@ -5,12 +5,17 @@
 <body>
 <section>
   <link rel="stylesheet" th:href="@{/css/workflow-canvas.css}">
-  <div class="d-flex flex-wrap justify-content-between align-items-center gap-4 mb-7">
+  <header class="page-topbar">
+    <div th:replace="~{fragments/workspace :: context}"></div>
+    <div class="page-heading d-flex flex-wrap justify-content-between align-items-center gap-4">
     <div><h1 class="page-title">数据加工</h1>
       <p class="page-subtitle mb-0">在画布中组合 SQL 任务依赖，并按 Cron 或数据就绪事件触发加工。</p></div>
-    <a th:if="${canEdit}" class="btn-solid theme-primary" th:href="@{/workflows/new}">新建加工任务</a></div>
+    <a th:if="${canEdit}" class="btn-solid theme-primary" th:href="@{/workflows/new}">新建加工任务</a>
+    <a th:replace="~{fragments/workspace :: back}"></a>
+  </div>
+  </header>
   <div th:replace="~{fragments/messages :: messages}"></div>
-  <form class="platform-card card mb-5" method="get" th:action="@{/workflows}">
+  <form class="workspace-section mb-5" method="get" th:action="@{/workflows}">
     <div class="card-body workflow-list-filters">
       <div class="workflow-filter-field"><label class="form-label" for="keyword">搜索</label><input class="form-control"
                                                                                                     id="keyword"
@@ -25,7 +30,7 @@
     </div>
   </form>
 
-  <article class="platform-card card">
+  <article class="workspace-section">
     <div class="card-header">加工任务目录</div>
     <div class="card-body p-0">
       <div class="table-responsive">
@@ -110,7 +115,7 @@
   <div th:replace="~{fragments/pagination :: pagination}"></div>
   <dialog th:if="${canEdit}" class="workflow-sql-dialog" data-workflow-delete-dialog
           aria-labelledby="workflow-delete-title" aria-describedby="workflow-delete-description">
-    <article class="platform-card card">
+    <article class="workspace-section">
       <div class="card-header" id="workflow-delete-title">删除加工任务</div>
       <div class="card-body"><p>确认删除“<strong data-workflow-delete-name></strong>”？</p>
         <p id="workflow-delete-description">所属 SQL 任务将归档，同步任务、物理数据和运行历史将保留。</p>
