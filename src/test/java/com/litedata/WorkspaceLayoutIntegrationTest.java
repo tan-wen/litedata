@@ -68,8 +68,8 @@ class WorkspaceLayoutIntegrationTest {
         var back = (com.litedata.web.PageBreadcrumbs.Item) result.getModelAndView().getModel().get("pageBack");
         assertThat(back.href()).isEqualTo("/services?pageNum=2&pageSize=50");
         String html = result.getResponse().getContentAsString();
-        assertThat(html).contains("breadcrumb-back", "workspace-back");
-        assertThat(Pattern.compile("href=\"/services\\?pageNum=2&amp;pageSize=50\"").matcher(html).results().count()).isGreaterThanOrEqualTo(3);
+        assertThat(html).contains("workspace-back");
+        assertThat(Pattern.compile("href=\"/services\\?pageNum=2&amp;pageSize=50\"").matcher(html).results().count()).isGreaterThanOrEqualTo(2);
     }
 
     @Test

@@ -255,10 +255,24 @@
     background: rgb(0 0 0 / .42);
 }
 
-.workflow-sql-dialog .card {
+.workflow-sql-dialog .card,
+.workflow-sql-dialog .workspace-section {
     margin: 0;
     max-height: calc(100vh - 2rem);
     overflow: auto;
+    background: var(--platform-surface);
+    border: 1px solid var(--platform-line);
+    border-radius: .7rem;
+    box-shadow: var(--platform-shadow);
+}
+
+.workflow-sql-dialog .workspace-section > .card-header {
+    padding: .9rem 1.1rem;
+    border-bottom: 1px solid var(--platform-line);
+}
+
+.workflow-sql-dialog .workspace-section > .card-body {
+    padding: 1.1rem;
 }
 
 .workflow-leave-dialog {

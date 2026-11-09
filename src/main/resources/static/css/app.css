@@ -738,11 +738,20 @@ button, a, input, select, textarea {
     font-family: var(--bs-font-mono);
     white-space: pre-wrap;
     word-break: break-word;
+    background: var(--bs-bg-1);
+    border: 1px solid var(--platform-line);
+    border-radius: .4rem;
+    padding: .65rem .8rem;
+}
+
+.alert .code-preview {
+    background: color-mix(in srgb, var(--bs-bg-1) 70%, transparent);
 }
 
 .sql-editor {
     position: relative;
-    background: var(--platform-surface);
+    background: var(--bs-bg-1);
+    border: 1px solid var(--platform-line);
     border-radius: .4rem;
 }
 
